@@ -9,13 +9,11 @@ body,
 }
 
 body {
-  @apply bg-background text-slate-100;
+  @apply bg-slate-950 text-slate-100;
 }
 
 .card {
   @apply rounded-xl bg-surface/90 border border-slate-700/60 shadow-sm;
 }
 
-.kpi-grid {
-  @apply grid gap-4 md:grid-cols-3 lg:grid-cols-4;
-}
+/* additional global helpers can go here */

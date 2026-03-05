@@ -7,50 +7,39 @@ interface KPIGridProps {
 
 export function KPIGrid({ kpis }: KPIGridProps) {
   return (
-    <div className="kpi-grid mb-6">
+    <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
       <KPICard
-        label="Renda Passiva (Mês Atual)"
+        label="Renda passiva mensal"
         value={kpis.totalPassiveIncomeCurrentMonth}
         delta={kpis.momGrowth}
       />
       <KPICard
-        label="CDB - Rendimento Mensal"
+        label="Rendimento CDBs (mês)"
         value={kpis.cdbTotalYieldCurrentMonth}
         delta={kpis.momGrowth}
       />
       <KPICard
-        label="FIIs - Dividendos Mensais"
+        label="Dividendos de FIIs (mês)"
         value={kpis.fiiDividendsCurrentMonth}
         delta={kpis.momGrowth}
       />
       <KPICard
-        label="Crescimento M/M"
+        label="Crescimento Mês a Mês"
         value={kpis.momGrowth}
         variant="percent"
         delta={kpis.momGrowth}
       />
       <KPICard
-        label="Crescimento A/A"
+        label="Desempenho Ano a Ano"
         value={kpis.yoyGrowth}
         variant="percent"
         delta={kpis.yoyGrowth}
       />
       <KPICard
-        label="Renda Passiva YTD"
+        label="Renda acumulada no ano (YTD)"
         value={kpis.ytdPassiveIncome}
         delta={kpis.yoyGrowth}
       />
-      <KPICard
-        label="Yield da Carteira (12m)"
-        value={kpis.portfolioYield}
-        variant="percent"
-        delta={kpis.passiveIncomeCAGR}
-      />
-      <KPICard
-        label="Projeção Anual"
-        value={kpis.annualProjection}
-        delta={kpis.passiveIncomeCAGR}
-      />
-    </div>
+    </section>
   );
 }

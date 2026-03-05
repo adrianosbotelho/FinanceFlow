@@ -4,9 +4,11 @@ import {
   DashboardPayload,
   FinancialInsights,
   IncomeDistribution,
+  MonthComparisonPoint,
   PassiveIncomeByMonth,
 } from "../../../types";
 import { buildKpis } from "../../../lib/calculations";
+import { monthLabel } from "../../../lib/formatters";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -77,6 +79,35 @@ export async function GET(req: NextRequest) {
     (a, b) => a.year - b.year || a.month - b.month,
   );
 
+  const byYearMonth = new Map<string, PassiveIncomeByMonth>();
+  for (const m of monthlySeries) {
+    byYearMonth.set(`${m.year}-${m.month}`, m);
+  }
+
+  const yearPrev = year - 1;
+  const comparisonByMonth: MonthComparisonPoint[] = Array.from(
+    { length: 12 },
+    (_, i) => {
+      const month = i + 1;
+      const prev = byYearMonth.get(`${yearPrev}-${month}`);
+      const curr = byYearMonth.get(`${year}-${month}`);
+      return {
+        month,
+        monthName: monthLabel(month),
+        yearPrev,
+        yearCurr: year,
+        itauPrev: prev?.cdb_itau ?? 0,
+        itauCurr: curr?.cdb_itau ?? 0,
+        santanderPrev: prev?.cdb_santander ?? 0,
+        santanderCurr: curr?.cdb_santander ?? 0,
+        fiiPrev: prev?.fii_dividends ?? 0,
+        fiiCurr: curr?.fii_dividends ?? 0,
+        totalPrev: prev?.total ?? 0,
+        totalCurr: curr?.total ?? 0,
+      };
+    },
+  );
+
   const yoySeries = monthlySeries.filter((m) => m.year === year);
 
   const totalInvested = investments.reduce(
@@ -104,6 +135,7 @@ export async function GET(req: NextRequest) {
     kpis,
     monthlySeries: monthlySeries.filter((m) => m.year === year),
     yoySeries,
+    comparisonByMonth,
     distribution,
     insights,
   };

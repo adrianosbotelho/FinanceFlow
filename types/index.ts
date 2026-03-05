@@ -54,10 +54,28 @@ export interface FinancialInsights {
   commentary: string;
 }
 
+/** Comparativo mês a mês entre ano anterior e ano atual, por tipo de lançamento */
+export interface MonthComparisonPoint {
+  month: number;
+  monthName: string;
+  yearPrev: number;
+  yearCurr: number;
+  itauPrev: number;
+  itauCurr: number;
+  santanderPrev: number;
+  santanderCurr: number;
+  fiiPrev: number;
+  fiiCurr: number;
+  totalPrev: number;
+  totalCurr: number;
+}
+
 export interface DashboardPayload {
   kpis: DashboardKPIs;
   monthlySeries: PassiveIncomeByMonth[];
   yoySeries: PassiveIncomeByMonth[];
+  /** Comparativo mesmo mês em ano anterior vs ano atual, por tipo (Itaú, Santander, FIIs) */
+  comparisonByMonth: MonthComparisonPoint[];
   distribution: IncomeDistribution;
   insights: FinancialInsights;
 }

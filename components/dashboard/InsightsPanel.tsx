@@ -45,6 +45,18 @@ export function InsightsPanel({ kpis, insights }: Props) {
         </li>
         <li>
           <span className="font-medium text-slate-100">
+            Yield da carteira (12m):
+          </span>{" "}
+          {formatPercentage(kpis.portfolioYield)}
+        </li>
+        <li>
+          <span className="font-medium text-slate-100">
+            CAGR da renda passiva:
+          </span>{" "}
+          {formatPercentage(kpis.passiveIncomeCAGR)}
+        </li>
+        <li>
+          <span className="font-medium text-slate-100">
             Renda passiva acumulada 12m:
           </span>{" "}
           {formatCurrencyBRL(kpis.rolling12Months)}

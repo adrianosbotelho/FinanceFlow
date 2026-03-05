@@ -17,3 +17,8 @@ export function monthLabel(month: number): string {
   const base = new Date(2024, month - 1, 1);
   return base.toLocaleDateString("pt-BR", { month: "short" }).toUpperCase();
 }
+
+export function monthNameFull(month: number): string {
+  const base = new Date(2024, month - 1, 1);
+  return base.toLocaleDateString("pt-BR", { month: "long" });
+}

@@ -5,6 +5,7 @@ import { MonthlyBarChart } from "../components/dashboard/MonthlyBarChart";
 import { YoYLineChart } from "../components/dashboard/YoYLineChart";
 import { IncomeDistributionPie } from "../components/dashboard/IncomeDistributionPie";
 import { MonthlyTable } from "../components/dashboard/MonthlyTable";
+import { MonthOverMonthChart } from "../components/dashboard/MonthOverMonthChart";
 import { InsightsPanel } from "../components/dashboard/InsightsPanel";
 
 async function fetchDashboard(year: number): Promise<DashboardPayload | null> {
@@ -49,6 +50,12 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         <PassiveIncomeLineChart data={data.monthlySeries} />
         <MonthlyBarChart data={data.monthlySeries} />
       </div>
+
+      <MonthOverMonthChart
+        data={data.comparisonByMonth}
+        yearPrev={year - 1}
+        yearCurr={year}
+      />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <YoYLineChart data={data.yoySeries} />

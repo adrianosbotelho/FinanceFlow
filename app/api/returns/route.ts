@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { data, error } = await supabase
     .from("monthly_returns")
-    .insert(body)
+    .upsert(body, { onConflict: "investment_id,month,year" })
     .select("*")
     .single();
 
