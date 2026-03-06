@@ -30,3 +30,18 @@ npm run dev
 
 O dashboard ficará disponível em `http://localhost:3000`.
 
+---
+
+### Iniciar automaticamente no macOS (opcional)
+
+Para o servidor de desenvolvimento subir sozinho ao fazer login no Mac:
+
+```bash
+bash scripts/install-launch-agent.sh
+```
+
+- O app passa a iniciar no login e a ficar rodando em segundo plano.
+- Logs: `~/Library/Logs/FinanceFlow-dev.log`.
+- Para parar: `launchctl unload ~/Library/LaunchAgents/com.financeflow.dev.plist`
+- Para desinstalar (não iniciar mais no login): `bash scripts/uninstall-launch-agent.sh`
+
