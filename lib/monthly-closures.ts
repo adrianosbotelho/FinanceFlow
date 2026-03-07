@@ -13,6 +13,13 @@ export async function isMonthClosed(year: number, month: number): Promise<boolea
     .maybeSingle();
 
   if (error) {
+    // Fallback para ambientes ainda sem migration de monthly_closures aplicada.
+    if (error.message?.includes("monthly_closures")) {
+      console.warn(
+        "[FinanceFlow] monthly_closures table not available; treating month as open.",
+      );
+      return false;
+    }
     throw new Error(error.message);
   }
 

@@ -31,6 +31,9 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await query;
   if (error) {
+    if (error.message?.includes("monthly_closures")) {
+      return NextResponse.json([]);
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   return NextResponse.json(data ?? []);
@@ -61,6 +64,15 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) {
+    if (error.message?.includes("monthly_closures")) {
+      return NextResponse.json(
+        {
+          error:
+            "A tabela monthly_closures ainda não existe no Supabase. Aplique o schema.sql para habilitar fechamento mensal.",
+        },
+        { status: 503 },
+      );
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
