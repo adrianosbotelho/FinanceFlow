@@ -34,6 +34,7 @@ O dashboard ficará disponível em `http://localhost:3000`.
 
 - API local (com servidor rodando): `npm run smoke:api`
 - App macOS (build + artefatos): `npm run smoke:macos`
+- Checklist de release local (web + macOS): `npm run release:check`
 
 ---
 

@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "next lint",
     "smoke:api": "bash scripts/smoke-api.sh",
-    "smoke:macos": "bash scripts/smoke-macos.sh"
+    "smoke:macos": "bash scripts/smoke-macos.sh",
+    "release:check": "bash scripts/release-check.sh"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.48.0",
