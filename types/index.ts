@@ -26,6 +26,25 @@ export interface MonthlyClosure {
   updated_at?: string;
 }
 
+export interface MonthlyPosition {
+  investment_id: string;
+  year: number;
+  month: number;
+  market_value: number;
+  taxes_paid: number;
+  fees_paid: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface MonthlyMacro {
+  year: number;
+  month: number;
+  inflation_rate: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface PassiveIncomeByMonth {
   month: number;
   year: number;
@@ -107,4 +126,41 @@ export interface DashboardPayload {
   insights: FinancialInsights;
   goalProgress: GoalProgress;
   alerts: ConsistencyAlert[];
+}
+
+export interface PerformanceKPIs {
+  investedCapital: number;
+  currentMarketValue: number;
+  ytdPassiveIncomeNet: number;
+  ytdTaxes: number;
+  ytdFees: number;
+  nominalReturnPercent: number;
+  realReturnPercent: number;
+}
+
+export interface PerformanceMonthPoint {
+  month: number;
+  year: number;
+  passiveIncome: number;
+  taxes: number;
+  fees: number;
+  netIncome: number;
+  marketValue: number;
+  inflationRate: number;
+  nominalReturnPercent: number;
+  realReturnPercent: number;
+}
+
+export interface ConcentrationItem {
+  investmentId: string;
+  label: string;
+  value: number;
+  sharePercent: number;
+}
+
+export interface PerformancePayload {
+  kpis: PerformanceKPIs;
+  monthlySeries: PerformanceMonthPoint[];
+  concentration: ConcentrationItem[];
+  warnings: string[];
 }

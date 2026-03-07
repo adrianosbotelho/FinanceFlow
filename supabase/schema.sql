@@ -39,3 +39,27 @@ create table if not exists monthly_closures (
 
 create index if not exists idx_monthly_closures_year_month
   on monthly_closures (year, month);
+
+create table if not exists monthly_positions (
+  investment_id uuid not null references investments(id) on delete cascade,
+  year smallint not null,
+  month smallint not null check (month between 1 and 12),
+  market_value numeric(15,2) not null,
+  taxes_paid numeric(15,2) not null default 0,
+  fees_paid numeric(15,2) not null default 0,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  primary key (investment_id, year, month)
+);
+
+create index if not exists idx_monthly_positions_year_month
+  on monthly_positions (year, month);
+
+create table if not exists monthly_macro (
+  year smallint not null,
+  month smallint not null check (month between 1 and 12),
+  inflation_rate numeric(8,4) not null default 0,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  primary key (year, month)
+);

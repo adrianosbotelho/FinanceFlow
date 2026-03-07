@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 const items = [
   { href: "/", label: "Dash" },
+  { href: "/performance", label: "Perf" },
   { href: "/investments", label: "Assets" },
   { href: "/returns", label: "Insights" },
 ];
@@ -32,4 +33,3 @@ export function MobileNav() {
     </nav>
   );
 }
-
