@@ -1,3 +1,5 @@
+"use client";
+
 import { PassiveIncomeByMonth } from "../../types";
 import {
   formatCurrencyBRL,
@@ -10,6 +12,50 @@ interface Props {
 }
 
 export function MonthlyTable({ data }: Props) {
+  const handleExportCsv = () => {
+    const header = [
+      "mes",
+      "ano",
+      "cdb_itau",
+      "cdb_outros",
+      "fii_dividendos",
+      "total_mensal",
+      "var_mom_percent",
+      "var_yoy_percent",
+    ];
+
+    const rows = data.map((m) => [
+      String(m.month),
+      String(m.year),
+      m.cdb_itau.toFixed(2),
+      m.cdb_other.toFixed(2),
+      m.fii_dividends.toFixed(2),
+      m.total.toFixed(2),
+      m.mom_growth === null || m.mom_growth === undefined
+        ? ""
+        : m.mom_growth.toFixed(2),
+      m.yoy_growth === null || m.yoy_growth === undefined
+        ? ""
+        : m.yoy_growth.toFixed(2),
+    ]);
+
+    const csvBody = [header, ...rows]
+      .map((cols) => cols.map((v) => `"${String(v).replace(/"/g, "\"\"")}"`).join(","))
+      .join("\n");
+
+    const blob = new Blob(["\uFEFF", csvBody], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `financeflow-historico-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <section className="flex flex-col gap-2 rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm transition-all hover:shadow-md">
       <div className="flex items-center justify-between border-b border-slate-700 p-6">
@@ -21,7 +67,11 @@ export function MonthlyTable({ data }: Props) {
             Detalhamento da renda passiva por mês
           </p>
         </div>
-        <button className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-800">
+        <button
+          type="button"
+          onClick={handleExportCsv}
+          className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-800"
+        >
           <span className="text-sm">⬇</span>
           Exportar CSV
         </button>
