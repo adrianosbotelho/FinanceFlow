@@ -302,10 +302,12 @@ async function openDiagnosticsFromMenu() {
   const preferredEnv = getPreferredEnvPath();
   const logPath = getLogPath();
   const standalonePath = getStandalonePath();
+  const openAtLogin = app.getLoginItemSettings().openAtLogin;
 
   const lines = [
     `Status do servidor: ${serverProcess ? "rodando" : "parado"}`,
     `Porta em uso: ${currentServerPort ?? "-"}`,
+    `Abrir no login: ${openAtLogin ? "ativado" : "desativado"}`,
     `Env obrigatório: ${missingEnv.length === 0 ? "OK" : `faltando (${missingEnv.join(", ")})`}`,
     `Arquivo env preferencial: ${preferredEnv}`,
     `Arquivo env existe: ${fs.existsSync(preferredEnv) ? "sim" : "não"}`,
@@ -322,7 +324,16 @@ async function openDiagnosticsFromMenu() {
   });
 }
 
+function setOpenAtLogin(enabled) {
+  app.setLoginItemSettings({
+    openAtLogin: enabled,
+    openAsHidden: false,
+  });
+  logRuntime(`Abrir no login: ${enabled ? "ativado" : "desativado"}`);
+}
+
 function createApplicationMenu() {
+  const openAtLogin = app.getLoginItemSettings().openAtLogin;
   const template = [
     {
       label: "FinanceFlow",
@@ -343,6 +354,14 @@ function createApplicationMenu() {
           label: "Diagnóstico",
           click: () => {
             void openDiagnosticsFromMenu();
+          },
+        },
+        {
+          label: "Abrir no login",
+          type: "checkbox",
+          checked: openAtLogin,
+          click: (menuItem) => {
+            setOpenAtLogin(Boolean(menuItem.checked));
           },
         },
         { type: "separator" },
