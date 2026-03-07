@@ -330,6 +330,68 @@ async function openDiagnosticsFromMenu() {
   }
 }
 
+async function runLocalHealthCheckFromMenu() {
+  if (!currentServerPort) {
+    await dialog.showMessageBox({
+      type: "warning",
+      buttons: ["OK"],
+      message: "Servidor local ainda não está pronto",
+      detail: "Aguarde o app carregar e tente novamente.",
+    });
+    return;
+  }
+
+  const endpoints = [
+    `/api/investments`,
+    `/api/returns`,
+    `/api/dashboard?year=${new Date().getFullYear()}`,
+  ];
+
+  const baseUrl = `http://127.0.0.1:${currentServerPort}`;
+  const results = [];
+
+  for (const endpoint of endpoints) {
+    const startedAt = Date.now();
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await fetchJson(`${baseUrl}${endpoint}`);
+      results.push({
+        endpoint,
+        status: "OK",
+        latencyMs: Date.now() - startedAt,
+      });
+    } catch (err) {
+      results.push({
+        endpoint,
+        status: "ERRO",
+        latencyMs: Date.now() - startedAt,
+        error: err instanceof Error ? err.message : "Falha desconhecida",
+      });
+    }
+  }
+
+  const hasError = results.some((r) => r.status !== "OK");
+  const lines = results.map((r) =>
+    r.status === "OK"
+      ? `${r.endpoint}: OK (${r.latencyMs}ms)`
+      : `${r.endpoint}: ERRO (${r.latencyMs}ms) - ${r.error}`
+  );
+  const summary = hasError
+    ? "Health check com falhas"
+    : "Health check OK";
+
+  logRuntime(
+    `${summary}: ${lines.join(" | ")}`
+  );
+
+  await dialog.showMessageBox({
+    type: hasError ? "warning" : "info",
+    buttons: ["OK"],
+    message: summary,
+    detail: lines.join("\n"),
+  });
+}
+
 function fetchJson(url) {
   return new Promise((resolve, reject) => {
     const req = http.get(url, { timeout: 3000 }, (res) => {
@@ -635,6 +697,12 @@ function createApplicationMenu() {
           label: "Diagnóstico",
           click: () => {
             void openDiagnosticsFromMenu();
+          },
+        },
+        {
+          label: "Health Check",
+          click: () => {
+            void runLocalHealthCheckFromMenu();
           },
         },
         {

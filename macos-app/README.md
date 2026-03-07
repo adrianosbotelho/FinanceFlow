@@ -86,6 +86,7 @@ No menu `FinanceFlow`:
 - `Abrir Configuração (.env.local)`: abre o arquivo de configuração em `~/Library/Application Support/FinanceFlow/.env.local`.
 - `Abrir Logs`: abre `~/Library/Logs/FinanceFlow.log`.
 - `Diagnóstico`: mostra status rápido do servidor, porta usada, env obrigatório e paths em uso (com opção de copiar).
+- `Health Check`: testa endpoints locais críticos (`/api/investments`, `/api/returns`, `/api/dashboard`) e mostra latência/erro.
 - `Exportar Backup (JSON)`: exporta investimentos, retornos e fechamentos em um único arquivo `.json`.
 - `Importar Backup (JSON)`: importa backup em modo merge/upsert (sem apagar dados existentes).
 - `Abrir Pasta de Dados`: abre `~/Library/Application Support/FinanceFlow`.
