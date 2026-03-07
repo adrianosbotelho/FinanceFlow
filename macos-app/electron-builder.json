@@ -1,0 +1,15 @@
+{
+  "appId": "com.financeflow.app",
+  "productName": "FinanceFlow",
+  "mac": {
+    "category": "public.app-category.finance",
+    "target": ["dmg", "zip"]
+  },
+  "extraResources": [
+    {
+      "from": "standalone",
+      "to": "standalone"
+    }
+  ],
+  "files": ["main.js"]
+}
