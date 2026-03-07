@@ -2,13 +2,13 @@
 
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 
-const YEARS = [2024, 2025, 2026];
-
 export function YearFilter() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
   const year = searchParams.get("year") ?? String(new Date().getFullYear());
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 8 }, (_, i) => currentYear - 5 + i);
 
   const handleChange = (value: string) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -22,7 +22,7 @@ export function YearFilter() {
       value={year}
       onChange={(e) => handleChange(e.target.value)}
     >
-      {YEARS.map((y) => (
+      {years.map((y) => (
         <option key={y} value={y}>
           {y}
         </option>

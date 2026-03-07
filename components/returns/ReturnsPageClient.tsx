@@ -12,6 +12,7 @@ type ReturnRow = {
   income: number;
   investmentId: string;
   isFii: boolean;
+  institution: string;
 };
 
 interface ReturnsPageClientProps {}
@@ -57,9 +58,6 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
     load();
   }, []);
 
-  const fiiInvestments = investments.filter((i) => i.type === "FII");
-  const consolidatedFiiId = fiiInvestments[0]?.id;
-
   const rows: ReturnRow[] = useMemo(() => {
     const map = new Map<string, ReturnRow>();
 
@@ -68,12 +66,10 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
       if (!inv) continue;
 
       const isFii = inv.type === "FII";
-      const key = isFii
-        ? `FII-${ret.year}-${ret.month}`
-        : `INV-${inv.id}-${ret.year}-${ret.month}`;
+      const key = `INV-${inv.id}-${ret.year}-${ret.month}`;
 
       const label = isFii
-        ? "Dividendos FIIs"
+        ? inv.name
         : inv.institution === "Itaú"
           ? "CDB Itaú"
           : inv.institution === "Santander"
@@ -91,8 +87,9 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
           month: ret.month,
           label,
           income: incomeValue,
-          investmentId: isFii && consolidatedFiiId ? consolidatedFiiId : inv.id,
+          investmentId: inv.id,
           isFii,
+          institution: inv.institution,
         });
       }
     }
@@ -101,7 +98,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
       (a, b) =>
         a.year - b.year || a.month - b.month || a.label.localeCompare(b.label),
     );
-  }, [rawReturns, investments, consolidatedFiiId]);
+  }, [rawReturns, investments]);
 
   const years = useMemo(() => {
     const set = new Set<number>();
@@ -110,23 +107,16 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
   }, [rows]);
 
   const uiInvestments: Investment[] = useMemo(() => {
-    const cdbs = investments.filter((i) => i.type === "CDB");
-    const fiiBase = fiiInvestments[0];
-    return [
-      ...cdbs.map((inv) => ({
-        ...inv,
-        name:
-          inv.institution === "Itaú"
-            ? "CDB Itaú"
-            : inv.institution === "Santander"
-              ? "CDB Santander"
-              : inv.name,
-      })),
-      ...(fiiBase
-        ? [{ ...fiiBase, name: "Dividendos FIIs", institution: "FIIs" }]
-        : []),
-    ];
-  }, [investments, fiiInvestments]);
+    return investments.map((inv) => ({
+      ...inv,
+      name:
+        inv.type === "CDB" && inv.institution === "Itaú"
+          ? "CDB Itaú"
+          : inv.type === "CDB" && inv.institution === "Santander"
+            ? "CDB Santander"
+            : inv.name,
+    }));
+  }, [investments]);
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
@@ -174,11 +164,11 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
         map.set(key, entry);
       }
 
-      if (row.isFii || row.label === "Dividendos FIIs") {
+      if (row.isFii) {
         entry.fiis += row.income;
       } else if (row.label === "CDB Itaú") {
         entry.itau += row.income;
-      } else if (row.label === "CDB Santander") {
+      } else {
         entry.santander += row.income;
       }
 
@@ -208,16 +198,15 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
 
   const investmentFilterOptions = [
     { value: "all", label: "Todos os investimentos" },
+    { value: "fii", label: "Todos os FIIs" },
     ...uiInvestments.map((inv) => ({
-      value: inv.type === "FII" ? "fii" : inv.id,
+      value: inv.id,
       label:
-        inv.type === "FII"
-          ? "Dividendos FIIs"
-          : inv.institution === "Itaú"
-            ? "CDB Itaú"
-            : inv.institution === "Santander"
-              ? "CDB Santander"
-              : inv.name,
+        inv.institution === "Itaú"
+          ? "CDB Itaú"
+          : inv.institution === "Santander"
+            ? "CDB Santander"
+            : inv.name,
     })),
   ];
 
@@ -467,4 +456,3 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
     </div>
   );
 }
-

@@ -42,7 +42,7 @@ export function ReturnForm({ investments, onCreated, initial }: Props) {
     if (!hasValidSelection) {
       setInvestmentId(investments[0].id);
     }
-  }, [investments]);
+  }, [investments, investmentId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

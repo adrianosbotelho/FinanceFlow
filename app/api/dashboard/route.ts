@@ -10,6 +10,14 @@ import {
 import { buildKpis } from "../../../lib/calculations";
 import { monthLabel } from "../../../lib/formatters";
 
+function isItauInstitution(institution: string): boolean {
+  const normalized = institution
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  return normalized.includes("itau");
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const year = Number(searchParams.get("year") ?? new Date().getFullYear());
@@ -63,10 +71,12 @@ export async function GET(req: NextRequest) {
       seriesMap.set(key, bucket);
     }
 
-    if (inv.type === "CDB" && inv.institution === "Itaú") {
-      bucket.cdb_itau += Number(row.income_value);
-    } else if (inv.type === "CDB" && inv.institution === "Santander") {
-      bucket.cdb_santander += Number(row.income_value);
+    if (inv.type === "CDB") {
+      if (isItauInstitution(inv.institution)) {
+        bucket.cdb_itau += Number(row.income_value);
+      } else {
+        bucket.cdb_santander += Number(row.income_value);
+      }
     } else if (inv.type === "FII") {
       bucket.fii_dividends += Number(row.income_value);
     }

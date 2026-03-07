@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog } = require("electron");
+const { app, BrowserWindow, dialog, shell, Menu } = require("electron");
 const path = require("path");
 const { spawn } = require("child_process");
 const fs = require("fs");
@@ -15,6 +15,18 @@ const REQUIRED_ENV_KEYS = [
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
 ];
+
+function getMissingRequiredEnvKeys() {
+  return REQUIRED_ENV_KEYS.filter((key) => !process.env[key]);
+}
+
+function mergeEnvEntries(entries) {
+  for (const [key, value] of Object.entries(entries)) {
+    if (!process.env[key]) {
+      process.env[key] = value;
+    }
+  }
+}
 
 function parseEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return {};
@@ -38,10 +50,32 @@ function parseEnvFile(filePath) {
   return entries;
 }
 
-function loadLocalEnvFiles(standalonePath) {
+function getPackagedAppParentDir() {
+  const appBundlePath = path.resolve(process.execPath, "..", "..", "..");
+  return path.dirname(appBundlePath);
+}
+
+function getPreferredEnvPath() {
+  return path.join(app.getPath("userData"), ".env.local");
+}
+
+function getLogPath() {
+  return path.join(os.homedir(), "Library", "Logs", "FinanceFlow.log");
+}
+
+function ensureEnvTemplateFile(filePath) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  if (!fs.existsSync(filePath)) {
+    fs.writeFileSync(filePath, getEnvTemplate(), "utf8");
+  }
+}
+
+function loadLocalEnvFiles(standalonePath, extraCandidates = []) {
   const candidates = [];
   const cwd = process.cwd();
   candidates.push(path.join(cwd, ".env.local"), path.join(cwd, ".env"));
+
+  candidates.push(getPreferredEnvPath());
 
   if (standalonePath) {
     candidates.push(
@@ -51,30 +85,129 @@ function loadLocalEnvFiles(standalonePath) {
   }
 
   if (!process.env.ELECTRON_DEV && app.isPackaged) {
-    const appBundlePath = path.resolve(process.execPath, "..", "..", "..");
-    const appParentDir = path.dirname(appBundlePath);
+    const appParentDir = getPackagedAppParentDir();
     candidates.push(
       path.join(appParentDir, ".env.local"),
       path.join(appParentDir, ".env")
     );
   }
 
+  for (const filePath of extraCandidates) {
+    candidates.push(filePath);
+  }
+
   for (const filePath of candidates) {
     const parsed = parseEnvFile(filePath);
-    for (const [key, value] of Object.entries(parsed)) {
-      if (!process.env[key]) {
-        process.env[key] = value;
-      }
-    }
+    mergeEnvEntries(parsed);
   }
 }
 
 function validateRequiredEnv() {
-  const missing = REQUIRED_ENV_KEYS.filter((key) => !process.env[key]);
+  const missing = getMissingRequiredEnvKeys();
   if (missing.length === 0) return null;
   return `Variáveis obrigatórias ausentes: ${missing.join(
     ", "
   )}.\n\nCrie um .env.local com essas chaves antes de iniciar o app.`;
+}
+
+function getEnvTemplate() {
+  return [
+    "NEXT_PUBLIC_SUPABASE_URL=",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY=",
+    "NEXT_PUBLIC_BASE_URL=http://localhost:3000",
+    "",
+  ].join("\n");
+}
+
+async function runFirstBootEnvSetup(standalonePath) {
+  const preferredEnvPath = getPreferredEnvPath();
+  const appParentDir = app.isPackaged ? getPackagedAppParentDir() : process.cwd();
+
+  while (getMissingRequiredEnvKeys().length > 0) {
+    const missing = getMissingRequiredEnvKeys().join(", ");
+    const detail = [
+      `Variáveis ausentes: ${missing}`,
+      "",
+      "Escolha uma ação:",
+      "1) Selecionar um arquivo .env/.env.local existente",
+      "2) Criar template e editar agora",
+      "3) Sair",
+      "",
+      `Local recomendado para salvar: ${preferredEnvPath}`,
+      `Local alternativo (ao lado do app): ${path.join(appParentDir, ".env.local")}`,
+    ].join("\n");
+
+    const { response } = await dialog.showMessageBox({
+      type: "warning",
+      buttons: ["Selecionar .env", "Criar template", "Sair"],
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true,
+      title: "FinanceFlow - Configuração inicial",
+      message: "Configuração obrigatória do Supabase",
+      detail,
+    });
+
+    if (response === 2) {
+      return false;
+    }
+
+    if (response === 0) {
+      const selected = await dialog.showOpenDialog({
+        title: "Selecione um arquivo .env ou .env.local",
+        properties: ["openFile"],
+        filters: [{ name: "Env files", extensions: ["env", "local"] }],
+      });
+      if (selected.canceled || selected.filePaths.length === 0) {
+        continue;
+      }
+
+      const sourcePath = selected.filePaths[0];
+      const parsedSource = parseEnvFile(sourcePath);
+      const missingInSource = REQUIRED_ENV_KEYS.filter((k) => !parsedSource[k]);
+      if (missingInSource.length > 0) {
+        await dialog.showMessageBox({
+          type: "error",
+          buttons: ["OK"],
+          message: "Arquivo selecionado não possui todas as chaves obrigatórias",
+          detail: `Faltando: ${missingInSource.join(", ")}`,
+        });
+        continue;
+      }
+
+      fs.mkdirSync(path.dirname(preferredEnvPath), { recursive: true });
+      fs.copyFileSync(sourcePath, preferredEnvPath);
+      loadLocalEnvFiles(standalonePath, [preferredEnvPath]);
+      logRuntime(`Env importado de ${sourcePath} para ${preferredEnvPath}`);
+      continue;
+    }
+
+    ensureEnvTemplateFile(preferredEnvPath);
+
+    const openResult = await shell.openPath(preferredEnvPath);
+    if (openResult) {
+      await dialog.showMessageBox({
+        type: "error",
+        buttons: ["OK"],
+        message: "Não foi possível abrir o arquivo de configuração",
+        detail: openResult,
+      });
+      continue;
+    }
+
+    await dialog.showMessageBox({
+      type: "info",
+      buttons: ["Validar agora"],
+      defaultId: 0,
+      noLink: true,
+      message: "Edite e salve o arquivo de configuração",
+      detail: `Após salvar ${preferredEnvPath}, clique em "Validar agora".`,
+    });
+
+    loadLocalEnvFiles(standalonePath, [preferredEnvPath]);
+  }
+
+  return true;
 }
 
 function isPortAvailable(port) {
@@ -103,7 +236,7 @@ async function pickPort(preferredPort, maxAttempts) {
 }
 
 function logRuntime(message) {
-  const logPath = path.join(os.homedir(), "Library", "Logs", "FinanceFlow.log");
+  const logPath = getLogPath();
   try {
     fs.appendFileSync(
       logPath,
@@ -113,6 +246,69 @@ function logRuntime(message) {
   } catch (_err) {
     // no-op
   }
+}
+
+async function openConfigFileFromMenu() {
+  const envPath = getPreferredEnvPath();
+  ensureEnvTemplateFile(envPath);
+  const openResult = await shell.openPath(envPath);
+  if (openResult) {
+    await dialog.showMessageBox({
+      type: "error",
+      buttons: ["OK"],
+      message: "Não foi possível abrir o arquivo de configuração",
+      detail: openResult,
+    });
+  }
+}
+
+async function openLogFileFromMenu() {
+  const logPath = getLogPath();
+  if (!fs.existsSync(logPath)) {
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    fs.writeFileSync(logPath, "", "utf8");
+  }
+  const openResult = await shell.openPath(logPath);
+  if (openResult) {
+    await dialog.showMessageBox({
+      type: "error",
+      buttons: ["OK"],
+      message: "Não foi possível abrir o log do app",
+      detail: openResult,
+    });
+  }
+}
+
+function createApplicationMenu() {
+  const template = [
+    {
+      label: "FinanceFlow",
+      submenu: [
+        {
+          label: "Abrir Configuração (.env.local)",
+          click: () => {
+            void openConfigFileFromMenu();
+          },
+        },
+        {
+          label: "Abrir Logs",
+          click: () => {
+            void openLogFileFromMenu();
+          },
+        },
+        { type: "separator" },
+        { role: "quit", label: "Sair do FinanceFlow" },
+      ],
+    },
+    {
+      label: "Janela",
+      submenu: [
+        { role: "reload", label: "Recarregar" },
+        { role: "toggleDevTools", label: "DevTools" },
+      ],
+    },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 function getStandalonePath() {
@@ -193,11 +389,13 @@ async function startServerAndWindow() {
   }
 
   loadLocalEnvFiles(standalonePath);
+  const envReady = await runFirstBootEnvSetup(standalonePath);
   const envError = validateRequiredEnv();
-  if (envError) {
-    console.error(envError);
-    logRuntime(envError);
-    dialog.showErrorBox("FinanceFlow", envError);
+  if (!envReady || envError) {
+    const message = envError || "Configuração cancelada pelo usuário.";
+    console.error(message);
+    logRuntime(message);
+    if (envError) dialog.showErrorBox("FinanceFlow", envError);
     app.quit();
     return;
   }
@@ -227,9 +425,12 @@ async function startServerAndWindow() {
     PORT: String(port),
     HOSTNAME: "127.0.0.1",
   };
-  serverProcess = spawn("node", [serverPath], {
+  serverProcess = spawn(process.execPath, [serverPath], {
     cwd: standalonePath,
-    env,
+    env: {
+      ...env,
+      ELECTRON_RUN_AS_NODE: "1",
+    },
     stdio: "pipe",
   });
   serverProcess.stderr.on("data", (d) => process.stderr.write(d));
@@ -261,7 +462,10 @@ async function startServerAndWindow() {
     });
 }
 
-app.whenReady().then(startServerAndWindow);
+app.whenReady().then(() => {
+  createApplicationMenu();
+  return startServerAndWindow();
+});
 
 app.on("window-all-closed", () => {
   if (serverProcess) {

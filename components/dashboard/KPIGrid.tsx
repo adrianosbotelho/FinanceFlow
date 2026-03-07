@@ -14,7 +14,7 @@ export function KPIGrid({ kpis }: KPIGridProps) {
         delta={kpis.momGrowth}
       />
       <KPICard
-        label="Rendimento CDBs (mês)"
+        label="Rendimento CDBs (mês, total)"
         value={kpis.cdbTotalYieldCurrentMonth}
         delta={kpis.momGrowth}
       />

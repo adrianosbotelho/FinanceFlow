@@ -32,7 +32,7 @@ export function MonthlyTable({ data }: Props) {
             <tr className="bg-slate-900/80 text-xs uppercase tracking-wider text-slate-400">
               <th className="px-6 py-4 font-bold">Mês</th>
               <th className="px-6 py-4 font-bold">CDB Itaú</th>
-              <th className="px-6 py-4 font-bold">CDB Santander</th>
+              <th className="px-6 py-4 font-bold">CDBs (demais)</th>
               <th className="px-6 py-4 font-bold">Dividendos FIIs</th>
               <th className="px-6 py-4 font-bold">Total mensal</th>
               <th className="px-6 py-4 font-bold">Var (M/M)</th>
