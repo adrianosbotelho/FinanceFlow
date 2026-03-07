@@ -1,4 +1,12 @@
-const { app, BrowserWindow, dialog, shell, Menu, clipboard } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  dialog,
+  shell,
+  Menu,
+  clipboard,
+  nativeImage,
+} = require("electron");
 const path = require("path");
 const fs = require("fs");
 const net = require("net");
@@ -18,6 +26,7 @@ const REQUIRED_ENV_KEYS = [
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
 ];
+const APP_NAME = "FinanceFlow";
 
 function getMissingRequiredEnvKeys() {
   return REQUIRED_ENV_KEYS.filter((key) => !process.env[key]);
@@ -56,6 +65,18 @@ function parseEnvFile(filePath) {
 function getPackagedAppParentDir() {
   const appBundlePath = path.resolve(process.execPath, "..", "..", "..");
   return path.dirname(appBundlePath);
+}
+
+function applyDockIdentity() {
+  app.setName(APP_NAME);
+  process.title = APP_NAME;
+  if (process.platform !== "darwin" || !app.dock) return;
+  const dockIconPath = path.join(__dirname, "assets", "FinanceFlowDock.png");
+  if (!fs.existsSync(dockIconPath)) return;
+  const icon = nativeImage.createFromPath(dockIconPath);
+  if (!icon.isEmpty()) {
+    app.dock.setIcon(icon);
+  }
 }
 
 function getPreferredEnvPath() {
@@ -161,7 +182,7 @@ async function runFirstBootEnvSetup(standalonePath) {
       defaultId: 0,
       cancelId: 2,
       noLink: true,
-      title: "FinanceFlow - Configuração inicial",
+      title: `${APP_NAME} - Configuração inicial`,
       message: "Configuração obrigatória do Supabase",
       detail,
     });
@@ -321,7 +342,7 @@ async function openDiagnosticsFromMenu() {
     buttons: ["Copiar diagnóstico", "OK"],
     defaultId: 1,
     cancelId: 1,
-    title: "FinanceFlow - Diagnóstico",
+    title: `${APP_NAME} - Diagnóstico`,
     message: "Diagnóstico rápido do app macOS",
     detail: lines.join("\n"),
   });
@@ -506,7 +527,7 @@ async function exportDataBackupFromMenu() {
 
     const payload = {
       exportedAt: new Date().toISOString(),
-      source: "FinanceFlow macOS app",
+      source: `${APP_NAME} macOS app`,
       investments,
       monthlyReturns: returns,
       monthlyClosures: closures,
@@ -799,12 +820,17 @@ function createMainWindow() {
     width: 1200,
     height: 800,
     webPreferences: { nodeIntegration: false, contextIsolation: true },
-    title: "FinanceFlow",
+    title: APP_NAME,
   });
   const loadingHtml = encodeURIComponent(
-    "<!doctype html><html><body style=\"margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0b1220;color:#f8fafc;display:flex;align-items:center;justify-content:center;height:100vh;\"><div style=\"text-align:center\"><h2 style=\"margin:0 0 8px 0\">FinanceFlow</h2><p style=\"margin:0;opacity:.75\">Inicializando aplicativo...</p></div></body></html>"
+    `<!doctype html><html><body style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0b1220;color:#f8fafc;display:flex;align-items:center;justify-content:center;height:100vh;"><div style="text-align:center"><h2 style="margin:0 0 8px 0">${APP_NAME}</h2><p style="margin:0;opacity:.75">Inicializando aplicativo...</p></div></body></html>`
   );
   mainWindow.loadURL(`data:text/html;charset=utf-8,${loadingHtml}`);
+  mainWindow.on("page-title-updated", (event) => {
+    event.preventDefault();
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.setTitle(APP_NAME);
+  });
   mainWindow.on("closed", () => {
     serverStarted = false;
     currentServerPort = null;
@@ -830,7 +856,7 @@ async function startServerAndWindow() {
     const message =
       "Standalone not found. From repo root run: npm run build. Then from macos-app run: npm start"
     console.error(message);
-    dialog.showErrorBox("FinanceFlow", message);
+    dialog.showErrorBox(APP_NAME, message);
     app.quit();
     return;
   }
@@ -842,7 +868,7 @@ async function startServerAndWindow() {
     const message = envError || "Configuração cancelada pelo usuário.";
     console.error(message);
     logRuntime(message);
-    if (envError) dialog.showErrorBox("FinanceFlow", envError);
+    if (envError) dialog.showErrorBox(APP_NAME, envError);
     app.quit();
     return;
   }
@@ -855,7 +881,7 @@ async function startServerAndWindow() {
     const message = err instanceof Error ? err.message : "Erro ao selecionar porta.";
     console.error(message);
     logRuntime(message);
-    dialog.showErrorBox("FinanceFlow", message);
+    dialog.showErrorBox(APP_NAME, message);
     app.quit();
     return;
   }
@@ -875,6 +901,7 @@ async function startServerAndWindow() {
   try {
     require(serverPath);
     serverStarted = true;
+    applyDockIdentity();
   } catch (err) {
     const message =
       err instanceof Error
@@ -882,7 +909,7 @@ async function startServerAndWindow() {
         : "Server failed to start.";
     console.error(message);
     logRuntime(message);
-    dialog.showErrorBox("FinanceFlow", message);
+    dialog.showErrorBox(APP_NAME, message);
     app.quit();
     return;
   }
@@ -893,12 +920,13 @@ async function startServerAndWindow() {
       const message = err.message || "Erro ao iniciar servidor.";
       console.error(message);
       logRuntime(message);
-      dialog.showErrorBox("FinanceFlow", message);
+      dialog.showErrorBox(APP_NAME, message);
       app.quit();
     });
 }
 
 app.whenReady().then(() => {
+  applyDockIdentity();
   createApplicationMenu();
   return startServerAndWindow();
 });

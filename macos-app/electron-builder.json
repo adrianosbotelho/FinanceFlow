@@ -12,5 +12,5 @@
       "to": "standalone"
     }
   ],
-  "files": ["main.js"]
+  "files": ["main.js", "assets/FinanceFlowDock.png"]
 }
