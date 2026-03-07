@@ -30,6 +30,11 @@ npm run dev
 
 O dashboard ficará disponível em `http://localhost:3000`.
 
+### Smoke tests rápidos
+
+- API local (com servidor rodando): `npm run smoke:api`
+- App macOS (build + artefatos): `npm run smoke:macos`
+
 ---
 
 ### Iniciar automaticamente no macOS (opcional)
@@ -44,4 +49,3 @@ bash scripts/install-launch-agent.sh
 - Logs: `~/Library/Logs/FinanceFlow-dev.log`.
 - Para parar: `launchctl unload ~/Library/LaunchAgents/com.financeflow.dev.plist`
 - Para desinstalar (não iniciar mais no login): `bash scripts/uninstall-launch-agent.sh`
-

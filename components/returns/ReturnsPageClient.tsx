@@ -78,8 +78,8 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
         ? inv.name
         : inv.institution === "Itaú"
           ? "CDB Itaú"
-          : inv.institution === "Santander"
-            ? "CDB Santander"
+          : inv.type === "CDB"
+            ? "CDBs (demais)"
             : `${inv.name}`;
 
       const incomeValue = Number(ret.income_value ?? 0);
@@ -117,8 +117,8 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
       name:
         inv.type === "CDB" && inv.institution === "Itaú"
           ? "CDB Itaú"
-          : inv.type === "CDB" && inv.institution === "Santander"
-            ? "CDB Santander"
+          : inv.type === "CDB"
+            ? "CDBs (demais)"
             : inv.name,
     }));
   }, [investments]);
@@ -269,8 +269,8 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
       label:
         inv.institution === "Itaú"
           ? "CDB Itaú"
-          : inv.institution === "Santander"
-            ? "CDB Santander"
+          : inv.type === "CDB"
+            ? "CDBs (demais)"
             : inv.name,
     })),
   ];
@@ -394,7 +394,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                             ? "text-emerald-400"
                             : row.label === "CDB Itaú"
                               ? "text-amber-400"
-                              : row.label === "CDB Santander"
+                              : row.label === "CDBs (demais)"
                                 ? "text-rose-400"
                                 : "text-slate-100"
                         }`}
