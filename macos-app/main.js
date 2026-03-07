@@ -6,8 +6,10 @@ const net = require("net");
 const os = require("os");
 
 let serverProcess = null;
+let currentServerPort = null;
 const DEFAULT_PORT = 3000;
 const MAX_PORT_ATTEMPTS = 20;
+const LOG_MAX_BYTES = 5 * 1024 * 1024;
 const START_TIMEOUT_MS = Number(
   process.env.FINANCEFLOW_SERVER_START_TIMEOUT_MS || 30000
 );
@@ -61,6 +63,21 @@ function getPreferredEnvPath() {
 
 function getLogPath() {
   return path.join(os.homedir(), "Library", "Logs", "FinanceFlow.log");
+}
+
+function rotateLogIfNeeded(logPath) {
+  try {
+    if (!fs.existsSync(logPath)) return;
+    const { size } = fs.statSync(logPath);
+    if (size < LOG_MAX_BYTES) return;
+    const backupPath = `${logPath}.1`;
+    if (fs.existsSync(backupPath)) {
+      fs.rmSync(backupPath, { force: true });
+    }
+    fs.renameSync(logPath, backupPath);
+  } catch (_err) {
+    // no-op
+  }
 }
 
 function ensureEnvTemplateFile(filePath) {
@@ -238,6 +255,7 @@ async function pickPort(preferredPort, maxAttempts) {
 function logRuntime(message) {
   const logPath = getLogPath();
   try {
+    rotateLogIfNeeded(logPath);
     fs.appendFileSync(
       logPath,
       `[${new Date().toISOString()}] ${message}\n`,
@@ -279,6 +297,31 @@ async function openLogFileFromMenu() {
   }
 }
 
+async function openDiagnosticsFromMenu() {
+  const missingEnv = getMissingRequiredEnvKeys();
+  const preferredEnv = getPreferredEnvPath();
+  const logPath = getLogPath();
+  const standalonePath = getStandalonePath();
+
+  const lines = [
+    `Status do servidor: ${serverProcess ? "rodando" : "parado"}`,
+    `Porta em uso: ${currentServerPort ?? "-"}`,
+    `Env obrigatório: ${missingEnv.length === 0 ? "OK" : `faltando (${missingEnv.join(", ")})`}`,
+    `Arquivo env preferencial: ${preferredEnv}`,
+    `Arquivo env existe: ${fs.existsSync(preferredEnv) ? "sim" : "não"}`,
+    `Standalone path: ${standalonePath ?? "-"}`,
+    `Log path: ${logPath}`,
+  ];
+
+  await dialog.showMessageBox({
+    type: "info",
+    buttons: ["OK"],
+    title: "FinanceFlow - Diagnóstico",
+    message: "Diagnóstico rápido do app macOS",
+    detail: lines.join("\n"),
+  });
+}
+
 function createApplicationMenu() {
   const template = [
     {
@@ -294,6 +337,12 @@ function createApplicationMenu() {
           label: "Abrir Logs",
           click: () => {
             void openLogFileFromMenu();
+          },
+        },
+        {
+          label: "Diagnóstico",
+          click: () => {
+            void openDiagnosticsFromMenu();
           },
         },
         { type: "separator" },
@@ -418,6 +467,7 @@ async function startServerAndWindow() {
     console.warn(fallbackMessage);
     logRuntime(fallbackMessage);
   }
+  currentServerPort = port;
 
   const serverPath = path.join(standalonePath, "server.js");
   const env = {
@@ -443,6 +493,7 @@ async function startServerAndWindow() {
     app.quit();
   });
   serverProcess.on("exit", (code) => {
+    currentServerPort = null;
     if (code !== null && code !== 0) {
       const message = `Servidor Next encerrou com código ${code}.`;
       console.error(message);
@@ -472,6 +523,7 @@ app.on("window-all-closed", () => {
     serverProcess.kill();
     serverProcess = null;
   }
+  currentServerPort = null;
   app.quit();
 });
 
@@ -480,4 +532,5 @@ app.on("quit", () => {
     serverProcess.kill();
     serverProcess = null;
   }
+  currentServerPort = null;
 });

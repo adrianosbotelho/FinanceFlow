@@ -1,6 +1,8 @@
 {
   "name": "financeflow-macos",
   "version": "0.1.0",
+  "description": "FinanceFlow desktop app for macOS",
+  "author": "Adriano Botelho",
   "private": true,
   "main": "main.js",
   "scripts": {

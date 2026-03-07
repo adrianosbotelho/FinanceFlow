@@ -79,3 +79,10 @@ Arquivos `.env` lidos automaticamente (quando existirem):
 - `./.env.local` e `./.env` (diretório atual do processo)
 - `standalone/.env.local` e `standalone/.env`
 - em app empacotado: `.env.local` e `.env` no diretório que contém o `.app`
+
+## Menu nativo (macOS)
+
+No menu `FinanceFlow`:
+- `Abrir Configuração (.env.local)`: abre o arquivo de configuração em `~/Library/Application Support/FinanceFlow/.env.local`.
+- `Abrir Logs`: abre `~/Library/Logs/FinanceFlow.log`.
+- `Diagnóstico`: mostra status rápido do servidor, porta usada, env obrigatório e paths em uso.
