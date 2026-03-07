@@ -3,6 +3,7 @@
   "productName": "FinanceFlow",
   "mac": {
     "category": "public.app-category.finance",
+    "icon": "assets/FinanceFlow.icns",
     "target": ["dmg", "zip"]
   },
   "extraResources": [

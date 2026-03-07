@@ -2,6 +2,8 @@
 
 Wrapper Electron para rodar o FinanceFlow (Next.js) como aplicativo nativo no macOS.
 
+O build usa ícone nativo configurado em `assets/FinanceFlow.icns`.
+
 ## Pré-requisitos
 
 - Node.js instalado (para rodar o servidor Next.js empacotado).
