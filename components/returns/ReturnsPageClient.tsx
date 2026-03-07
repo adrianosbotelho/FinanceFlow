@@ -20,6 +20,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [rawReturns, setRawReturns] = useState<MonthlyReturn[]>([]);
   const [closures, setClosures] = useState<MonthlyClosure[]>([]);
+  const [closuresAvailable, setClosuresAvailable] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [closureUpdatingKey, setClosureUpdatingKey] = useState<string | null>(
@@ -45,15 +46,21 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
           fetch("/api/returns"),
           fetch("/api/monthly-closures"),
         ]);
-        if (!invRes.ok || !retRes.ok || !closureRes.ok) {
+        if (!invRes.ok || !retRes.ok) {
           throw new Error("Erro ao carregar dados de retornos.");
         }
         const invData: Investment[] = await invRes.json();
         const retData: MonthlyReturn[] = await retRes.json();
-        const closureData: MonthlyClosure[] = await closureRes.json();
+        if (closureRes.ok) {
+          const closureData: MonthlyClosure[] = await closureRes.json();
+          setClosures(Array.isArray(closureData) ? closureData : []);
+          setClosuresAvailable(true);
+        } else {
+          setClosures([]);
+          setClosuresAvailable(false);
+        }
         setInvestments(invData);
         setRawReturns(retData);
-        setClosures(Array.isArray(closureData) ? closureData : []);
       } catch (e: any) {
         console.error(e);
         setError(e?.message ?? "Erro inesperado.");
@@ -223,11 +230,16 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
   const refreshClosures = async () => {
     try {
       const res = await fetch("/api/monthly-closures");
-      if (!res.ok) return;
+      if (!res.ok) {
+        setClosuresAvailable(false);
+        return;
+      }
       const data: MonthlyClosure[] = await res.json();
       setClosures(Array.isArray(data) ? data : []);
+      setClosuresAvailable(true);
     } catch (e) {
       console.error(e);
+      setClosuresAvailable(false);
     }
   };
 
@@ -239,6 +251,11 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
     const key = `${year}-${month}`;
     setClosureUpdatingKey(key);
     try {
+      if (!closuresAvailable) {
+        throw new Error(
+          "Fechamento mensal indisponível. Aplique o schema.sql no Supabase para habilitar.",
+        );
+      }
       const res = await fetch("/api/monthly-closures", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -290,6 +307,12 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
       {error && (
         <p className="text-sm text-rose-400">
           {error} (verifique a conexão com o Supabase)
+        </p>
+      )}
+      {!closuresAvailable && (
+        <p className="text-sm text-amber-300">
+          Fechamento mensal indisponível neste banco. Aplique o
+          `supabase/schema.sql` para habilitar.
         </p>
       )}
 
@@ -537,13 +560,15 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                     <td className="px-2 py-2 text-right">
                       <button
                         type="button"
-                        disabled={isUpdating}
+                        disabled={isUpdating || !closuresAvailable}
                         onClick={() =>
                           toggleMonthClosure(row.year, row.month, !closed)
                         }
                         className="rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-800 disabled:opacity-50"
                       >
-                        {isUpdating
+                        {!closuresAvailable
+                          ? "Indisponível"
+                          : isUpdating
                           ? "Salvando..."
                           : closed
                             ? "Reabrir"
