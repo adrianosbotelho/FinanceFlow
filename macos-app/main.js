@@ -354,6 +354,56 @@ function fetchJson(url) {
   });
 }
 
+function sendJson(url, method, body) {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body);
+    const parsed = new URL(url);
+    const req = http.request(
+      {
+        method,
+        hostname: parsed.hostname,
+        port: parsed.port,
+        path: parsed.pathname + parsed.search,
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(payload),
+        },
+        timeout: 5000,
+      },
+      (res) => {
+        let responseBody = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => {
+          responseBody += chunk;
+        });
+        res.on("end", () => {
+          let parsedBody = null;
+          try {
+            parsedBody = responseBody ? JSON.parse(responseBody) : null;
+          } catch (_err) {
+            // no-op
+          }
+          if (!res.statusCode || res.statusCode >= 400) {
+            const errorMessage =
+              parsedBody?.error ||
+              `Falha em ${method} ${url}: status ${res.statusCode ?? "?"}`;
+            reject(new Error(errorMessage));
+            return;
+          }
+          resolve(parsedBody);
+        });
+      }
+    );
+    req.on("error", (err) => reject(err));
+    req.on("timeout", () => {
+      req.destroy();
+      reject(new Error(`Timeout em ${method} ${url}`));
+    });
+    req.write(payload);
+    req.end();
+  });
+}
+
 async function exportDataBackupFromMenu() {
   if (!currentServerPort) {
     await dialog.showMessageBox({
@@ -417,6 +467,139 @@ async function exportDataBackupFromMenu() {
   }
 }
 
+function normalizeBackupPayload(payload) {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Arquivo inválido: formato de backup não reconhecido.");
+  }
+  const investments = Array.isArray(payload.investments) ? payload.investments : [];
+  const monthlyReturns = Array.isArray(payload.monthlyReturns)
+    ? payload.monthlyReturns
+    : [];
+  const monthlyClosures = Array.isArray(payload.monthlyClosures)
+    ? payload.monthlyClosures
+    : [];
+  return { investments, monthlyReturns, monthlyClosures };
+}
+
+async function importDataBackupFromMenu() {
+  if (!currentServerPort) {
+    await dialog.showMessageBox({
+      type: "warning",
+      buttons: ["OK"],
+      message: "Servidor local ainda não está pronto",
+      detail: "Aguarde o app carregar e tente novamente.",
+    });
+    return;
+  }
+
+  const selected = await dialog.showOpenDialog({
+    title: "Importar backup de dados",
+    properties: ["openFile"],
+    filters: [{ name: "JSON", extensions: ["json"] }],
+  });
+  if (selected.canceled || selected.filePaths.length === 0) {
+    return;
+  }
+
+  const backupPath = selected.filePaths[0];
+  const { response: confirm } = await dialog.showMessageBox({
+    type: "warning",
+    buttons: ["Cancelar", "Importar (merge)"],
+    defaultId: 1,
+    cancelId: 0,
+    noLink: true,
+    message: "Importar backup no banco atual",
+    detail:
+      "A importação faz merge/upsert de dados (não apaga registros existentes).",
+  });
+  if (confirm !== 1) {
+    return;
+  }
+
+  try {
+    const raw = fs.readFileSync(backupPath, "utf8");
+    const parsed = JSON.parse(raw);
+    const { investments, monthlyReturns, monthlyClosures } =
+      normalizeBackupPayload(parsed);
+
+    const baseUrl = `http://127.0.0.1:${currentServerPort}`;
+    const existingInvestments = await fetchJson(`${baseUrl}/api/investments`);
+    const existingIds = new Set(
+      Array.isArray(existingInvestments)
+        ? existingInvestments.map((i) => i.id).filter(Boolean)
+        : []
+    );
+
+    for (const inv of investments) {
+      if (!inv?.id) continue;
+      if (existingIds.has(inv.id)) {
+        await sendJson(`${baseUrl}/api/investments/${inv.id}`, "PUT", {
+          type: inv.type,
+          institution: inv.institution,
+          name: inv.name,
+          amount_invested: Number(inv.amount_invested ?? 0),
+        });
+      } else {
+        await sendJson(`${baseUrl}/api/investments`, "POST", {
+          id: inv.id,
+          type: inv.type,
+          institution: inv.institution,
+          name: inv.name,
+          amount_invested: Number(inv.amount_invested ?? 0),
+        });
+      }
+    }
+
+    for (const ret of monthlyReturns) {
+      if (!ret?.investment_id) continue;
+      await sendJson(`${baseUrl}/api/returns`, "POST", {
+        investment_id: ret.investment_id,
+        month: Number(ret.month),
+        year: Number(ret.year),
+        income_value: Number(ret.income_value ?? 0),
+      });
+    }
+
+    for (const closure of monthlyClosures) {
+      await sendJson(`${baseUrl}/api/monthly-closures`, "POST", {
+        year: Number(closure.year),
+        month: Number(closure.month),
+        is_closed: Boolean(closure.is_closed),
+      });
+    }
+
+    logRuntime(`Backup importado de ${backupPath}`);
+    await dialog.showMessageBox({
+      type: "info",
+      buttons: ["OK"],
+      message: "Backup importado com sucesso",
+      detail: `Arquivo: ${backupPath}`,
+    });
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Erro ao importar backup.";
+    logRuntime(message);
+    await dialog.showMessageBox({
+      type: "error",
+      buttons: ["OK"],
+      message: "Falha ao importar backup",
+      detail: message,
+    });
+  }
+}
+
+async function openAppDataFolderFromMenu() {
+  const openResult = await shell.openPath(app.getPath("userData"));
+  if (openResult) {
+    await dialog.showMessageBox({
+      type: "error",
+      buttons: ["OK"],
+      message: "Não foi possível abrir a pasta de dados do app",
+      detail: openResult,
+    });
+  }
+}
+
 function setOpenAtLogin(enabled) {
   app.setLoginItemSettings({
     openAtLogin: enabled,
@@ -453,6 +636,18 @@ function createApplicationMenu() {
           label: "Exportar Backup (JSON)",
           click: () => {
             void exportDataBackupFromMenu();
+          },
+        },
+        {
+          label: "Importar Backup (JSON)",
+          click: () => {
+            void importDataBackupFromMenu();
+          },
+        },
+        {
+          label: "Abrir Pasta de Dados",
+          click: () => {
+            void openAppDataFolderFromMenu();
           },
         },
         {
