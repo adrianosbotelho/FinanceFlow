@@ -86,4 +86,5 @@ No menu `FinanceFlow`:
 - `Abrir Configuração (.env.local)`: abre o arquivo de configuração em `~/Library/Application Support/FinanceFlow/.env.local`.
 - `Abrir Logs`: abre `~/Library/Logs/FinanceFlow.log`.
 - `Diagnóstico`: mostra status rápido do servidor, porta usada, env obrigatório e paths em uso.
+- `Exportar Backup (JSON)`: exporta investimentos, retornos e fechamentos em um único arquivo `.json`.
 - `Abrir no login`: ativa/desativa inicialização automática do app no login do macOS.

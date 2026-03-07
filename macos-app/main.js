@@ -3,6 +3,7 @@ const path = require("path");
 const { spawn } = require("child_process");
 const fs = require("fs");
 const net = require("net");
+const http = require("http");
 const os = require("os");
 
 let serverProcess = null;
@@ -324,6 +325,98 @@ async function openDiagnosticsFromMenu() {
   });
 }
 
+function fetchJson(url) {
+  return new Promise((resolve, reject) => {
+    const req = http.get(url, { timeout: 3000 }, (res) => {
+      if (!res.statusCode || res.statusCode >= 400) {
+        reject(new Error(`Falha ao buscar ${url}: status ${res.statusCode ?? "?"}`));
+        res.resume();
+        return;
+      }
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => {
+        body += chunk;
+      });
+      res.on("end", () => {
+        try {
+          resolve(JSON.parse(body));
+        } catch (err) {
+          reject(new Error(`Resposta inválida em ${url}: ${err.message}`));
+        }
+      });
+    });
+    req.on("error", (err) => reject(err));
+    req.on("timeout", () => {
+      req.destroy();
+      reject(new Error(`Timeout ao buscar ${url}`));
+    });
+  });
+}
+
+async function exportDataBackupFromMenu() {
+  if (!currentServerPort) {
+    await dialog.showMessageBox({
+      type: "warning",
+      buttons: ["OK"],
+      message: "Servidor local ainda não está pronto",
+      detail: "Aguarde o app carregar e tente novamente.",
+    });
+    return;
+  }
+
+  const defaultPath = path.join(
+    app.getPath("documents"),
+    `financeflow-backup-${new Date().toISOString().slice(0, 10)}.json`,
+  );
+
+  const saveResult = await dialog.showSaveDialog({
+    title: "Exportar backup de dados",
+    defaultPath,
+    filters: [{ name: "JSON", extensions: ["json"] }],
+  });
+  if (saveResult.canceled || !saveResult.filePath) {
+    return;
+  }
+
+  try {
+    const baseUrl = `http://127.0.0.1:${currentServerPort}`;
+    const [investments, returns, closures] = await Promise.all([
+      fetchJson(`${baseUrl}/api/investments`),
+      fetchJson(`${baseUrl}/api/returns`),
+      fetchJson(`${baseUrl}/api/monthly-closures`),
+    ]);
+
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      source: "FinanceFlow macOS app",
+      investments,
+      monthlyReturns: returns,
+      monthlyClosures: closures,
+    };
+
+    fs.writeFileSync(saveResult.filePath, JSON.stringify(payload, null, 2), "utf8");
+    logRuntime(`Backup exportado em ${saveResult.filePath}`);
+
+    await dialog.showMessageBox({
+      type: "info",
+      buttons: ["OK"],
+      message: "Backup exportado com sucesso",
+      detail: saveResult.filePath,
+    });
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Erro ao exportar backup.";
+    logRuntime(message);
+    await dialog.showMessageBox({
+      type: "error",
+      buttons: ["OK"],
+      message: "Falha ao exportar backup",
+      detail: message,
+    });
+  }
+}
+
 function setOpenAtLogin(enabled) {
   app.setLoginItemSettings({
     openAtLogin: enabled,
@@ -354,6 +447,12 @@ function createApplicationMenu() {
           label: "Diagnóstico",
           click: () => {
             void openDiagnosticsFromMenu();
+          },
+        },
+        {
+          label: "Exportar Backup (JSON)",
+          click: () => {
+            void exportDataBackupFromMenu();
           },
         },
         {
