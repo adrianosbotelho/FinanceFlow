@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, shell, Menu } = require("electron");
+const { app, BrowserWindow, dialog, shell, Menu, clipboard } = require("electron");
 const path = require("path");
 const { spawn } = require("child_process");
 const fs = require("fs");
@@ -316,13 +316,18 @@ async function openDiagnosticsFromMenu() {
     `Log path: ${logPath}`,
   ];
 
-  await dialog.showMessageBox({
+  const { response } = await dialog.showMessageBox({
     type: "info",
-    buttons: ["OK"],
+    buttons: ["Copiar diagnóstico", "OK"],
+    defaultId: 1,
+    cancelId: 1,
     title: "FinanceFlow - Diagnóstico",
     message: "Diagnóstico rápido do app macOS",
     detail: lines.join("\n"),
   });
+  if (response === 0) {
+    clipboard.writeText(lines.join("\n"));
+  }
 }
 
 function fetchJson(url) {
