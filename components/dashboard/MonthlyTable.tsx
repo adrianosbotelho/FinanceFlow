@@ -52,7 +52,7 @@ export function MonthlyTable({ data }: Props) {
                   {formatCurrencyBRL(m.cdb_itau)}
                 </td>
                 <td className="px-6 py-4">
-                  {formatCurrencyBRL(m.cdb_santander)}
+                  {formatCurrencyBRL(m.cdb_other)}
                 </td>
                 <td className="px-6 py-4">
                   {formatCurrencyBRL(m.fii_dividends)}

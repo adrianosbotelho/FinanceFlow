@@ -7,6 +7,7 @@ import { monthNameFull } from "../../lib/formatters";
 interface Props {
   investments: Investment[];
   onCreated?: (ret: MonthlyReturn) => void;
+  isPeriodClosed?: (year: number, month: number) => boolean;
   initial?: {
     investment_id: string;
     month: number;
@@ -15,7 +16,12 @@ interface Props {
   };
 }
 
-export function ReturnForm({ investments, onCreated, initial }: Props) {
+export function ReturnForm({
+  investments,
+  onCreated,
+  isPeriodClosed,
+  initial,
+}: Props) {
   const [investmentId, setInvestmentId] = useState<string>(
     initial?.investment_id ?? investments[0]?.id ?? "",
   );
@@ -27,6 +33,7 @@ export function ReturnForm({ investments, onCreated, initial }: Props) {
     initial ? String(initial.income_value) : "",
   );
   const [submitting, setSubmitting] = useState(false);
+  const periodClosed = isPeriodClosed?.(year, month) ?? false;
 
   useEffect(() => {
     if (!initial) return;
@@ -50,6 +57,11 @@ export function ReturnForm({ investments, onCreated, initial }: Props) {
     try {
       if (!investmentId?.trim()) {
         throw new Error("Selecione um investimento.");
+      }
+      if (periodClosed) {
+        throw new Error(
+          `O período ${month}/${year} está fechado para edição de retornos.`,
+        );
       }
       // Aceita vírgula ou ponto como decimal; ponto como milhar é removido (ex: 1.504,07 ou 86,95)
       const normalized = String(incomeValue).replace(/\./g, "").replace(",", ".");
@@ -158,12 +170,23 @@ export function ReturnForm({ investments, onCreated, initial }: Props) {
           required
         />
       </div>
+      {periodClosed && (
+        <p className="text-[11px] text-amber-300">
+          Este período foi fechado. Reabra o mês para permitir alterações.
+        </p>
+      )}
       <button
         type="submit"
-        disabled={submitting}
+        disabled={submitting || periodClosed}
         className="inline-flex h-9 items-center justify-center rounded-lg bg-accent px-4 text-xs font-medium text-white shadow-sm hover:bg-accent-soft disabled:opacity-60"
       >
-        {submitting ? "Salvando..." : initial ? "Atualizar retorno" : "Registrar retorno"}
+        {submitting
+          ? "Salvando..."
+          : periodClosed
+            ? "Mês fechado"
+            : initial
+              ? "Atualizar retorno"
+              : "Registrar retorno"}
       </button>
     </form>
   );

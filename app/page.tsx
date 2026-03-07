@@ -64,7 +64,12 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <MonthlyTable data={data.monthlySeries} />
-        <InsightsPanel kpis={data.kpis} insights={data.insights} />
+        <InsightsPanel
+          kpis={data.kpis}
+          insights={data.insights}
+          goalProgress={data.goalProgress}
+          alerts={data.alerts}
+        />
       </div>
     </div>
   );

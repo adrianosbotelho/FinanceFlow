@@ -106,7 +106,7 @@ export function buildKpis(
 
   return {
     totalPassiveIncomeCurrentMonth: current.total,
-    cdbTotalYieldCurrentMonth: current.cdb_itau + current.cdb_santander,
+    cdbTotalYieldCurrentMonth: current.cdb_itau + current.cdb_other,
     fiiDividendsCurrentMonth: current.fii_dividends,
     momGrowth: current.mom_growth ?? null,
     yoyGrowth: current.yoy_growth ?? null,

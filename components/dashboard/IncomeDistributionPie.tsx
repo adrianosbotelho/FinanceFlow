@@ -19,7 +19,7 @@ const COLORS = ["#6366F1", "#F97316", "#22C55E"];
 export function IncomeDistributionPie({ distribution }: Props) {
   const data = [
     { name: "CDB Itaú", value: distribution.itauCdb },
-    { name: "CDBs (demais)", value: distribution.santanderCdb },
+    { name: "CDBs (demais)", value: distribution.otherCdb },
     { name: "FIIs", value: distribution.fii },
   ];
 
@@ -86,7 +86,7 @@ export function IncomeDistributionPie({ distribution }: Props) {
               <span>CDBs (demais)</span>
             </div>
             <span className="font-bold">
-              {formatPercent(distribution.santanderCdb, distribution)}
+              {formatPercent(distribution.otherCdb, distribution)}
             </span>
           </div>
           <div className="flex items-center justify-between">
@@ -109,7 +109,7 @@ function formatPercent(
   distribution: IncomeDistribution,
 ): string {
   const total =
-    distribution.itauCdb + distribution.santanderCdb + distribution.fii;
+    distribution.itauCdb + distribution.otherCdb + distribution.fii;
   if (!total) return "0%";
   return `${((value / total) * 100).toFixed(0)}%`;
 }

@@ -1,3 +1,6 @@
 .env.local
 .next/
 node_modules/
+.DS_Store
+macos-app/dist/
+macos-app/standalone/

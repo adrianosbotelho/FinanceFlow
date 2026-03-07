@@ -26,3 +26,16 @@ create index if not exists idx_monthly_returns_year_month
 
 create index if not exists idx_monthly_returns_investment
   on monthly_returns (investment_id);
+
+create table if not exists monthly_closures (
+  year smallint not null,
+  month smallint not null check (month between 1 and 12),
+  is_closed boolean not null default true,
+  closed_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  primary key (year, month)
+);
+
+create index if not exists idx_monthly_closures_year_month
+  on monthly_closures (year, month);

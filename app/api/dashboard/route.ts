@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "../../../lib/supabase";
 import {
+  ConsistencyAlert,
   DashboardPayload,
   FinancialInsights,
+  GoalProgress,
   IncomeDistribution,
   MonthComparisonPoint,
   PassiveIncomeByMonth,
@@ -64,7 +66,7 @@ export async function GET(req: NextRequest) {
         month: row.month,
         year: row.year,
         cdb_itau: 0,
-        cdb_santander: 0,
+        cdb_other: 0,
         fii_dividends: 0,
         total: 0,
       };
@@ -75,14 +77,14 @@ export async function GET(req: NextRequest) {
       if (isItauInstitution(inv.institution)) {
         bucket.cdb_itau += Number(row.income_value);
       } else {
-        bucket.cdb_santander += Number(row.income_value);
+        bucket.cdb_other += Number(row.income_value);
       }
     } else if (inv.type === "FII") {
       bucket.fii_dividends += Number(row.income_value);
     }
 
     bucket.total =
-      bucket.cdb_itau + bucket.cdb_santander + bucket.fii_dividends;
+      bucket.cdb_itau + bucket.cdb_other + bucket.fii_dividends;
   }
 
   const monthlySeries = Array.from(seriesMap.values()).sort(
@@ -108,8 +110,8 @@ export async function GET(req: NextRequest) {
         yearCurr: year,
         itauPrev: prev?.cdb_itau ?? 0,
         itauCurr: curr?.cdb_itau ?? 0,
-        santanderPrev: prev?.cdb_santander ?? 0,
-        santanderCurr: curr?.cdb_santander ?? 0,
+        otherCdbPrev: prev?.cdb_other ?? 0,
+        otherCdbCurr: curr?.cdb_other ?? 0,
         fiiPrev: prev?.fii_dividends ?? 0,
         fiiCurr: curr?.fii_dividends ?? 0,
         totalPrev: prev?.total ?? 0,
@@ -132,14 +134,20 @@ export async function GET(req: NextRequest) {
     .reduce(
       (acc, m) => {
         acc.itauCdb += m.cdb_itau;
-        acc.santanderCdb += m.cdb_santander;
+        acc.otherCdb += m.cdb_other;
         acc.fii += m.fii_dividends;
         return acc;
       },
-      { itauCdb: 0, santanderCdb: 0, fii: 0 },
+      { itauCdb: 0, otherCdb: 0, fii: 0 },
     );
 
   const insights: FinancialInsights = buildInsights(kpis, distribution);
+  const goalProgress = buildGoalProgress(kpis);
+  const alerts = buildConsistencyAlerts({
+    year,
+    monthlySeries,
+    kpis,
+  });
 
   const payload: DashboardPayload = {
     kpis,
@@ -148,27 +156,106 @@ export async function GET(req: NextRequest) {
     comparisonByMonth,
     distribution,
     insights,
+    goalProgress,
+    alerts,
   };
 
   return NextResponse.json(payload);
+}
+
+function buildGoalProgress(kpis: DashboardPayload["kpis"]): GoalProgress {
+  const annualIncomeTarget = Number(
+    process.env.FINANCEFLOW_ANNUAL_INCOME_TARGET ?? 12000,
+  );
+  const annualProjection = kpis.annualProjection;
+  const progressPercent =
+    annualIncomeTarget > 0
+      ? Math.max(0, Math.min((annualProjection / annualIncomeTarget) * 100, 999))
+      : 0;
+  const gapToTarget = Math.max(annualIncomeTarget - annualProjection, 0);
+
+  return {
+    annualIncomeTarget,
+    annualProjection,
+    progressPercent,
+    gapToTarget,
+    onTrack: annualProjection >= annualIncomeTarget,
+  };
+}
+
+function buildConsistencyAlerts({
+  year,
+  monthlySeries,
+  kpis,
+}: {
+  year: number;
+  monthlySeries: PassiveIncomeByMonth[];
+  kpis: DashboardPayload["kpis"];
+}): ConsistencyAlert[] {
+  const alerts: ConsistencyAlert[] = [];
+  const yearSeries = monthlySeries.filter((m) => m.year === year);
+
+  if (yearSeries.length === 0) {
+    alerts.push({
+      code: "NO_DATA_YEAR",
+      severity: "warning",
+      message: `Nenhum lançamento encontrado para ${year}.`,
+    });
+    return alerts;
+  }
+
+  const now = new Date();
+  const maxMonth = year === now.getFullYear() ? now.getMonth() + 1 : 12;
+  const monthsWithData = new Set(yearSeries.map((m) => m.month));
+  const missingMonths: number[] = [];
+  for (let month = 1; month <= maxMonth; month++) {
+    if (!monthsWithData.has(month)) {
+      missingMonths.push(month);
+    }
+  }
+  if (missingMonths.length > 0) {
+    alerts.push({
+      code: "MISSING_MONTHS",
+      severity: "warning",
+      message: `${missingMonths.length} mês(es) sem lançamento em ${year} até agora.`,
+    });
+  }
+
+  if (kpis.momGrowth !== null && kpis.momGrowth <= -15) {
+    alerts.push({
+      code: "MOM_SHARP_DROP",
+      severity: "critical",
+      message: `Queda forte no mês: ${kpis.momGrowth.toFixed(1)}% vs mês anterior.`,
+    });
+  }
+
+  if (kpis.yoyGrowth !== null && kpis.yoyGrowth < 0) {
+    alerts.push({
+      code: "YOY_NEGATIVE",
+      severity: "warning",
+      message: `Comparativo anual negativo: ${kpis.yoyGrowth.toFixed(1)}%.`,
+    });
+  }
+
+  return alerts;
 }
 
 function buildInsights(
   kpis: DashboardPayload["kpis"],
   distribution: IncomeDistribution,
 ): FinancialInsights {
-  const totalCdb = distribution.itauCdb + distribution.santanderCdb;
+  const totalCdb = distribution.itauCdb + distribution.otherCdb;
   const totalFii = distribution.fii;
   const ratio = totalCdb > 0 ? (totalFii / totalCdb) * 100 : 0;
 
   let bestSource: FinancialInsights["bestSource"] = "FII";
-  if (distribution.itauCdb >= distribution.santanderCdb && distribution.itauCdb >= totalFii) {
+  if (distribution.itauCdb >= distribution.otherCdb && distribution.itauCdb >= totalFii) {
     bestSource = "CDB_ITAU";
   } else if (
-    distribution.santanderCdb > distribution.itauCdb &&
-    distribution.santanderCdb >= totalFii
+    distribution.otherCdb > distribution.itauCdb &&
+    distribution.otherCdb >= totalFii
   ) {
-    bestSource = "CDB_SANTANDER";
+    bestSource = "CDB_OTHER";
   }
 
   const trend =

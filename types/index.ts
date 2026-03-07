@@ -17,11 +17,20 @@ export interface MonthlyReturn {
   income_value: number;
 }
 
+export interface MonthlyClosure {
+  year: number;
+  month: number;
+  is_closed: boolean;
+  closed_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface PassiveIncomeByMonth {
   month: number;
   year: number;
   cdb_itau: number;
-  cdb_santander: number;
+  cdb_other: number;
   fii_dividends: number;
   total: number;
   mom_growth?: number | null;
@@ -43,15 +52,33 @@ export interface DashboardKPIs {
 
 export interface IncomeDistribution {
   itauCdb: number;
-  santanderCdb: number;
+  otherCdb: number;
   fii: number;
 }
 
 export interface FinancialInsights {
   growthTrend: string;
-  bestSource: "CDB_ITAU" | "CDB_SANTANDER" | "FII";
+  bestSource: "CDB_ITAU" | "CDB_OTHER" | "FII";
   fiiToCdbRatio: number;
   commentary: string;
+}
+
+export interface GoalProgress {
+  annualIncomeTarget: number;
+  annualProjection: number;
+  progressPercent: number;
+  gapToTarget: number;
+  onTrack: boolean;
+}
+
+export interface ConsistencyAlert {
+  code:
+    | "MISSING_MONTHS"
+    | "MOM_SHARP_DROP"
+    | "YOY_NEGATIVE"
+    | "NO_DATA_YEAR";
+  severity: "info" | "warning" | "critical";
+  message: string;
 }
 
 /** Comparativo mês a mês entre ano anterior e ano atual, por tipo de lançamento */
@@ -62,8 +89,8 @@ export interface MonthComparisonPoint {
   yearCurr: number;
   itauPrev: number;
   itauCurr: number;
-  santanderPrev: number;
-  santanderCurr: number;
+  otherCdbPrev: number;
+  otherCdbCurr: number;
   fiiPrev: number;
   fiiCurr: number;
   totalPrev: number;
@@ -78,4 +105,6 @@ export interface DashboardPayload {
   comparisonByMonth: MonthComparisonPoint[];
   distribution: IncomeDistribution;
   insights: FinancialInsights;
+  goalProgress: GoalProgress;
+  alerts: ConsistencyAlert[];
 }

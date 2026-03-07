@@ -8,7 +8,14 @@ export function YearFilter() {
   const pathname = usePathname();
   const year = searchParams.get("year") ?? String(new Date().getFullYear());
   const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: 8 }, (_, i) => currentYear - 5 + i);
+  const selectedYear = Number(year);
+  const yearsSet = new Set(
+    Array.from({ length: 8 }, (_, i) => currentYear - 5 + i),
+  );
+  if (Number.isFinite(selectedYear)) {
+    yearsSet.add(selectedYear);
+  }
+  const years = Array.from(yearsSet).sort((a, b) => a - b);
 
   const handleChange = (value: string) => {
     const params = new URLSearchParams(searchParams.toString());

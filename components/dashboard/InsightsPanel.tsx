@@ -1,17 +1,24 @@
-import { DashboardKPIs, FinancialInsights } from "../../types";
+import {
+  ConsistencyAlert,
+  DashboardKPIs,
+  FinancialInsights,
+  GoalProgress,
+} from "../../types";
 import { formatCurrencyBRL, formatPercentage } from "../../lib/formatters";
 import { Card } from "../ui/Card";
 
 interface Props {
   kpis: DashboardKPIs;
   insights: FinancialInsights;
+  goalProgress: GoalProgress;
+  alerts: ConsistencyAlert[];
 }
 
-export function InsightsPanel({ kpis, insights }: Props) {
+export function InsightsPanel({ kpis, insights, goalProgress, alerts }: Props) {
   const bestSourceLabel =
     insights.bestSource === "CDB_ITAU"
       ? "CDB Itaú"
-      : insights.bestSource === "CDB_SANTANDER"
+      : insights.bestSource === "CDB_OTHER"
         ? "CDBs (demais)"
         : "FIIs";
 
@@ -67,6 +74,42 @@ export function InsightsPanel({ kpis, insights }: Props) {
           </span>{" "}
           {formatCurrencyBRL(kpis.annualProjection)}
         </li>
+        <li>
+          <span className="font-medium text-slate-100">
+            Meta anual de renda passiva:
+          </span>{" "}
+          {formatCurrencyBRL(goalProgress.annualIncomeTarget)}
+        </li>
+        <li>
+          <span className="font-medium text-slate-100">Progresso da meta:</span>{" "}
+          {goalProgress.progressPercent.toFixed(1)}%{" "}
+          {goalProgress.onTrack
+            ? "(no ritmo)"
+            : `(faltam ${formatCurrencyBRL(goalProgress.gapToTarget)})`}
+        </li>
+        {alerts.length > 0 && (
+          <li>
+            <span className="font-medium text-slate-100">
+              Alertas de consistência:
+            </span>
+            <ul className="mt-1 space-y-1">
+              {alerts.map((alert) => (
+                <li
+                  key={alert.code}
+                  className={
+                    alert.severity === "critical"
+                      ? "text-rose-300"
+                      : alert.severity === "warning"
+                        ? "text-amber-300"
+                        : "text-slate-300"
+                  }
+                >
+                  • {alert.message}
+                </li>
+              ))}
+            </ul>
+          </li>
+        )}
         <li className="text-slate-400">{insights.commentary}</li>
       </ul>
     </Card>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Investment, MonthlyReturn } from "../../types";
+import { Investment, MonthlyClosure, MonthlyReturn } from "../../types";
 import { formatCurrencyBRL, monthNameFull } from "../../lib/formatters";
 import { ReturnForm } from "../forms/ReturnForm";
 
@@ -12,7 +12,6 @@ type ReturnRow = {
   income: number;
   investmentId: string;
   isFii: boolean;
-  institution: string;
 };
 
 interface ReturnsPageClientProps {}
@@ -20,8 +19,12 @@ interface ReturnsPageClientProps {}
 export function ReturnsPageClient(_props: ReturnsPageClientProps) {
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [rawReturns, setRawReturns] = useState<MonthlyReturn[]>([]);
+  const [closures, setClosures] = useState<MonthlyClosure[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [closureUpdatingKey, setClosureUpdatingKey] = useState<string | null>(
+    null,
+  );
 
   const [yearFilter, setYearFilter] = useState<number | "all">(
     () => new Date().getFullYear(),
@@ -37,17 +40,20 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
     const load = async () => {
       try {
         setLoading(true);
-        const [invRes, retRes] = await Promise.all([
+        const [invRes, retRes, closureRes] = await Promise.all([
           fetch("/api/investments"),
           fetch("/api/returns"),
+          fetch("/api/monthly-closures"),
         ]);
-        if (!invRes.ok || !retRes.ok) {
+        if (!invRes.ok || !retRes.ok || !closureRes.ok) {
           throw new Error("Erro ao carregar dados de retornos.");
         }
         const invData: Investment[] = await invRes.json();
         const retData: MonthlyReturn[] = await retRes.json();
+        const closureData: MonthlyClosure[] = await closureRes.json();
         setInvestments(invData);
         setRawReturns(retData);
+        setClosures(Array.isArray(closureData) ? closureData : []);
       } catch (e: any) {
         console.error(e);
         setError(e?.message ?? "Erro inesperado.");
@@ -89,7 +95,6 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
           income: incomeValue,
           investmentId: inv.id,
           isFii,
-          institution: inv.institution,
         });
       }
     }
@@ -180,6 +185,19 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
     );
   }, [rows, yearFilter]);
 
+  const closedPeriods = useMemo(() => {
+    const set = new Set<string>();
+    closures.forEach((c) => {
+      if (c.is_closed) {
+        set.add(`${c.year}-${c.month}`);
+      }
+    });
+    return set;
+  }, [closures]);
+
+  const isPeriodClosed = (year: number, month: number) =>
+    closedPeriods.has(`${year}-${month}`);
+
   const handleSaved = async () => {
     setEditing(null);
     try {
@@ -193,7 +211,54 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
   };
 
   const handleEdit = (row: ReturnRow) => {
+    if (isPeriodClosed(row.year, row.month)) {
+      alert(
+        `O período ${row.month}/${row.year} está fechado. Reabra para editar.`,
+      );
+      return;
+    }
     setEditing(row);
+  };
+
+  const refreshClosures = async () => {
+    try {
+      const res = await fetch("/api/monthly-closures");
+      if (!res.ok) return;
+      const data: MonthlyClosure[] = await res.json();
+      setClosures(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const toggleMonthClosure = async (
+    year: number,
+    month: number,
+    shouldClose: boolean,
+  ) => {
+    const key = `${year}-${month}`;
+    setClosureUpdatingKey(key);
+    try {
+      const res = await fetch("/api/monthly-closures", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          year,
+          month,
+          is_closed: shouldClose,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error ?? "Falha ao atualizar fechamento mensal.");
+      }
+      await refreshClosures();
+    } catch (e) {
+      console.error(e);
+      alert(e instanceof Error ? e.message : "Erro ao atualizar fechamento.");
+    } finally {
+      setClosureUpdatingKey(null);
+    }
   };
 
   const investmentFilterOptions = [
@@ -340,9 +405,12 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                         <button
                           type="button"
                           onClick={() => handleEdit(row)}
+                          disabled={isPeriodClosed(row.year, row.month)}
                           className="rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-800"
                         >
-                          Editar
+                          {isPeriodClosed(row.year, row.month)
+                            ? "Fechado"
+                            : "Editar"}
                         </button>
                       </td>
                     </tr>
@@ -386,6 +454,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
         <ReturnForm
           investments={uiInvestments}
           onCreated={handleSaved}
+          isPeriodClosed={isPeriodClosed}
           initial={
             editing
               ? {
@@ -410,16 +479,18 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
               <tr>
                 <th className="px-2 py-2">Meses</th>
                 <th className="px-2 py-2 text-amber-400">Itaú</th>
-                <th className="px-2 py-2 text-rose-400">Santander</th>
+                <th className="px-2 py-2 text-rose-400">CDBs (demais)</th>
                 <th className="px-2 py-2 text-emerald-400">FIIs</th>
                 <th className="px-2 py-2">Total</th>
+                <th className="px-2 py-2">Status</th>
+                <th className="px-2 py-2 text-right">Fechamento</th>
               </tr>
             </thead>
             <tbody>
               {monthlySummary.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={7}
                     className="px-2 py-4 text-center text-slate-400"
                   >
                     Nenhum dado para o ano selecionado.
@@ -431,6 +502,12 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                     key={`${row.year}-${row.month}`}
                     className="border-b border-slate-800/60 last:border-0"
                   >
+                    {(() => {
+                      const key = `${row.year}-${row.month}`;
+                      const closed = isPeriodClosed(row.year, row.month);
+                      const isUpdating = closureUpdatingKey === key;
+                      return (
+                        <>
                     <td className="px-2 py-2 text-slate-300">
                       {monthNameFull(row.month)}
                     </td>
@@ -446,6 +523,36 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                     <td className="px-2 py-2 font-bold text-slate-100">
                       {formatCurrencyBRL(row.total)}
                     </td>
+                    <td className="px-2 py-2">
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          closed
+                            ? "bg-rose-900/50 text-rose-300"
+                            : "bg-emerald-900/40 text-emerald-300"
+                        }`}
+                      >
+                        {closed ? "Fechado" : "Aberto"}
+                      </span>
+                    </td>
+                    <td className="px-2 py-2 text-right">
+                      <button
+                        type="button"
+                        disabled={isUpdating}
+                        onClick={() =>
+                          toggleMonthClosure(row.year, row.month, !closed)
+                        }
+                        className="rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-800 disabled:opacity-50"
+                      >
+                        {isUpdating
+                          ? "Salvando..."
+                          : closed
+                            ? "Reabrir"
+                            : "Fechar"}
+                      </button>
+                    </td>
+                        </>
+                      );
+                    })()}
                   </tr>
                 ))
               )}

@@ -24,10 +24,10 @@ const TYPE_CONFIG = [
     colorCurr: "#0ea5e9",
   },
   {
-    key: "santander",
+    key: "other_cdb",
     label: "CDBs (demais)",
-    prevKey: "santanderPrev",
-    currKey: "santanderCurr",
+    prevKey: "otherCdbPrev",
+    currKey: "otherCdbCurr",
     colorPrev: "#dc2626",
     colorCurr: "#8b5cf6",
   },
