@@ -1,4 +1,5 @@
 import { DashboardPayload } from "../types";
+import { headers } from "next/headers";
 import { KPIGrid } from "../components/dashboard/KPIGrid";
 import { PassiveIncomeLineChart } from "../components/dashboard/PassiveIncomeLineChart";
 import { MonthlyBarChart } from "../components/dashboard/MonthlyBarChart";
@@ -8,8 +9,11 @@ import { MonthlyTable } from "../components/dashboard/MonthlyTable";
 import { MonthOverMonthChart } from "../components/dashboard/MonthOverMonthChart";
 import { InsightsPanel } from "../components/dashboard/InsightsPanel";
 
-async function fetchDashboard(year: number): Promise<DashboardPayload | null> {
-  const base = process.env.NEXT_PUBLIC_BASE_URL ?? "";
+async function fetchDashboard(
+  year: number,
+  baseUrl: string
+): Promise<DashboardPayload | null> {
+  const base = baseUrl;
   const res = await fetch(`${base}/api/dashboard?year=${year}`, {
     cache: "no-store",
   });
@@ -29,7 +33,12 @@ export default async function DashboardPage({ searchParams }: PageProps) {
       ? Number(searchParams.year)
       : new Date().getFullYear();
 
-  const data = await fetchDashboard(year);
+  const requestHeaders = headers();
+  const host = requestHeaders.get("host");
+  const protocol = requestHeaders.get("x-forwarded-proto") ?? "http";
+  const fallbackBase = process.env.NEXT_PUBLIC_BASE_URL ?? "http://127.0.0.1:3000";
+  const baseUrl = host ? `${protocol}://${host}` : fallbackBase;
+  const data = await fetchDashboard(year, baseUrl);
 
   if (!data) {
     return (

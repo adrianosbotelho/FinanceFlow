@@ -1,13 +1,13 @@
 const { app, BrowserWindow, dialog, shell, Menu, clipboard } = require("electron");
 const path = require("path");
-const { spawn } = require("child_process");
 const fs = require("fs");
 const net = require("net");
 const http = require("http");
 const os = require("os");
 
-let serverProcess = null;
+let serverStarted = false;
 let currentServerPort = null;
+let mainWindow = null;
 const DEFAULT_PORT = 3000;
 const MAX_PORT_ATTEMPTS = 20;
 const LOG_MAX_BYTES = 5 * 1024 * 1024;
@@ -306,7 +306,7 @@ async function openDiagnosticsFromMenu() {
   const openAtLogin = app.getLoginItemSettings().openAtLogin;
 
   const lines = [
-    `Status do servidor: ${serverProcess ? "rodando" : "parado"}`,
+    `Status do servidor: ${serverStarted ? "rodando" : "parado"}`,
     `Porta em uso: ${currentServerPort ?? "-"}`,
     `Abrir no login: ${openAtLogin ? "ativado" : "desativado"}`,
     `Env obrigatório: ${missingEnv.length === 0 ? "OK" : `faltando (${missingEnv.join(", ")})`}`,
@@ -791,27 +791,39 @@ function waitForServer(url, timeoutMs = START_TIMEOUT_MS) {
   });
 }
 
-function createWindow(port) {
-  const win = new BrowserWindow({
+function createMainWindow() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    return mainWindow;
+  }
+  mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     webPreferences: { nodeIntegration: false, contextIsolation: true },
     title: "FinanceFlow",
   });
-  win.loadURL(`http://127.0.0.1:${port}`);
-  win.on("closed", () => {
-    if (serverProcess) {
-      serverProcess.kill();
-      serverProcess = null;
-    }
+  const loadingHtml = encodeURIComponent(
+    "<!doctype html><html><body style=\"margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0b1220;color:#f8fafc;display:flex;align-items:center;justify-content:center;height:100vh;\"><div style=\"text-align:center\"><h2 style=\"margin:0 0 8px 0\">FinanceFlow</h2><p style=\"margin:0;opacity:.75\">Inicializando aplicativo...</p></div></body></html>"
+  );
+  mainWindow.loadURL(`data:text/html;charset=utf-8,${loadingHtml}`);
+  mainWindow.on("closed", () => {
+    serverStarted = false;
+    currentServerPort = null;
+    mainWindow = null;
   });
+  return mainWindow;
+}
+
+function loadAppIntoWindow(port) {
+  const win = createMainWindow();
+  win.loadURL(`http://127.0.0.1:${port}`);
 }
 
 async function startServerAndWindow() {
+  createMainWindow();
   const standalonePath = getStandalonePath();
   if (process.env.ELECTRON_DEV) {
     const preferredPort = Number(process.env.FINANCEFLOW_PORT || DEFAULT_PORT);
-    createWindow(preferredPort);
+    loadAppIntoWindow(preferredPort);
     return;
   }
   if (!standalonePath) {
@@ -856,41 +868,28 @@ async function startServerAndWindow() {
   currentServerPort = port;
 
   const serverPath = path.join(standalonePath, "server.js");
-  const env = {
-    ...process.env,
-    PORT: String(port),
-    HOSTNAME: "127.0.0.1",
-  };
-  serverProcess = spawn(process.execPath, [serverPath], {
-    cwd: standalonePath,
-    env: {
-      ...env,
-      ELECTRON_RUN_AS_NODE: "1",
-    },
-    stdio: "pipe",
-  });
-  serverProcess.stderr.on("data", (d) => process.stderr.write(d));
-  serverProcess.stdout.on("data", (d) => process.stdout.write(d));
-  serverProcess.on("error", (err) => {
-    const message = `Server failed to start: ${err.message}`;
+  process.env.PORT = String(port);
+  process.env.HOSTNAME = "127.0.0.1";
+  // Keep server-side API calls aligned with dynamic fallback port.
+  process.env.NEXT_PUBLIC_BASE_URL = `http://127.0.0.1:${port}`;
+  try {
+    require(serverPath);
+    serverStarted = true;
+  } catch (err) {
+    const message =
+      err instanceof Error
+        ? `Server failed to start: ${err.message}`
+        : "Server failed to start.";
     console.error(message);
     logRuntime(message);
     dialog.showErrorBox("FinanceFlow", message);
     app.quit();
-  });
-  serverProcess.on("exit", (code) => {
-    currentServerPort = null;
-    if (code !== null && code !== 0) {
-      const message = `Servidor Next encerrou com código ${code}.`;
-      console.error(message);
-      logRuntime(message);
-      dialog.showErrorBox("FinanceFlow", message);
-      app.quit();
-    }
-  });
+    return;
+  }
   waitForServer(`http://127.0.0.1:${port}`, START_TIMEOUT_MS)
-    .then(() => createWindow(port))
+    .then(() => loadAppIntoWindow(port))
     .catch((err) => {
+      serverStarted = false;
       const message = err.message || "Erro ao iniciar servidor.";
       console.error(message);
       logRuntime(message);
@@ -905,18 +904,12 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  if (serverProcess) {
-    serverProcess.kill();
-    serverProcess = null;
-  }
+  serverStarted = false;
   currentServerPort = null;
   app.quit();
 });
 
 app.on("quit", () => {
-  if (serverProcess) {
-    serverProcess.kill();
-    serverProcess = null;
-  }
+  serverStarted = false;
   currentServerPort = null;
 });
