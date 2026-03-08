@@ -4,6 +4,39 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Investment } from "../../types";
 import { formatCurrencyBRL, formatPercentage } from "../../lib/formatters";
 import { InvestmentForm } from "../forms/InvestmentForm";
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  Legend,
+} from "recharts";
+
+type ForecastResponse = {
+  cdbInvested: number;
+  cdiAnnualRatePct: number;
+  year: number;
+  currentMonth: number;
+  kpis: {
+    monthForecast: number;
+    monthRealized: number;
+    monthGap: number;
+    completionPercent: number;
+    expectedToDate: number;
+    pacePercent: number;
+    elapsedBusinessDays: number;
+    totalBusinessDays: number;
+  };
+  series: Array<{ month: number; realized: number; forecast: number }>;
+  daySeries: Array<{
+    day: number;
+    realizedAccumulated: number | null;
+    forecastAccumulated: number;
+  }>;
+};
 
 export function InvestmentsPageClient() {
   const [investments, setInvestments] = useState<Investment[]>([]);
@@ -11,6 +44,7 @@ export function InvestmentsPageClient() {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Investment | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [forecast, setForecast] = useState<ForecastResponse | null>(null);
 
   const loadInvestments = useCallback(async () => {
     try {
@@ -33,6 +67,22 @@ export function InvestmentsPageClient() {
   useEffect(() => {
     void loadInvestments();
   }, [loadInvestments]);
+  useEffect(() => {
+    const loadForecast = async () => {
+      try {
+        const year = new Date().getFullYear();
+        const res = await fetch(`/api/investments/forecast?year=${year}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const data: ForecastResponse = await res.json();
+        setForecast(data);
+      } catch (_err) {
+        // no-op
+      }
+    };
+    void loadForecast();
+  }, []);
 
   const totalInvested = useMemo(
     () => investments.reduce((acc, inv) => acc + Number(inv.amount_invested ?? 0), 0),
@@ -85,6 +135,17 @@ export function InvestmentsPageClient() {
   const handleSaved = async () => {
     setEditing(null);
     await loadInvestments();
+    try {
+      const year = new Date().getFullYear();
+      const res = await fetch(`/api/investments/forecast?year=${year}`, {
+        cache: "no-store",
+      });
+      if (res.ok) {
+        setForecast(await res.json());
+      }
+    } catch (_err) {
+      // no-op
+    }
   };
 
   const handleDelete = async (inv: Investment) => {
@@ -193,6 +254,114 @@ export function InvestmentsPageClient() {
           <p className="text-[11px] text-slate-400">tipo + instituição distintos</p>
         </div>
       </div>
+
+      {forecast && (
+        <section className="space-y-4 rounded-xl border border-slate-800 bg-surface/80 p-4">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-100">
+              Projeção CDB (100% CDI) vs Realizado
+            </h3>
+            <p className="text-xs text-slate-400">
+              Mês atual: previsão {formatCurrencyBRL(forecast.kpis.monthForecast)} | realizado{" "}
+              {formatCurrencyBRL(forecast.kpis.monthRealized)} | gap{" "}
+              {formatCurrencyBRL(forecast.kpis.monthGap)}.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+              <p className="text-xs text-slate-400">Previsão mês atual</p>
+              <p className="text-base font-semibold text-cyan-300">
+                {formatCurrencyBRL(forecast.kpis.monthForecast)}
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+              <p className="text-xs text-slate-400">Realizado mês atual</p>
+              <p className="text-base font-semibold text-emerald-300">
+                {formatCurrencyBRL(forecast.kpis.monthRealized)}
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+              <p className="text-xs text-slate-400">Atingimento</p>
+              <p className="text-base font-semibold text-slate-100">
+                {formatPercentage(forecast.kpis.completionPercent)}
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+              <p className="text-xs text-slate-400">Pace até hoje</p>
+              <p className="text-base font-semibold text-slate-100">
+                {formatPercentage(forecast.kpis.pacePercent)}
+              </p>
+              <p className="text-[11px] text-slate-500">
+                esperado até hoje: {formatCurrencyBRL(forecast.kpis.expectedToDate)}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="h-64 rounded-lg border border-slate-800 bg-slate-900/40 p-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={forecast.series}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                  <XAxis dataKey="month" stroke="#94a3b8" />
+                  <YAxis stroke="#94a3b8" tickFormatter={formatCurrencyBRL} />
+                  <Tooltip
+                    formatter={(v: number) => formatCurrencyBRL(v)}
+                    contentStyle={{ backgroundColor: "#020617", borderColor: "#1f2937" }}
+                  />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="forecast"
+                    name="Previsto (100% CDI)"
+                    stroke="#22d3ee"
+                    strokeWidth={2}
+                    dot={{ r: 2 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="realized"
+                    name="Realizado"
+                    stroke="#22c55e"
+                    strokeWidth={2}
+                    dot={{ r: 2 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="h-64 rounded-lg border border-slate-800 bg-slate-900/40 p-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={forecast.daySeries}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                  <XAxis dataKey="day" stroke="#94a3b8" />
+                  <YAxis stroke="#94a3b8" tickFormatter={formatCurrencyBRL} />
+                  <Tooltip
+                    formatter={(v: number) => formatCurrencyBRL(v)}
+                    contentStyle={{ backgroundColor: "#020617", borderColor: "#1f2937" }}
+                  />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="forecastAccumulated"
+                    name="Previsto acumulado (mês atual)"
+                    stroke="#06b6d4"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="realizedAccumulated"
+                    name="Realizado acumulado (mês atual)"
+                    stroke="#22c55e"
+                    strokeWidth={2}
+                    dot={false}
+                    connectNulls
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </section>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="rounded-xl border border-slate-800 bg-surface/80 p-4">
