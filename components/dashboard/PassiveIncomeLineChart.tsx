@@ -42,20 +42,27 @@ export function PassiveIncomeLineChart({ data }: Props) {
           </span>
         </div>
       </div>
-      <div className="flex-1 bg-slate-900/50 p-6">
-        <div className="relative h-64 w-full overflow-hidden rounded-lg border border-dashed border-slate-700 bg-slate-900/60">
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-accent/10 to-transparent" />
+      <div className="flex-1 p-4 md:p-6">
+        <div className="h-[300px] w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData}>
+            <LineChart data={chartData} margin={{ top: 8, right: 12, left: 20, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
               <XAxis dataKey="name" stroke="#9ca3af" />
-              <YAxis stroke="#9ca3af" tickFormatter={formatCurrencyBRL} />
+              <YAxis
+                stroke="#94a3b8"
+                width={96}
+                tick={{ fill: "#cbd5e1", fontSize: 13, fontWeight: 600 }}
+                tickFormatter={(value: number) => formatCurrencyBRL(value)}
+              />
               <Tooltip
                 formatter={(value: number) => formatCurrencyBRL(value)}
                 contentStyle={{
                   backgroundColor: "#020617",
                   borderColor: "#1f2937",
+                  borderRadius: 8,
                 }}
+                labelStyle={{ color: "#e2e8f0", fontWeight: 600 }}
+                itemStyle={{ color: "#e2e8f0", fontWeight: 600 }}
               />
               <Line
                 type="monotone"

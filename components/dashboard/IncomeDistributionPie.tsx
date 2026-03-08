@@ -56,6 +56,8 @@ export function IncomeDistributionPie({ distribution }: Props) {
                     currency: "BRL",
                   }).format(value)
                 }
+                position={{ x: 155, y: 62 }}
+                allowEscapeViewBox={{ x: true, y: true }}
                 contentStyle={{
                   backgroundColor: "#020617",
                   borderColor: "#1f2937",
