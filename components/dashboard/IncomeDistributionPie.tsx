@@ -19,7 +19,7 @@ const COLORS = ["#6366F1", "#F97316", "#22C55E"];
 export function IncomeDistributionPie({ distribution }: Props) {
   const data = [
     { name: "CDB Itaú", value: distribution.itauCdb },
-    { name: "CDBs (demais)", value: distribution.otherCdb },
+    { name: "CDB Santander", value: distribution.otherCdb },
     { name: "FIIs", value: distribution.fii },
   ];
 
@@ -83,7 +83,7 @@ export function IncomeDistributionPie({ distribution }: Props) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="h-3 w-3 rounded-full bg-[#22C55E]" />
-              <span>CDBs (demais)</span>
+              <span>CDB Santander</span>
             </div>
             <span className="font-bold">
               {formatPercent(distribution.otherCdb, distribution)}

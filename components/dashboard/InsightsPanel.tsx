@@ -19,7 +19,7 @@ export function InsightsPanel({ kpis, insights, goalProgress, alerts }: Props) {
     insights.bestSource === "CDB_ITAU"
       ? "CDB Itaú"
       : insights.bestSource === "CDB_OTHER"
-        ? "CDBs (demais)"
+        ? "CDB Santander"
         : "FIIs";
 
   return (

@@ -12,6 +12,7 @@ type ReturnRow = {
   income: number;
   investmentId: string;
   isFii: boolean;
+  isAggregated: boolean;
 };
 
 interface ReturnsPageClientProps {}
@@ -73,21 +74,28 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
 
   const rows: ReturnRow[] = useMemo(() => {
     const map = new Map<string, ReturnRow>();
+    const byId = new Map<string, Investment>();
+    for (const inv of investments) {
+      byId.set(inv.id, inv);
+    }
 
     for (const ret of rawReturns) {
-      const inv = investments.find((i) => i.id === ret.investment_id);
+      const inv = byId.get(ret.investment_id);
       if (!inv) continue;
 
       const isFii = inv.type === "FII";
-      const key = `INV-${inv.id}-${ret.year}-${ret.month}`;
+      const isItau = inv.type === "CDB" && inv.institution === "Itaú";
+      const key = isFii
+        ? `FII-${ret.year}-${ret.month}`
+        : isItau
+          ? `CDB-ITAU-${ret.year}-${ret.month}`
+          : `CDB-SANTANDER-${ret.year}-${ret.month}`;
 
       const label = isFii
-        ? inv.name
-        : inv.institution === "Itaú"
+        ? "Dividendos FIIs"
+        : isItau
           ? "CDB Itaú"
-          : inv.type === "CDB"
-            ? "CDBs (demais)"
-            : `${inv.name}`;
+          : "CDB Santander";
 
       const incomeValue = Number(ret.income_value ?? 0);
 
@@ -100,8 +108,9 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
           month: ret.month,
           label,
           income: incomeValue,
-          investmentId: inv.id,
+          investmentId: isFii ? "__FII_GROUP__" : inv.id,
           isFii,
+          isAggregated: isFii,
         });
       }
     }
@@ -125,7 +134,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
         inv.type === "CDB" && inv.institution === "Itaú"
           ? "CDB Itaú"
           : inv.type === "CDB"
-            ? "CDBs (demais)"
+            ? "CDB Santander"
             : inv.name,
     }));
   }, [investments]);
@@ -287,7 +296,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
         inv.institution === "Itaú"
           ? "CDB Itaú"
           : inv.type === "CDB"
-            ? "CDBs (demais)"
+            ? "CDB Santander"
             : inv.name,
     })),
   ];
@@ -417,7 +426,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                             ? "text-emerald-400"
                             : row.label === "CDB Itaú"
                               ? "text-amber-400"
-                              : row.label === "CDBs (demais)"
+                              : row.label === "CDB Santander"
                                 ? "text-rose-400"
                                 : "text-slate-100"
                         }`}
@@ -428,11 +437,16 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                         <button
                           type="button"
                           onClick={() => handleEdit(row)}
-                          disabled={isPeriodClosed(row.year, row.month)}
+                          disabled={
+                            isPeriodClosed(row.year, row.month) ||
+                            row.isAggregated
+                          }
                           className="rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-800"
                         >
                           {isPeriodClosed(row.year, row.month)
                             ? "Fechado"
+                            : row.isAggregated
+                              ? "Agrupado"
                             : "Editar"}
                         </button>
                       </td>
@@ -502,7 +516,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
               <tr>
                 <th className="px-2 py-2">Meses</th>
                 <th className="px-2 py-2 text-amber-400">Itaú</th>
-                <th className="px-2 py-2 text-rose-400">CDBs (demais)</th>
+                <th className="px-2 py-2 text-rose-400">CDB Santander</th>
                 <th className="px-2 py-2 text-emerald-400">FIIs</th>
                 <th className="px-2 py-2">Total</th>
                 <th className="px-2 py-2">Status</th>

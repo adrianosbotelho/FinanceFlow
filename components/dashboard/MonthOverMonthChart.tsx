@@ -25,7 +25,7 @@ const TYPE_CONFIG = [
   },
   {
     key: "other_cdb",
-    label: "CDBs (demais)",
+    label: "CDB Santander",
     prevKey: "otherCdbPrev",
     currKey: "otherCdbCurr",
     colorPrev: "#dc2626",
