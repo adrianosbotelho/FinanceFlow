@@ -25,19 +25,24 @@ function buildForecastSeries(data: DashboardPayload) {
   const realized: Array<{
     label: string;
     realized: number | null;
-    forecast: number | null;
+    forecastBridge: number | null;
   }> = data.monthlySeries.map((m) => ({
     label: monthLabel(m.month),
     realized: m.total,
-    forecast: null as number | null,
+    forecastBridge: null,
   }));
+
+  if (realized.length > 0) {
+    const lastIndex = realized.length - 1;
+    realized[lastIndex].forecastBridge = realized[lastIndex].realized;
+  }
 
   const lastMonth = data.monthlySeries[data.monthlySeries.length - 1]?.month ?? 12;
   const nextMonth = lastMonth === 12 ? 1 : lastMonth + 1;
   realized.push({
     label: `${monthLabel(nextMonth)}*`,
     realized: null,
-    forecast: data.insights.forecastNextMonth,
+    forecastBridge: data.insights.forecastNextMonth,
   });
 
   return realized;
@@ -102,28 +107,46 @@ export function InsightsPageClient({ data, year }: Props) {
           </p>
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={forecastSeries}>
+              <LineChart data={forecastSeries} margin={{ top: 8, right: 18, left: 22, bottom: 8 }}>
                 <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" />
                 <XAxis dataKey="label" stroke="#94a3b8" />
-                <YAxis stroke="#94a3b8" tickFormatter={formatCurrencyBRL} />
-                <Tooltip formatter={(value: number) => formatCurrencyBRL(value)} />
+                <YAxis
+                  stroke="#94a3b8"
+                  tickFormatter={(value) => formatCurrencyBRL(Number(value))}
+                  width={100}
+                />
+                <Tooltip
+                  labelFormatter={(label) => `Mês: ${label}`}
+                  formatter={(value: number | string) =>
+                    formatCurrencyBRL(Number(value))
+                  }
+                  contentStyle={{
+                    backgroundColor: "#020617",
+                    borderColor: "#1f2937",
+                    borderRadius: 8,
+                  }}
+                  labelStyle={{ color: "#e2e8f0", fontWeight: 600 }}
+                  itemStyle={{ color: "#a5b4fc", fontWeight: 600 }}
+                />
                 <Legend />
                 <Line
-                  type="monotone"
+                  type="linear"
                   dataKey="realized"
                   name="Realizado"
                   stroke="#22c55e"
                   strokeWidth={2}
                   dot={{ r: 3 }}
+                  connectNulls={false}
                 />
                 <Line
-                  type="monotone"
-                  dataKey="forecast"
-                  name="Previsto"
+                  type="linear"
+                  dataKey="forecastBridge"
+                  name="Previsto (ponte)"
                   stroke="#22d3ee"
                   strokeWidth={2}
                   strokeDasharray="6 3"
                   dot={{ r: 3 }}
+                  connectNulls
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -140,7 +163,18 @@ export function InsightsPageClient({ data, year }: Props) {
                 <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" />
                 <XAxis dataKey="source" stroke="#94a3b8" />
                 <YAxis stroke="#94a3b8" tickFormatter={formatCurrencyBRL} />
-                <Tooltip formatter={(value: number) => formatCurrencyBRL(value)} />
+                <Tooltip
+                  formatter={(value: number | string) =>
+                    formatCurrencyBRL(Number(value))
+                  }
+                  contentStyle={{
+                    backgroundColor: "#020617",
+                    borderColor: "#1f2937",
+                    borderRadius: 8,
+                  }}
+                  labelStyle={{ color: "#e2e8f0", fontWeight: 600 }}
+                  itemStyle={{ color: "#818cf8", fontWeight: 600 }}
+                />
                 <Bar dataKey="value" fill="#6366f1" radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>

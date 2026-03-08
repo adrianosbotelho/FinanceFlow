@@ -152,6 +152,45 @@ export interface DashboardPayload {
   alerts: ConsistencyAlert[];
 }
 
+export interface HealthTableCheck {
+  table: string;
+  status: "ok" | "error";
+  count: number | null;
+  latencyMs: number;
+  error: string | null;
+}
+
+export interface HealthCheckPayload {
+  status: "ok" | "degraded";
+  generatedAt: string;
+  app: {
+    name: string;
+    version: string;
+    nodeEnv: string;
+    uptimeSec: number;
+    nextPublicBaseUrl: string | null;
+    financeflowPort: string | null;
+  };
+  runtime: {
+    nodeVersion: string;
+    platform: string;
+    arch: string;
+    pid: number;
+  };
+  environment: {
+    required: Record<string, boolean>;
+    missing: string[];
+    optional: Record<string, string | null>;
+    supabaseHost: string | null;
+  };
+  database: {
+    status: "ok" | "error";
+    latencyMs: number | null;
+    error: string | null;
+    tables: HealthTableCheck[];
+  };
+}
+
 export interface PerformanceKPIs {
   investedCapital: number;
   currentMarketValue: number;

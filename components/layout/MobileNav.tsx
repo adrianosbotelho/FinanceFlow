@@ -1,19 +1,29 @@
- "use client";
+"use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-
-const items = [
-  { href: "/", label: "Dash" },
-  { href: "/insights", label: "Insig" },
-  { href: "/performance", label: "Perf" },
-  { href: "/goals", label: "Metas" },
-  { href: "/investments", label: "Assets" },
-  { href: "/returns", label: "Ret" },
-];
+import {
+  DEFAULT_NAV_ITEMS,
+  NAV_ORDER_STORAGE_KEY,
+  NavItem,
+  resolveNavItems,
+} from "./navConfig";
 
 export function MobileNav() {
   const pathname = usePathname();
+  const [items, setItems] = useState<NavItem[]>(DEFAULT_NAV_ITEMS);
+
+  useEffect(() => {
+    const raw = window.localStorage.getItem(NAV_ORDER_STORAGE_KEY);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as string[];
+      setItems(resolveNavItems(parsed));
+    } catch {
+      setItems(DEFAULT_NAV_ITEMS);
+    }
+  }, []);
 
   return (
     <nav className="sticky bottom-0 z-30 flex items-center border-t border-slate-800 bg-slate-900 px-4 py-2 md:hidden">
@@ -28,7 +38,7 @@ export function MobileNav() {
             }`}
           >
             <span className="h-1.5 w-1.5 rounded-full border border-current" />
-            <p>{item.label}</p>
+            <p>{item.shortLabel}</p>
           </Link>
         );
       })}
