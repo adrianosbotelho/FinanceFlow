@@ -36,6 +36,19 @@ type ForecastResponse = {
     realizedAccumulated: number | null;
     forecastAccumulated: number;
   }>;
+  cdbBreakdown: Array<{
+    investmentId: string;
+    label: string;
+    institution: string;
+    amountInvested: number;
+    current: {
+      forecast: number;
+      realized: number;
+      gap: number;
+      completionPercent: number;
+    };
+    series: Array<{ month: number; realized: number; forecast: number }>;
+  }>;
 };
 
 export function InvestmentsPageClient() {
@@ -178,6 +191,7 @@ export function InvestmentsPageClient() {
         setEditing(null);
       }
       await loadInvestments();
+      await loadForecast();
     } catch (e) {
       console.error(e);
       alert(e instanceof Error ? e.message : "Erro ao excluir investimento.");
@@ -338,68 +352,85 @@ export function InvestmentsPageClient() {
             </div>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="h-64 rounded-lg border border-slate-800 bg-slate-900/40 p-2">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={forecast.series}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                  <XAxis dataKey="month" stroke="#94a3b8" />
-                  <YAxis stroke="#94a3b8" tickFormatter={formatCurrencyBRL} />
-                  <Tooltip
-                    formatter={(v: number) => formatCurrencyBRL(v)}
-                    contentStyle={{ backgroundColor: "#020617", borderColor: "#1f2937" }}
-                  />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="forecast"
-                    name="Previsto (100% CDI)"
-                    stroke="#22d3ee"
-                    strokeWidth={2}
-                    dot={{ r: 2 }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="realized"
-                    name="Realizado"
-                    stroke="#22c55e"
-                    strokeWidth={2}
-                    dot={{ r: 2 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="h-64 rounded-lg border border-slate-800 bg-slate-900/40 p-2">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={forecast.daySeries}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                  <XAxis dataKey="day" stroke="#94a3b8" />
-                  <YAxis stroke="#94a3b8" tickFormatter={formatCurrencyBRL} />
-                  <Tooltip
-                    formatter={(v: number) => formatCurrencyBRL(v)}
-                    contentStyle={{ backgroundColor: "#020617", borderColor: "#1f2937" }}
-                  />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="forecastAccumulated"
-                    name="Previsto acumulado (mês atual)"
-                    stroke="#06b6d4"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="realizedAccumulated"
-                    name="Realizado acumulado (mês atual)"
-                    stroke="#22c55e"
-                    strokeWidth={2}
-                    dot={false}
-                    connectNulls
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+          <div className="grid gap-3 lg:grid-cols-2">
+            {forecast.cdbBreakdown.map((item) => (
+              <div
+                key={item.investmentId}
+                className="rounded-lg border border-slate-800 bg-slate-900/40 p-3"
+              >
+                <div className="mb-2">
+                  <p className="text-xs text-slate-400">{item.institution}</p>
+                  <p className="text-sm font-semibold text-slate-100">{item.label}</p>
+                  <p className="text-[11px] text-slate-400">
+                    Investido: {formatCurrencyBRL(item.amountInvested)} | Previsto mês:{" "}
+                    {formatCurrencyBRL(item.current.forecast)} | Realizado mês:{" "}
+                    {formatCurrencyBRL(item.current.realized)}
+                  </p>
+                </div>
+                <div className="h-52">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={item.series}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                      <XAxis dataKey="month" stroke="#94a3b8" />
+                      <YAxis stroke="#94a3b8" tickFormatter={formatCurrencyBRL} />
+                      <Tooltip
+                        formatter={(v: number) => formatCurrencyBRL(v)}
+                        contentStyle={{ backgroundColor: "#020617", borderColor: "#1f2937" }}
+                      />
+                      <Legend />
+                      <Line
+                        type="monotone"
+                        dataKey="forecast"
+                        name="Previsto"
+                        stroke="#22d3ee"
+                        strokeWidth={2}
+                        dot={{ r: 1.5 }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="realized"
+                        name="Realizado"
+                        stroke="#22c55e"
+                        strokeWidth={2}
+                        dot={{ r: 1.5 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="h-64 rounded-lg border border-slate-800 bg-slate-900/40 p-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={forecast.daySeries}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                <XAxis dataKey="day" stroke="#94a3b8" />
+                <YAxis stroke="#94a3b8" tickFormatter={formatCurrencyBRL} />
+                <Tooltip
+                  formatter={(v: number) => formatCurrencyBRL(v)}
+                  contentStyle={{ backgroundColor: "#020617", borderColor: "#1f2937" }}
+                />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="forecastAccumulated"
+                  name="Previsto acumulado (mês atual)"
+                  stroke="#06b6d4"
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="realizedAccumulated"
+                  name="Realizado acumulado (mês atual)"
+                  stroke="#22c55e"
+                  strokeWidth={2}
+                  dot={false}
+                  connectNulls
+                />
+              </LineChart>
+            </ResponsiveContainer>
           </div>
         </section>
       )}

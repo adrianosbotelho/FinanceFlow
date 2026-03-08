@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
 
   const [{ data: investments, error: invError }, { data: returns, error: retError }] =
     await Promise.all([
-      supabase.from("investments").select("id,type,amount_invested,institution"),
+      supabase.from("investments").select("id,type,name,amount_invested,institution"),
       supabase.from("monthly_returns").select("investment_id,month,year,income_value").eq("year", year),
     ]);
 
@@ -63,10 +63,12 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const cdbIds = new Set(investments.filter((i) => i.type === "CDB").map((i) => i.id));
-  const cdbInvested = investments
-    .filter((i) => i.type === "CDB")
-    .reduce((acc, i) => acc + Number(i.amount_invested ?? 0), 0);
+  const cdbInvestments = investments.filter((i) => i.type === "CDB");
+  const cdbIds = new Set(cdbInvestments.map((i) => i.id));
+  const cdbInvested = cdbInvestments.reduce(
+    (acc, i) => acc + Number(i.amount_invested ?? 0),
+    0,
+  );
 
   const realizedByMonth = new Map<number, number>();
   for (const row of returns) {
@@ -84,10 +86,49 @@ export async function GET(req: NextRequest) {
       forecast: monthForecast(cdbInvested, cdiAnnualRatePct, businessDays),
     };
   });
-
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentDay = now.getDate();
+  const cdbBreakdown = cdbInvestments.map((inv) => {
+    const amount = Number(inv.amount_invested ?? 0);
+    const realizedMap = new Map<number, number>();
+    for (const row of returns) {
+      if (row.investment_id !== inv.id) continue;
+      const prev = realizedMap.get(row.month) ?? 0;
+      realizedMap.set(row.month, prev + Number(row.income_value ?? 0));
+    }
+    const investmentSeries: MonthPoint[] = Array.from({ length: 12 }, (_, idx) => {
+      const month = idx + 1;
+      const businessDays = countBusinessDaysInMonth(year, month);
+      return {
+        month,
+        realized: realizedMap.get(month) ?? 0,
+        forecast: monthForecast(amount, cdiAnnualRatePct, businessDays),
+      };
+    });
+    const current = investmentSeries[currentMonth - 1] ?? {
+      month: currentMonth,
+      realized: 0,
+      forecast: 0,
+    };
+    const gap = current.forecast - current.realized;
+    const completionPercent =
+      current.forecast > 0 ? (current.realized / current.forecast) * 100 : 0;
+    return {
+      investmentId: inv.id,
+      label: inv.name,
+      institution: inv.institution,
+      amountInvested: amount,
+      current: {
+        forecast: current.forecast,
+        realized: current.realized,
+        gap,
+        completionPercent,
+      },
+      series: investmentSeries,
+    };
+  });
+
   const currentPoint = series[currentMonth - 1] ?? { month: currentMonth, realized: 0, forecast: 0 };
   const elapsedBusinessDays = countBusinessDaysElapsedInMonth(year, currentMonth, currentDay);
   const totalBusinessDays = countBusinessDaysInMonth(year, currentMonth);
@@ -131,6 +172,7 @@ export async function GET(req: NextRequest) {
       },
       series,
       daySeries,
+      cdbBreakdown,
     },
     {
       headers: {
