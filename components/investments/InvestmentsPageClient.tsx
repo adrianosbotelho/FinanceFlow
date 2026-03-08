@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Investment } from "../../types";
-import { formatCurrencyBRL } from "../../lib/formatters";
+import { formatCurrencyBRL, formatPercentage } from "../../lib/formatters";
 import { InvestmentForm } from "../forms/InvestmentForm";
 
 export function InvestmentsPageClient() {
@@ -48,6 +48,39 @@ export function InvestmentsPageClient() {
     }
     return Array.from(map.values()).filter((g) => g.length > 1);
   }, [investments]);
+  const byType = useMemo(() => {
+    const cdb = investments
+      .filter((inv) => inv.type === "CDB")
+      .reduce((acc, inv) => acc + Number(inv.amount_invested ?? 0), 0);
+    const fii = investments
+      .filter((inv) => inv.type === "FII")
+      .reduce((acc, inv) => acc + Number(inv.amount_invested ?? 0), 0);
+    return { cdb, fii };
+  }, [investments]);
+  const allocationRows = useMemo(() => {
+    const base = totalInvested > 0 ? totalInvested : 1;
+    return investments
+      .map((inv) => {
+        const amount = Number(inv.amount_invested ?? 0);
+        const sharePct = (amount / base) * 100;
+        return { ...inv, amount, sharePct };
+      })
+      .sort((a, b) => b.amount - a.amount);
+  }, [investments, totalInvested]);
+  const concentrationMetrics = useMemo(() => {
+    const shares = allocationRows.map((row) => row.sharePct / 100);
+    const hhiRaw = shares.reduce((acc, s) => acc + s * s, 0);
+    const hhi = hhiRaw * 10000;
+    const effectiveCount = hhiRaw > 0 ? 1 / hhiRaw : 0;
+    const top1 = allocationRows[0]?.sharePct ?? 0;
+    const top3 = allocationRows
+      .slice(0, 3)
+      .reduce((acc, row) => acc + row.sharePct, 0);
+    const institutions = new Set(
+      investments.map((inv) => `${inv.type}:${inv.institution.toLowerCase()}`),
+    ).size;
+    return { hhi, effectiveCount, top1, top3, institutions };
+  }, [allocationRows, investments]);
 
   const handleSaved = async () => {
     setEditing(null);
@@ -101,6 +134,65 @@ export function InvestmentsPageClient() {
           Isso pode causar leitura confusa nos retornos mensais.
         </p>
       )}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-xl border border-slate-800 bg-surface/80 p-3">
+          <p className="text-xs text-slate-400">Patrimônio investido</p>
+          <p className="mt-1 text-lg font-semibold text-slate-100">
+            {formatCurrencyBRL(totalInvested)}
+          </p>
+        </div>
+        <div className="rounded-xl border border-slate-800 bg-surface/80 p-3">
+          <p className="text-xs text-slate-400">Maior posição</p>
+          <p className="mt-1 text-lg font-semibold text-slate-100">
+            {formatPercentage(concentrationMetrics.top1)}
+          </p>
+          <p className="text-[11px] text-slate-400">do total da carteira</p>
+        </div>
+        <div className="rounded-xl border border-slate-800 bg-surface/80 p-3">
+          <p className="text-xs text-slate-400">Concentração Top 3</p>
+          <p className="mt-1 text-lg font-semibold text-slate-100">
+            {formatPercentage(concentrationMetrics.top3)}
+          </p>
+          <p className="text-[11px] text-slate-400">três maiores posições</p>
+        </div>
+        <div className="rounded-xl border border-slate-800 bg-surface/80 p-3">
+          <p className="text-xs text-slate-400">Diversificação efetiva</p>
+          <p className="mt-1 text-lg font-semibold text-slate-100">
+            {concentrationMetrics.effectiveCount.toFixed(2)}
+          </p>
+          <p className="text-[11px] text-slate-400">
+            ativos equivalentes (HHI {concentrationMetrics.hhi.toFixed(0)})
+          </p>
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-slate-800 bg-surface/80 p-3">
+          <p className="text-xs text-slate-400">Exposição em CDB</p>
+          <p className="mt-1 text-base font-semibold text-amber-300">
+            {formatCurrencyBRL(byType.cdb)}
+          </p>
+          <p className="text-[11px] text-slate-400">
+            {formatPercentage(totalInvested > 0 ? (byType.cdb / totalInvested) * 100 : 0)}
+          </p>
+        </div>
+        <div className="rounded-xl border border-slate-800 bg-surface/80 p-3">
+          <p className="text-xs text-slate-400">Exposição em FII</p>
+          <p className="mt-1 text-base font-semibold text-emerald-300">
+            {formatCurrencyBRL(byType.fii)}
+          </p>
+          <p className="text-[11px] text-slate-400">
+            {formatPercentage(totalInvested > 0 ? (byType.fii / totalInvested) * 100 : 0)}
+          </p>
+        </div>
+        <div className="rounded-xl border border-slate-800 bg-surface/80 p-3">
+          <p className="text-xs text-slate-400">Instituições ativas</p>
+          <p className="mt-1 text-base font-semibold text-slate-100">
+            {concentrationMetrics.institutions}
+          </p>
+          <p className="text-[11px] text-slate-400">tipo + instituição distintos</p>
+        </div>
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="rounded-xl border border-slate-800 bg-surface/80 p-4">
@@ -118,24 +210,25 @@ export function InvestmentsPageClient() {
                   <th className="px-2 py-2">Instituição</th>
                   <th className="px-2 py-2">Nome</th>
                   <th className="px-2 py-2">Valor Investido</th>
+                  <th className="px-2 py-2">% Carteira</th>
                   <th className="px-2 py-2 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={5} className="px-2 py-4 text-center text-slate-400">
+                    <td colSpan={6} className="px-2 py-4 text-center text-slate-400">
                       Carregando investimentos...
                     </td>
                   </tr>
                 ) : investments.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-2 py-4 text-center text-slate-400">
+                    <td colSpan={6} className="px-2 py-4 text-center text-slate-400">
                       Nenhum investimento cadastrado.
                     </td>
                   </tr>
                 ) : (
-                  investments.map((inv) => (
+                  allocationRows.map((inv) => (
                     <tr
                       key={inv.id}
                       className="border-b border-slate-800/60 last:border-0"
@@ -145,6 +238,9 @@ export function InvestmentsPageClient() {
                       <td className="px-2 py-2 text-slate-300">{inv.name}</td>
                       <td className="px-2 py-2 font-medium text-slate-100">
                         {formatCurrencyBRL(inv.amount_invested)}
+                      </td>
+                      <td className="px-2 py-2 text-slate-300">
+                        {formatPercentage(inv.sharePct)}
                       </td>
                       <td className="px-2 py-2 text-right">
                         <button
