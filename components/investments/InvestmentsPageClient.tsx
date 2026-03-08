@@ -352,6 +352,46 @@ export function InvestmentsPageClient() {
             </div>
           </div>
 
+          <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+            <p className="mb-1 text-xs text-slate-400">
+              Consolidado CDBs (Itaú + Santander): previsto vs realizado por mês
+            </p>
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={forecast.series} margin={{ left: 8, right: 8, top: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                  <XAxis dataKey="month" stroke="#94a3b8" />
+                  <YAxis
+                    stroke="#94a3b8"
+                    tickFormatter={formatCurrencyBRL}
+                    width={80}
+                  />
+                  <Tooltip
+                    formatter={(v: number) => formatCurrencyBRL(v)}
+                    contentStyle={{ backgroundColor: "#020617", borderColor: "#1f2937" }}
+                  />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="forecast"
+                    name="Previsto consolidado"
+                    stroke="#22d3ee"
+                    strokeWidth={2}
+                    dot={{ r: 2 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="realized"
+                    name="Realizado consolidado"
+                    stroke="#22c55e"
+                    strokeWidth={2}
+                    dot={{ r: 2 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
           <div className="grid gap-3 lg:grid-cols-2">
             {forecast.cdbBreakdown.map((item) => (
               <div
@@ -369,10 +409,14 @@ export function InvestmentsPageClient() {
                 </div>
                 <div className="h-52">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={item.series}>
+                    <LineChart data={item.series} margin={{ left: 8, right: 8, top: 8 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
                       <XAxis dataKey="month" stroke="#94a3b8" />
-                      <YAxis stroke="#94a3b8" tickFormatter={formatCurrencyBRL} />
+                      <YAxis
+                        stroke="#94a3b8"
+                        tickFormatter={formatCurrencyBRL}
+                        width={80}
+                      />
                       <Tooltip
                         formatter={(v: number) => formatCurrencyBRL(v)}
                         contentStyle={{ backgroundColor: "#020617", borderColor: "#1f2937" }}
@@ -402,11 +446,18 @@ export function InvestmentsPageClient() {
           </div>
 
           <div className="h-64 rounded-lg border border-slate-800 bg-slate-900/40 p-2">
+            <p className="mb-1 px-2 text-xs text-slate-400">
+              Intramês consolidado (Itaú + Santander): curva prevista acumulada e posição realizada atual
+            </p>
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={forecast.daySeries}>
+              <LineChart data={forecast.daySeries} margin={{ left: 8, right: 8, top: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
                 <XAxis dataKey="day" stroke="#94a3b8" />
-                <YAxis stroke="#94a3b8" tickFormatter={formatCurrencyBRL} />
+                <YAxis
+                  stroke="#94a3b8"
+                  tickFormatter={formatCurrencyBRL}
+                  width={80}
+                />
                 <Tooltip
                   formatter={(v: number) => formatCurrencyBRL(v)}
                   contentStyle={{ backgroundColor: "#020617", borderColor: "#1f2937" }}
