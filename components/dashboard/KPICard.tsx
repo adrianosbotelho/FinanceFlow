@@ -13,13 +13,21 @@ export function KPICard({
   variant = "currency",
   delta,
 }: KPICardProps) {
+  const numericValue = value ?? 0;
   const isPositive = delta !== null && delta !== undefined && delta >= 0;
   const isNegative = delta !== null && delta !== undefined && delta < 0;
 
   const formattedValue =
     variant === "currency"
-      ? formatCurrencyBRL(value ?? 0)
-      : formatPercentage(value ?? 0);
+      ? formatCurrencyBRL(numericValue)
+      : formatPercentage(numericValue);
+
+  const valueClass =
+    isPositive
+      ? "text-emerald-400"
+      : isNegative
+        ? "text-rose-400"
+        : "text-slate-50";
 
   const deltaLabel =
     delta === null || delta === undefined
@@ -31,7 +39,7 @@ export function KPICard({
       <span className="text-sm font-medium text-slate-500">
         {label}
       </span>
-      <span className="text-2xl font-extrabold tracking-tight text-slate-50">
+      <span className={`text-2xl font-extrabold tracking-tight ${valueClass}`}>
         {formattedValue}
       </span>
       <div className="mt-auto flex items-center gap-1 text-xs">
