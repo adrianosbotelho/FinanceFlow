@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Investment, InvestmentGoal, MonthlyReturn } from "../../types";
+import { Investment, MonthlyInvestmentGoal, MonthlyReturn } from "../../types";
 import { formatCurrencyBRL, monthNameFull } from "../../lib/formatters";
 
 type GoalRow = {
@@ -15,7 +15,7 @@ type GoalRow = {
 export function GoalsPageClient() {
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [returns, setReturns] = useState<MonthlyReturn[]>([]);
-  const [goals, setGoals] = useState<InvestmentGoal[]>([]);
+  const [goals, setGoals] = useState<MonthlyInvestmentGoal[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -35,7 +35,10 @@ export function GoalsPageClient() {
         const [invRes, retRes, goalRes] = await Promise.all([
           fetch("/api/investments", { cache: "no-store" }),
           fetch(`/api/returns?year=${currentYear}`, { cache: "no-store" }),
-          fetch("/api/investment-goals", { cache: "no-store" }),
+          fetch(
+            `/api/investment-goals-monthly?year=${currentYear}&month=${currentMonth}`,
+            { cache: "no-store" },
+          ),
         ]);
         if (!invRes.ok || !retRes.ok || !goalRes.ok) {
           const msg = await goalRes.json().catch(() => null);
@@ -60,7 +63,7 @@ export function GoalsPageClient() {
       }
     };
     void load();
-  }, [currentYear]);
+  }, [currentYear, currentMonth]);
 
   const goalRows = useMemo<GoalRow[]>(() => {
     const goalMap = new Map(goals.map((g) => [g.investment_id, Number(g.monthly_target)]));
@@ -92,11 +95,13 @@ export function GoalsPageClient() {
     }
     try {
       setSaving(true);
-      const res = await fetch("/api/investment-goals", {
+      const res = await fetch("/api/investment-goals-monthly", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           investment_id: investmentId,
+          year: currentYear,
+          month: currentMonth,
           monthly_target: target,
         }),
       });
@@ -104,7 +109,7 @@ export function GoalsPageClient() {
         const err = await res.json().catch(() => null);
         throw new Error(err?.error ?? "Erro ao salvar meta.");
       }
-      const saved: InvestmentGoal = await res.json();
+      const saved: MonthlyInvestmentGoal = await res.json();
       setGoals((prev) => {
         const map = new Map(prev.map((g) => [g.investment_id, g]));
         map.set(saved.investment_id, saved);
@@ -128,8 +133,14 @@ export function GoalsPageClient() {
   const handleDelete = async (row: GoalRow) => {
     const ok = window.confirm(`Excluir meta de ${row.investment.name}?`);
     if (!ok) return;
-    const res = await fetch(`/api/investment-goals/${row.investment.id}`, {
+    const res = await fetch("/api/investment-goals-monthly", {
       method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        investment_id: row.investment.id,
+        year: currentYear,
+        month: currentMonth,
+      }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => null);
@@ -143,6 +154,31 @@ export function GoalsPageClient() {
     }
   };
 
+  const handleRepeatNextMonth = async () => {
+    const fromYear = currentYear;
+    const fromMonth = currentMonth;
+    const nextDate = new Date(currentYear, currentMonth, 1);
+    const toYear = nextDate.getFullYear();
+    const toMonth = nextDate.getMonth() + 1;
+    const ok = window.confirm(
+      `Repetir todas as metas de ${monthNameFull(fromMonth)}/${fromYear} para ${monthNameFull(toMonth)}/${toYear}?`,
+    );
+    if (!ok) return;
+    const res = await fetch("/api/investment-goals-monthly/repeat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fromYear, fromMonth, toYear, toMonth }),
+    });
+    const payload = await res.json().catch(() => null);
+    if (!res.ok) {
+      alert(payload?.error ?? "Erro ao repetir metas.");
+      return;
+    }
+    alert(
+      `Metas repetidas para ${monthNameFull(toMonth)}/${toYear}. Total: ${payload?.copied ?? 0}.`,
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -151,6 +187,13 @@ export function GoalsPageClient() {
           Defina uma meta mensal de rendimento para cada CDB. Ex.: Itaú R$ 800 e
           Santander R$ 1.800.
         </p>
+        <button
+          type="button"
+          onClick={() => void handleRepeatNextMonth()}
+          className="mt-3 rounded-md border border-cyan-700/60 bg-cyan-900/20 px-3 py-1.5 text-xs font-medium text-cyan-200 hover:bg-cyan-900/35"
+        >
+          Repetir metas para o mês seguinte
+        </button>
       </div>
 
       {error && <p className="text-sm text-rose-400">{error}</p>}

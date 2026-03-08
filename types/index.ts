@@ -24,6 +24,15 @@ export interface InvestmentGoal {
   updated_at?: string;
 }
 
+export interface MonthlyInvestmentGoal {
+  investment_id: string;
+  year: number;
+  month: number;
+  monthly_target: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface MonthlyClosure {
   year: number;
   month: number;
