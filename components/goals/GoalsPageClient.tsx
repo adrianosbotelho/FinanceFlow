@@ -155,6 +155,73 @@ export function GoalsPageClient() {
 
       {error && <p className="text-sm text-rose-400">{error}</p>}
 
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold text-slate-200">
+          KPIs por investimento ({monthNameFull(currentMonth)}/{currentYear})
+        </h3>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {loading ? (
+            <div className="rounded-xl border border-slate-800 bg-surface/80 p-4 text-sm text-slate-400">
+              Carregando KPIs...
+            </div>
+          ) : goalRows.length === 0 ? (
+            <div className="rounded-xl border border-slate-800 bg-surface/80 p-4 text-sm text-slate-400">
+              Sem investimentos CDB para exibir KPIs.
+            </div>
+          ) : (
+            goalRows.map((row) => (
+              <article
+                key={`kpi-${row.investment.id}`}
+                className="rounded-xl border border-slate-800 bg-surface/80 p-4"
+              >
+                <p className="text-xs text-slate-400">{row.investment.institution}</p>
+                <h4 className="text-sm font-semibold text-slate-100">
+                  {row.investment.name}
+                </h4>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <p className="text-slate-400">Meta</p>
+                    <p className="font-semibold text-cyan-300">
+                      {formatCurrencyBRL(row.target)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-slate-400">Realizado</p>
+                    <p className="font-semibold text-emerald-300">
+                      {formatCurrencyBRL(row.realized)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-slate-400">Progresso</p>
+                    <p className="font-semibold text-slate-100">
+                      {row.target > 0 ? `${row.progressPct.toFixed(1)}%` : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-slate-400">Gap</p>
+                    <p
+                      className={`font-semibold ${
+                        row.gap > 0 ? "text-amber-300" : "text-emerald-300"
+                      }`}
+                    >
+                      {formatCurrencyBRL(row.gap)}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 h-2 w-full overflow-hidden rounded bg-slate-800">
+                  <div
+                    className={`h-2 ${
+                      row.progressPct >= 100 ? "bg-emerald-500" : "bg-cyan-500"
+                    }`}
+                    style={{ width: `${Math.max(0, Math.min(row.progressPct, 100))}%` }}
+                  />
+                </div>
+              </article>
+            ))
+          )}
+        </div>
+      </section>
+
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="rounded-xl border border-slate-800 bg-surface/80 p-4">
           <h3 className="mb-2 text-sm font-semibold text-slate-200">
