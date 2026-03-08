@@ -13,6 +13,7 @@ type ReturnRow = {
   investmentId: string;
   isFii: boolean;
   isAggregated: boolean;
+  sourceCount: number;
 };
 
 interface ReturnsPageClientProps {}
@@ -73,7 +74,8 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
   }, []);
 
   const rows: ReturnRow[] = useMemo(() => {
-    const map = new Map<string, ReturnRow>();
+    type MutableRow = ReturnRow & { sourceIds: Set<string> };
+    const map = new Map<string, MutableRow>();
     const byId = new Map<string, Investment>();
     for (const inv of investments) {
       byId.set(inv.id, inv);
@@ -102,20 +104,28 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
       const existing = map.get(key);
       if (existing) {
         existing.income += incomeValue;
+        existing.sourceIds.add(inv.id);
+        existing.sourceCount = existing.sourceIds.size;
+        existing.isAggregated = existing.sourceCount > 1;
+        existing.investmentId = Array.from(existing.sourceIds)[0];
       } else {
         map.set(key, {
           year: ret.year,
           month: ret.month,
           label,
           income: incomeValue,
-          investmentId: isFii ? "__FII_GROUP__" : inv.id,
+          investmentId: inv.id,
           isFii,
-          isAggregated: isFii,
+          isAggregated: false,
+          sourceCount: 1,
+          sourceIds: new Set([inv.id]),
         });
       }
     }
 
-    return Array.from(map.values()).sort(
+    return Array.from(map.values())
+      .map(({ sourceIds: _sourceIds, ...row }) => row)
+      .sort(
       (a, b) =>
         a.year - b.year || a.month - b.month || a.label.localeCompare(b.label),
     );
@@ -446,7 +456,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                           {isPeriodClosed(row.year, row.month)
                             ? "Fechado"
                             : row.isAggregated
-                              ? "Agrupado"
+                              ? "Consolidado"
                             : "Editar"}
                         </button>
                       </td>
