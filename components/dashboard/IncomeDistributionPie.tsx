@@ -14,7 +14,7 @@ interface Props {
   distribution: IncomeDistribution;
 }
 
-const COLORS = ["#6366F1", "#22C55E", "#F59E0B"];
+const COLORS = ["#F97316", "#EF4444", "#22C55E"];
 
 export function IncomeDistributionPie({ distribution }: Props) {
   const data = [
@@ -76,7 +76,7 @@ export function IncomeDistributionPie({ distribution }: Props) {
         <div className="w-full space-y-3 text-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="h-3 w-3 rounded-full bg-[#6366F1]" />
+              <span className="h-3 w-3 rounded-full bg-[#F97316]" />
               <span>CDB Itaú</span>
             </div>
             <span className="font-bold">
@@ -85,7 +85,7 @@ export function IncomeDistributionPie({ distribution }: Props) {
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="h-3 w-3 rounded-full bg-[#22C55E]" />
+              <span className="h-3 w-3 rounded-full bg-[#EF4444]" />
               <span>CDB Santander</span>
             </div>
             <span className="font-bold">
@@ -94,7 +94,7 @@ export function IncomeDistributionPie({ distribution }: Props) {
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="h-3 w-3 rounded-full bg-amber-500" />
+              <span className="h-3 w-3 rounded-full bg-[#22C55E]" />
               <span>Dividendos de FIIs</span>
             </div>
             <span className="font-bold">

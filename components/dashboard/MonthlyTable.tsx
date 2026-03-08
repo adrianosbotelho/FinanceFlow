@@ -81,9 +81,9 @@ export function MonthlyTable({ data }: Props) {
           <thead>
             <tr className="bg-slate-900/80 text-xs uppercase tracking-wider text-slate-400">
               <th className="px-6 py-4 font-bold">Mês</th>
-              <th className="px-6 py-4 font-bold">CDB Itaú</th>
-              <th className="px-6 py-4 font-bold">CDB Santander</th>
-              <th className="px-6 py-4 font-bold">Dividendos FIIs</th>
+              <th className="px-6 py-4 font-bold text-orange-300">CDB Itaú</th>
+              <th className="px-6 py-4 font-bold text-rose-300">CDB Santander</th>
+              <th className="px-6 py-4 font-bold text-emerald-300">Dividendos FIIs</th>
               <th className="px-6 py-4 font-bold">Total mensal</th>
               <th className="px-6 py-4 font-bold">Var (M/M)</th>
               <th className="px-6 py-4 font-bold">Var (A/A)</th>
@@ -98,13 +98,13 @@ export function MonthlyTable({ data }: Props) {
                 <td className="px-6 py-4 font-medium text-slate-100">
                   {monthLabel(m.month)} {m.year}
                 </td>
-                <td className="px-6 py-4">
+                <td className="px-6 py-4 font-medium text-orange-300">
                   {formatCurrencyBRL(m.cdb_itau)}
                 </td>
-                <td className="px-6 py-4">
+                <td className="px-6 py-4 font-medium text-rose-300">
                   {formatCurrencyBRL(m.cdb_other)}
                 </td>
-                <td className="px-6 py-4">
+                <td className="px-6 py-4 font-medium text-emerald-300">
                   {formatCurrencyBRL(m.fii_dividends)}
                 </td>
                 <td className="px-6 py-4 font-bold">
