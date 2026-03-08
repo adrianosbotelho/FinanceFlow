@@ -3,6 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { Investment, MonthlyInvestmentGoal, MonthlyReturn } from "../../types";
 import { formatCurrencyBRL, monthNameFull } from "../../lib/formatters";
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 type GoalRow = {
   investment: Investment;
@@ -10,6 +20,12 @@ type GoalRow = {
   realized: number;
   progressPct: number;
   gap: number;
+};
+
+type GoalTrendPoint = {
+  month: number;
+  realized: number;
+  target: number;
 };
 
 export function GoalsPageClient() {
@@ -84,6 +100,43 @@ export function GoalsPageClient() {
         return { investment, target, realized, progressPct, gap };
       });
   }, [goals, investments, returns, currentMonth, currentYear]);
+
+  const monthlyTrends = useMemo(() => {
+    return goalRows.map((row) => {
+      const series: GoalTrendPoint[] = Array.from({ length: 12 }, (_, idx) => {
+        const month = idx + 1;
+        const realized = returns
+          .filter(
+            (r) =>
+              r.investment_id === row.investment.id &&
+              Number(r.year) === currentYear &&
+              Number(r.month) === month,
+          )
+          .reduce((acc, r) => acc + Number(r.income_value ?? 0), 0);
+        return {
+          month,
+          realized,
+          target: row.target,
+        };
+      });
+
+      const latest = series[currentMonth - 1] ?? { month: currentMonth, realized: 0, target: row.target };
+      const ratio = latest.target > 0 ? latest.realized / latest.target : 0;
+      const status =
+        latest.target <= 0
+          ? "Sem meta"
+          : ratio >= 1
+            ? "Meta atingida"
+            : ratio >= 0.8
+              ? "Perto da meta"
+              : "Abaixo da meta";
+      return {
+        row,
+        series,
+        status,
+      };
+    });
+  }, [goalRows, returns, currentYear, currentMonth]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -258,6 +311,90 @@ export function GoalsPageClient() {
                     }`}
                     style={{ width: `${Math.max(0, Math.min(row.progressPct, 100))}%` }}
                   />
+                </div>
+              </article>
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold text-slate-200">
+          Direção de alcance da meta por lançamento
+        </h3>
+        <div className="grid gap-4 xl:grid-cols-2">
+          {loading ? (
+            <div className="rounded-xl border border-slate-800 bg-surface/80 p-4 text-sm text-slate-400">
+              Carregando gráficos...
+            </div>
+          ) : monthlyTrends.length === 0 ? (
+            <div className="rounded-xl border border-slate-800 bg-surface/80 p-4 text-sm text-slate-400">
+              Sem dados para gráfico.
+            </div>
+          ) : (
+            monthlyTrends.map(({ row, series, status }) => (
+              <article
+                key={`trend-${row.investment.id}`}
+                className="rounded-xl border border-slate-800 bg-surface/80 p-4"
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs text-slate-400">{row.investment.institution}</p>
+                    <h4 className="text-sm font-semibold text-slate-100">
+                      {row.investment.name}
+                    </h4>
+                  </div>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                      status === "Meta atingida"
+                        ? "bg-emerald-900/40 text-emerald-300"
+                        : status === "Perto da meta"
+                          ? "bg-cyan-900/40 text-cyan-300"
+                          : status === "Abaixo da meta"
+                            ? "bg-amber-900/40 text-amber-300"
+                            : "bg-slate-800 text-slate-300"
+                    }`}
+                  >
+                    {status}
+                  </span>
+                </div>
+                <div className="h-52">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={series} margin={{ top: 8, right: 8, left: 8 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                      <XAxis dataKey="month" stroke="#94a3b8" />
+                      <YAxis
+                        stroke="#94a3b8"
+                        tickFormatter={formatCurrencyBRL}
+                        width={80}
+                      />
+                      <Tooltip
+                        formatter={(value: number) => formatCurrencyBRL(value)}
+                        contentStyle={{
+                          backgroundColor: "#020617",
+                          borderColor: "#1f2937",
+                        }}
+                      />
+                      <Legend />
+                      <Line
+                        type="monotone"
+                        dataKey="realized"
+                        name="Realizado"
+                        stroke="#22c55e"
+                        strokeWidth={2}
+                        dot={{ r: 2 }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="target"
+                        name="Meta"
+                        stroke="#22d3ee"
+                        strokeWidth={2}
+                        dot={false}
+                        strokeDasharray="6 3"
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
                 </div>
               </article>
             ))
