@@ -1,0 +1,283 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { Investment, InvestmentGoal, MonthlyReturn } from "../../types";
+import { formatCurrencyBRL, monthNameFull } from "../../lib/formatters";
+
+type GoalRow = {
+  investment: Investment;
+  target: number;
+  realized: number;
+  progressPct: number;
+  gap: number;
+};
+
+export function GoalsPageClient() {
+  const [investments, setInvestments] = useState<Investment[]>([]);
+  const [returns, setReturns] = useState<MonthlyReturn[]>([]);
+  const [goals, setGoals] = useState<InvestmentGoal[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [editingInvestmentId, setEditingInvestmentId] = useState<string | null>(null);
+
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth() + 1;
+
+  const [investmentId, setInvestmentId] = useState("");
+  const [monthlyTarget, setMonthlyTarget] = useState("");
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const [invRes, retRes, goalRes] = await Promise.all([
+          fetch("/api/investments", { cache: "no-store" }),
+          fetch(`/api/returns?year=${currentYear}`, { cache: "no-store" }),
+          fetch("/api/investment-goals", { cache: "no-store" }),
+        ]);
+        if (!invRes.ok || !retRes.ok || !goalRes.ok) {
+          const msg = await goalRes.json().catch(() => null);
+          throw new Error(msg?.error ?? "Erro ao carregar metas.");
+        }
+        const [invData, retData, goalData] = await Promise.all([
+          invRes.json(),
+          retRes.json(),
+          goalRes.json(),
+        ]);
+        const invList: Investment[] = Array.isArray(invData) ? invData : [];
+        setInvestments(invList);
+        setReturns(Array.isArray(retData) ? retData : []);
+        setGoals(Array.isArray(goalData) ? goalData : []);
+        if (invList.length > 0) {
+          setInvestmentId(invList[0].id);
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Erro ao carregar metas.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    void load();
+  }, [currentYear]);
+
+  const goalRows = useMemo<GoalRow[]>(() => {
+    const goalMap = new Map(goals.map((g) => [g.investment_id, Number(g.monthly_target)]));
+    return investments
+      .filter((i) => i.type === "CDB")
+      .map((investment) => {
+        const target = goalMap.get(investment.id) ?? 0;
+        const realized = returns
+          .filter(
+            (r) =>
+              r.investment_id === investment.id &&
+              Number(r.month) === currentMonth &&
+              Number(r.year) === currentYear,
+          )
+          .reduce((acc, r) => acc + Number(r.income_value ?? 0), 0);
+        const progressPct = target > 0 ? (realized / target) * 100 : 0;
+        const gap = target - realized;
+        return { investment, target, realized, progressPct, gap };
+      });
+  }, [goals, investments, returns, currentMonth, currentYear]);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const target = Number(monthlyTarget.replace(",", "."));
+    if (!investmentId) return;
+    if (!Number.isFinite(target) || target < 0) {
+      alert("Meta mensal inválida.");
+      return;
+    }
+    try {
+      setSaving(true);
+      const res = await fetch("/api/investment-goals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          investment_id: investmentId,
+          monthly_target: target,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error ?? "Erro ao salvar meta.");
+      }
+      const saved: InvestmentGoal = await res.json();
+      setGoals((prev) => {
+        const map = new Map(prev.map((g) => [g.investment_id, g]));
+        map.set(saved.investment_id, saved);
+        return Array.from(map.values());
+      });
+      setEditingInvestmentId(null);
+      setMonthlyTarget("");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Erro ao salvar meta.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEdit = (row: GoalRow) => {
+    setEditingInvestmentId(row.investment.id);
+    setInvestmentId(row.investment.id);
+    setMonthlyTarget(String(row.target || ""));
+  };
+
+  const handleDelete = async (row: GoalRow) => {
+    const ok = window.confirm(`Excluir meta de ${row.investment.name}?`);
+    if (!ok) return;
+    const res = await fetch(`/api/investment-goals/${row.investment.id}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      alert(err?.error ?? "Erro ao excluir meta.");
+      return;
+    }
+    setGoals((prev) => prev.filter((g) => g.investment_id !== row.investment.id));
+    if (editingInvestmentId === row.investment.id) {
+      setEditingInvestmentId(null);
+      setMonthlyTarget("");
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold text-slate-50">Metas por Lançamento</h2>
+        <p className="text-sm text-slate-400">
+          Defina uma meta mensal de rendimento para cada CDB. Ex.: Itaú R$ 800 e
+          Santander R$ 1.800.
+        </p>
+      </div>
+
+      {error && <p className="text-sm text-rose-400">{error}</p>}
+
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <div className="rounded-xl border border-slate-800 bg-surface/80 p-4">
+          <h3 className="mb-2 text-sm font-semibold text-slate-200">
+            Progresso no mês atual ({monthNameFull(currentMonth)}/{currentYear})
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-xs md:text-sm">
+              <thead className="border-b border-slate-800 text-slate-400">
+                <tr>
+                  <th className="px-2 py-2">Investimento</th>
+                  <th className="px-2 py-2">Meta mensal</th>
+                  <th className="px-2 py-2">Realizado</th>
+                  <th className="px-2 py-2">Progresso</th>
+                  <th className="px-2 py-2">Gap</th>
+                  <th className="px-2 py-2 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} className="px-2 py-4 text-center text-slate-400">
+                      Carregando metas...
+                    </td>
+                  </tr>
+                ) : goalRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-2 py-4 text-center text-slate-400">
+                      Nenhum CDB encontrado.
+                    </td>
+                  </tr>
+                ) : (
+                  goalRows.map((row) => (
+                    <tr
+                      key={row.investment.id}
+                      className="border-b border-slate-800/60 last:border-0"
+                    >
+                      <td className="px-2 py-2 text-slate-300">
+                        {row.investment.name} ({row.investment.institution})
+                      </td>
+                      <td className="px-2 py-2 text-cyan-300">
+                        {formatCurrencyBRL(row.target)}
+                      </td>
+                      <td className="px-2 py-2 text-emerald-300">
+                        {formatCurrencyBRL(row.realized)}
+                      </td>
+                      <td className="px-2 py-2 text-slate-200">
+                        {row.target > 0 ? `${row.progressPct.toFixed(1)}%` : "—"}
+                      </td>
+                      <td
+                        className={`px-2 py-2 ${
+                          row.gap > 0 ? "text-amber-300" : "text-emerald-300"
+                        }`}
+                      >
+                        {formatCurrencyBRL(row.gap)}
+                      </td>
+                      <td className="px-2 py-2 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleEdit(row)}
+                          className="rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-800"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDelete(row)}
+                          className="ml-2 rounded-md border border-rose-800/70 px-2 py-1 text-[11px] text-rose-200 hover:bg-rose-900/30"
+                        >
+                          Excluir
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <form
+          onSubmit={handleSave}
+          className="space-y-3 rounded-xl border border-slate-800 bg-surface/80 p-4"
+        >
+          <h3 className="text-sm font-semibold text-slate-200">
+            {editingInvestmentId ? "Editar meta" : "Nova meta"}
+          </h3>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-slate-300">Investimento (CDB)</label>
+            <select
+              value={investmentId}
+              onChange={(e) => setInvestmentId(e.target.value)}
+              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+            >
+              {investments
+                .filter((i) => i.type === "CDB")
+                .map((inv) => (
+                  <option key={inv.id} value={inv.id}>
+                    {inv.name} ({inv.institution})
+                  </option>
+                ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-slate-300">Meta mensal (R$)</label>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={monthlyTarget}
+              onChange={(e) => setMonthlyTarget(e.target.value)}
+              placeholder="800,00"
+              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+              required
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={saving}
+            className="inline-flex h-9 items-center justify-center rounded-lg bg-accent px-4 text-xs font-medium text-white shadow-sm hover:bg-accent-soft disabled:opacity-60"
+          >
+            {saving ? "Salvando..." : "Salvar meta"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}

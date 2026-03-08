@@ -17,6 +17,13 @@ export interface MonthlyReturn {
   income_value: number;
 }
 
+export interface InvestmentGoal {
+  investment_id: string;
+  monthly_target: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface MonthlyClosure {
   year: number;
   month: number;
