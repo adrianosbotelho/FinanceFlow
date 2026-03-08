@@ -45,6 +45,8 @@ export function InvestmentsPageClient() {
   const [editing, setEditing] = useState<Investment | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [forecast, setForecast] = useState<ForecastResponse | null>(null);
+  const [cdiScenario, setCdiScenario] = useState<string>("default");
+  const [customCdi, setCustomCdi] = useState<string>("");
 
   const loadInvestments = useCallback(async () => {
     try {
@@ -67,22 +69,38 @@ export function InvestmentsPageClient() {
   useEffect(() => {
     void loadInvestments();
   }, [loadInvestments]);
-  useEffect(() => {
-    const loadForecast = async () => {
-      try {
-        const year = new Date().getFullYear();
-        const res = await fetch(`/api/investments/forecast?year=${year}`, {
-          cache: "no-store",
-        });
-        if (!res.ok) return;
-        const data: ForecastResponse = await res.json();
-        setForecast(data);
-      } catch (_err) {
-        // no-op
+  const resolvedCdiRate = useMemo(() => {
+    if (cdiScenario === "custom") {
+      const parsed = Number(customCdi.replace(",", "."));
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    }
+    if (cdiScenario === "9") return 9;
+    if (cdiScenario === "10.5") return 10.5;
+    if (cdiScenario === "12") return 12;
+    return null;
+  }, [cdiScenario, customCdi]);
+
+  const loadForecast = useCallback(async () => {
+    try {
+      const year = new Date().getFullYear();
+      const params = new URLSearchParams({ year: String(year) });
+      if (resolvedCdiRate !== null) {
+        params.set("cdi_annual_rate", String(resolvedCdiRate));
       }
-    };
+      const res = await fetch(`/api/investments/forecast?${params.toString()}`, {
+        cache: "no-store",
+      });
+      if (!res.ok) return;
+      const data: ForecastResponse = await res.json();
+      setForecast(data);
+    } catch (_err) {
+      // no-op
+    }
+  }, [resolvedCdiRate]);
+
+  useEffect(() => {
     void loadForecast();
-  }, []);
+  }, [loadForecast]);
 
   const totalInvested = useMemo(
     () => investments.reduce((acc, inv) => acc + Number(inv.amount_invested ?? 0), 0),
@@ -135,17 +153,7 @@ export function InvestmentsPageClient() {
   const handleSaved = async () => {
     setEditing(null);
     await loadInvestments();
-    try {
-      const year = new Date().getFullYear();
-      const res = await fetch(`/api/investments/forecast?year=${year}`, {
-        cache: "no-store",
-      });
-      if (res.ok) {
-        setForecast(await res.json());
-      }
-    } catch (_err) {
-      // no-op
-    }
+    await loadForecast();
   };
 
   const handleDelete = async (inv: Investment) => {
@@ -257,10 +265,43 @@ export function InvestmentsPageClient() {
 
       {forecast && (
         <section className="space-y-4 rounded-xl border border-slate-800 bg-surface/80 p-4">
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-100">
+                Projeção CDB (100% CDI) vs Realizado
+              </h3>
+            </div>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] text-slate-400">Cenário CDI</label>
+                <select
+                  value={cdiScenario}
+                  onChange={(e) => setCdiScenario(e.target.value)}
+                  className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100"
+                >
+                  <option value="default">Atual (env)</option>
+                  <option value="9">9,00%</option>
+                  <option value="10.5">10,50%</option>
+                  <option value="12">12,00%</option>
+                  <option value="custom">Personalizado</option>
+                </select>
+              </div>
+              {cdiScenario === "custom" && (
+                <div className="flex flex-col gap-1">
+                  <label className="text-[11px] text-slate-400">CDI anual (%)</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={customCdi}
+                    onChange={(e) => setCustomCdi(e.target.value)}
+                    placeholder="10,65"
+                    className="w-24 rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
           <div>
-            <h3 className="text-sm font-semibold text-slate-100">
-              Projeção CDB (100% CDI) vs Realizado
-            </h3>
             <p className="text-xs text-slate-400">
               Mês atual: previsão {formatCurrencyBRL(forecast.kpis.monthForecast)} | realizado{" "}
               {formatCurrencyBRL(forecast.kpis.monthRealized)} | gap{" "}

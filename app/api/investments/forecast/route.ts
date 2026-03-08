@@ -45,7 +45,10 @@ function monthForecast(amountInvested: number, annualRatePct: number, businessDa
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const year = Number(searchParams.get("year") ?? new Date().getFullYear());
-  const cdiAnnualRatePct = Number(process.env.FINANCEFLOW_CDI_ANNUAL_RATE ?? 10.65);
+  const cdiFromQuery = Number(searchParams.get("cdi_annual_rate"));
+  const defaultCdi = Number(process.env.FINANCEFLOW_CDI_ANNUAL_RATE ?? 10.65);
+  const cdiAnnualRatePct =
+    Number.isFinite(cdiFromQuery) && cdiFromQuery > 0 ? cdiFromQuery : defaultCdi;
 
   const [{ data: investments, error: invError }, { data: returns, error: retError }] =
     await Promise.all([
