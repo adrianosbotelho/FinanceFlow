@@ -9,13 +9,16 @@ import { MonthlyTable } from "../components/dashboard/MonthlyTable";
 import { MonthOverMonthChart } from "../components/dashboard/MonthOverMonthChart";
 import { InsightsPanel } from "../components/dashboard/InsightsPanel";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 async function fetchDashboard(
   year: number,
   baseUrl: string
 ): Promise<DashboardPayload | null> {
-  const base = baseUrl;
-  const res = await fetch(`${base}/api/dashboard?year=${year}`, {
+  const res = await fetch(`${baseUrl}/api/dashboard?year=${year}`, {
     cache: "no-store",
+    next: { revalidate: 0 },
   });
   if (!res.ok) {
     return null;
