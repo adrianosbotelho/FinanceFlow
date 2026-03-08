@@ -12,6 +12,9 @@ import {
 import { buildKpis } from "../../../lib/calculations";
 import { monthLabel } from "../../../lib/formatters";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 function isItauInstitution(institution: string): boolean {
   const normalized = institution
     .normalize("NFD")
@@ -160,7 +163,13 @@ export async function GET(req: NextRequest) {
     alerts,
   };
 
-  return NextResponse.json(payload);
+  return NextResponse.json(payload, {
+    headers: {
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
+    },
+  });
 }
 
 function buildGoalProgress(kpis: DashboardPayload["kpis"]): GoalProgress {

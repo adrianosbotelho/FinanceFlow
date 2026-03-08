@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { supabase } from "../../../../lib/supabase";
 import { isMonthClosed } from "../../../../lib/monthly-closures";
 
@@ -52,6 +53,9 @@ export async function PUT(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  revalidatePath("/");
+  revalidatePath("/returns");
+  revalidatePath("/investments");
   return NextResponse.json(data);
 }
 
@@ -92,5 +96,8 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  revalidatePath("/");
+  revalidatePath("/returns");
+  revalidatePath("/investments");
   return NextResponse.json({ success: true });
 }

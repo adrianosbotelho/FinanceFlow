@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { supabase } from "../../../lib/supabase";
 import { InvestmentType } from "../../../types";
 
@@ -83,5 +84,8 @@ export async function POST(req: NextRequest) {
     console.error(error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+  revalidatePath("/");
+  revalidatePath("/investments");
+  revalidatePath("/returns");
   return NextResponse.json(data, { status: 201 });
 }
