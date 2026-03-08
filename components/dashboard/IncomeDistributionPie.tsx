@@ -14,7 +14,7 @@ interface Props {
   distribution: IncomeDistribution;
 }
 
-const COLORS = ["#6366F1", "#F97316", "#22C55E"];
+const COLORS = ["#6366F1", "#22C55E", "#F59E0B"];
 
 export function IncomeDistributionPie({ distribution }: Props) {
   const data = [
@@ -59,7 +59,10 @@ export function IncomeDistributionPie({ distribution }: Props) {
                 contentStyle={{
                   backgroundColor: "#020617",
                   borderColor: "#1f2937",
+                  borderRadius: 8,
                 }}
+                labelStyle={{ color: "#e2e8f0", fontWeight: 600 }}
+                itemStyle={{ color: "#e2e8f0", fontWeight: 600 }}
               />
             </PieChart>
           </ResponsiveContainer>
