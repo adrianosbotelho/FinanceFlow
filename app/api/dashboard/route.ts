@@ -144,7 +144,12 @@ export async function GET(req: NextRequest) {
       { itauCdb: 0, otherCdb: 0, fii: 0 },
     );
 
-  const insights: FinancialInsights = buildInsights(kpis, distribution);
+  const insights: FinancialInsights = buildInsights(
+    kpis,
+    distribution,
+    monthlySeries,
+    year,
+  );
   const goalProgress = buildGoalProgress(kpis);
   const alerts = buildConsistencyAlerts({
     year,
@@ -252,6 +257,8 @@ function buildConsistencyAlerts({
 function buildInsights(
   kpis: DashboardPayload["kpis"],
   distribution: IncomeDistribution,
+  monthlySeries: PassiveIncomeByMonth[],
+  year: number,
 ): FinancialInsights {
   const totalCdb = distribution.itauCdb + distribution.otherCdb;
   const totalFii = distribution.fii;
@@ -274,14 +281,124 @@ function buildInsights(
         ? "queda"
         : "estável";
 
-  const commentary = `Sua renda passiva está em ${trend}. A projeção anual é de aproximadamente R$ ${kpis.annualProjection.toFixed(
-    2,
-  )}.`;
+  const allOrdered = [...monthlySeries].sort(
+    (a, b) => a.year - b.year || a.month - b.month,
+  );
+  const histForModel = allOrdered.slice(-24);
+  const recentForVol = histForModel.slice(-6).map((m) => m.total);
+  const weightedBase = weightedMovingAverage(histForModel.map((m) => m.total));
+  const currentMonth = allOrdered.length
+    ? allOrdered[allOrdered.length - 1].month
+    : new Date().getMonth() + 1;
+  const nextMonth = currentMonth === 12 ? 1 : currentMonth + 1;
+  const seasonalityFactor = computeSeasonalityFactor(allOrdered, nextMonth);
+  const forecastNextMonth = Math.max(weightedBase * seasonalityFactor, 0);
+  const { stdDev, cvPercent } = summarizeVolatility(recentForVol);
+  const forecastConfidence = computeForecastConfidence(histForModel.length, cvPercent);
+  const bandScale = Math.max(0.05, (100 - forecastConfidence) / 100);
+  const rangeWidth = Math.max(stdDev, forecastNextMonth * bandScale);
+  const forecastRangeMin = Math.max(forecastNextMonth - rangeWidth, 0);
+  const forecastRangeMax = forecastNextMonth + rangeWidth;
+
+  const anomaly = detectAnomaly(allOrdered, year);
+
+  const commentary = anomaly.detected
+    ? `Alerta de anomalia no mês atual: ${anomaly.reason}. A previsão do próximo mês é de aproximadamente R$ ${forecastNextMonth.toFixed(2)}.`
+    : `Sua renda passiva está em ${trend}. A previsão do próximo mês é de aproximadamente R$ ${forecastNextMonth.toFixed(2)}.`;
 
   return {
     growthTrend: trend,
     bestSource,
     fiiToCdbRatio: ratio,
+    forecastNextMonth,
+    forecastRangeMin,
+    forecastRangeMax,
+    forecastConfidence,
+    seasonalityFactor,
+    volatilityPercent: cvPercent,
+    anomalyDetected: anomaly.detected,
+    anomalyReason: anomaly.reason,
     commentary,
   };
+}
+
+function weightedMovingAverage(values: number[]): number {
+  if (!values.length) return 0;
+  let weighted = 0;
+  let weightSum = 0;
+  for (let i = 0; i < values.length; i++) {
+    const weight = i + 1;
+    weighted += values[i] * weight;
+    weightSum += weight;
+  }
+  return weightSum > 0 ? weighted / weightSum : 0;
+}
+
+function computeSeasonalityFactor(
+  series: PassiveIncomeByMonth[],
+  month: number,
+): number {
+  if (!series.length) return 1;
+  const globalAvg =
+    series.reduce((acc, item) => acc + item.total, 0) / series.length;
+  if (globalAvg <= 0) return 1;
+  const sameMonth = series.filter((item) => item.month === month);
+  if (sameMonth.length < 2) return 1;
+  const sameMonthAvg =
+    sameMonth.reduce((acc, item) => acc + item.total, 0) / sameMonth.length;
+  const factor = sameMonthAvg / globalAvg;
+  return Math.max(0.7, Math.min(1.3, factor));
+}
+
+function summarizeVolatility(values: number[]): {
+  stdDev: number;
+  cvPercent: number;
+} {
+  if (!values.length) return { stdDev: 0, cvPercent: 0 };
+  const mean = values.reduce((acc, v) => acc + v, 0) / values.length;
+  const variance =
+    values.reduce((acc, v) => acc + Math.pow(v - mean, 2), 0) / values.length;
+  const stdDev = Math.sqrt(variance);
+  const cvPercent = mean > 0 ? (stdDev / mean) * 100 : 0;
+  return {
+    stdDev,
+    cvPercent: Number.isFinite(cvPercent) ? cvPercent : 0,
+  };
+}
+
+function computeForecastConfidence(sampleSize: number, cvPercent: number): number {
+  const samplePenalty = Math.max(0, 10 - sampleSize) * 3;
+  const raw = 96 - cvPercent - samplePenalty;
+  return Math.max(35, Math.min(95, raw));
+}
+
+function detectAnomaly(
+  series: PassiveIncomeByMonth[],
+  year: number,
+): { detected: boolean; reason: string | null } {
+  const yearSeries = series.filter((item) => item.year === year);
+  if (yearSeries.length < 2) return { detected: false, reason: null };
+  const current = yearSeries[yearSeries.length - 1];
+  const baseline = series
+    .filter((item) => item.year < current.year || item.month < current.month)
+    .slice(-6)
+    .map((item) => item.total);
+  if (baseline.length < 3) return { detected: false, reason: null };
+  const { stdDev } = summarizeVolatility(baseline);
+  if (stdDev <= 0) return { detected: false, reason: null };
+  const mean = baseline.reduce((acc, v) => acc + v, 0) / baseline.length;
+  const zScore = (current.total - mean) / stdDev;
+  if (zScore <= -2) {
+    return {
+      detected: true,
+      reason: "queda fora do padrão histórico recente",
+    };
+  }
+  if (zScore >= 2) {
+    return {
+      detected: true,
+      reason: "alta fora do padrão histórico recente",
+    };
+  }
+  return { detected: false, reason: null };
 }

@@ -95,6 +95,14 @@ export interface FinancialInsights {
   growthTrend: string;
   bestSource: "CDB_ITAU" | "CDB_OTHER" | "FII";
   fiiToCdbRatio: number;
+  forecastNextMonth: number;
+  forecastRangeMin: number;
+  forecastRangeMax: number;
+  forecastConfidence: number;
+  seasonalityFactor: number;
+  volatilityPercent: number;
+  anomalyDetected: boolean;
+  anomalyReason: string | null;
   commentary: string;
 }
 

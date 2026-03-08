@@ -7,7 +7,6 @@ import { YoYLineChart } from "../components/dashboard/YoYLineChart";
 import { IncomeDistributionPie } from "../components/dashboard/IncomeDistributionPie";
 import { MonthlyTable } from "../components/dashboard/MonthlyTable";
 import { MonthOverMonthChart } from "../components/dashboard/MonthOverMonthChart";
-import { InsightsPanel } from "../components/dashboard/InsightsPanel";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -74,15 +73,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         <IncomeDistributionPie distribution={data.distribution} />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <MonthlyTable data={data.monthlySeries} />
-        <InsightsPanel
-          kpis={data.kpis}
-          insights={data.insights}
-          goalProgress={data.goalProgress}
-          alerts={data.alerts}
-        />
-      </div>
+      <MonthlyTable data={data.monthlySeries} />
     </div>
   );
 }

@@ -52,6 +52,47 @@ export function InsightsPanel({ kpis, insights, goalProgress, alerts }: Props) {
         </li>
         <li>
           <span className="font-medium text-slate-100">
+            Previsão do próximo mês:
+          </span>{" "}
+          {formatCurrencyBRL(insights.forecastNextMonth)}
+        </li>
+        <li>
+          <span className="font-medium text-slate-100">
+            Faixa prevista:
+          </span>{" "}
+          {formatCurrencyBRL(insights.forecastRangeMin)} a{" "}
+          {formatCurrencyBRL(insights.forecastRangeMax)}
+        </li>
+        <li>
+          <span className="font-medium text-slate-100">
+            Confiança da previsão:
+          </span>{" "}
+          {formatPercentage(insights.forecastConfidence)}
+        </li>
+        <li>
+          <span className="font-medium text-slate-100">
+            Sazonalidade esperada:
+          </span>{" "}
+          {insights.seasonalityFactor.toFixed(2)}x
+        </li>
+        <li>
+          <span className="font-medium text-slate-100">
+            Volatilidade recente:
+          </span>{" "}
+          {formatPercentage(insights.volatilityPercent)}
+        </li>
+        <li>
+          <span className="font-medium text-slate-100">Anomalia detectada:</span>{" "}
+          {insights.anomalyDetected ? (
+            <span className="font-medium text-amber-300">
+              Sim ({insights.anomalyReason})
+            </span>
+          ) : (
+            <span className="text-emerald-300">Não</span>
+          )}
+        </li>
+        <li>
+          <span className="font-medium text-slate-100">
             Yield da carteira (12m):
           </span>{" "}
           {formatPercentage(kpis.portfolioYield)}
