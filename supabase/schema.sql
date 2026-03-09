@@ -80,3 +80,12 @@ create table if not exists investment_goals_monthly (
   updated_at timestamptz default now(),
   primary key (investment_id, year, month)
 );
+
+create table if not exists investment_goals_annual (
+  investment_id uuid not null references investments(id) on delete cascade,
+  year smallint not null,
+  annual_target numeric(15,2) not null check (annual_target >= 0),
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  primary key (investment_id, year)
+);

@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Investment, MonthlyInvestmentGoal, MonthlyReturn } from "../../types";
+import {
+  AnnualInvestmentGoal,
+  Investment,
+  MonthlyInvestmentGoal,
+  MonthlyReturn,
+} from "../../types";
 import { formatCurrencyBRL, monthNameFull } from "../../lib/formatters";
 import {
   CartesianGrid,
@@ -22,6 +27,14 @@ type GoalRow = {
   gap: number;
 };
 
+type AnnualGoalRow = {
+  investment: Investment;
+  target: number;
+  realized: number;
+  progressPct: number;
+  gap: number;
+};
+
 type GoalTrendPoint = {
   month: number;
   realized: number;
@@ -32,45 +45,60 @@ export function GoalsPageClient() {
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [returns, setReturns] = useState<MonthlyReturn[]>([]);
   const [goals, setGoals] = useState<MonthlyInvestmentGoal[]>([]);
+  const [annualGoals, setAnnualGoals] = useState<AnnualInvestmentGoal[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingAnnual, setSavingAnnual] = useState(false);
   const [editingInvestmentId, setEditingInvestmentId] = useState<string | null>(null);
+  const [editingAnnualInvestmentId, setEditingAnnualInvestmentId] = useState<string | null>(
+    null,
+  );
 
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth() + 1;
 
   const [investmentId, setInvestmentId] = useState("");
   const [monthlyTarget, setMonthlyTarget] = useState("");
+  const [annualInvestmentId, setAnnualInvestmentId] = useState("");
+  const [annualTarget, setAnnualTarget] = useState("");
 
   useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);
         setError(null);
-        const [invRes, retRes, goalRes] = await Promise.all([
+        const [invRes, retRes, goalRes, annualGoalRes] = await Promise.all([
           fetch("/api/investments", { cache: "no-store" }),
           fetch(`/api/returns?year=${currentYear}`, { cache: "no-store" }),
           fetch(
             `/api/investment-goals-monthly?year=${currentYear}&month=${currentMonth}`,
             { cache: "no-store" },
           ),
+          fetch(`/api/investment-goals-annual?year=${currentYear}`, {
+            cache: "no-store",
+          }),
         ]);
-        if (!invRes.ok || !retRes.ok || !goalRes.ok) {
-          const msg = await goalRes.json().catch(() => null);
+        if (!invRes.ok || !retRes.ok || !goalRes.ok || !annualGoalRes.ok) {
+          const failed = [invRes, retRes, goalRes, annualGoalRes].find((r) => !r.ok);
+          const msg = failed ? await failed.json().catch(() => null) : null;
           throw new Error(msg?.error ?? "Erro ao carregar metas.");
         }
-        const [invData, retData, goalData] = await Promise.all([
+        const [invData, retData, goalData, annualGoalData] = await Promise.all([
           invRes.json(),
           retRes.json(),
           goalRes.json(),
+          annualGoalRes.json(),
         ]);
         const invList: Investment[] = Array.isArray(invData) ? invData : [];
         setInvestments(invList);
         setReturns(Array.isArray(retData) ? retData : []);
         setGoals(Array.isArray(goalData) ? goalData : []);
-        if (invList.length > 0) {
-          setInvestmentId(invList[0].id);
+        setAnnualGoals(Array.isArray(annualGoalData) ? annualGoalData : []);
+        const cdbList = invList.filter((i) => i.type === "CDB");
+        if (cdbList.length > 0) {
+          setInvestmentId(cdbList[0].id);
+          setAnnualInvestmentId(cdbList[0].id);
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Erro ao carregar metas.");
@@ -100,6 +128,23 @@ export function GoalsPageClient() {
         return { investment, target, realized, progressPct, gap };
       });
   }, [goals, investments, returns, currentMonth, currentYear]);
+
+  const annualGoalRows = useMemo<AnnualGoalRow[]>(() => {
+    const goalMap = new Map(
+      annualGoals
+        .filter((g) => Number(g.year) === currentYear)
+        .map((g) => [g.investment_id, Number(g.annual_target)]),
+    );
+    return investments
+      .filter((i) => i.type === "CDB")
+      .map((investment) => {
+        const target = goalMap.get(investment.id) ?? 0;
+        const realized = Number(investment.amount_invested ?? 0);
+        const progressPct = target > 0 ? (realized / target) * 100 : 0;
+        const gap = target - realized;
+        return { investment, target, realized, progressPct, gap };
+      });
+  }, [annualGoals, investments, currentYear]);
 
   const monthlyTrends = useMemo(() => {
     return goalRows.map((row) => {
@@ -207,6 +252,86 @@ export function GoalsPageClient() {
     }
   };
 
+  const handleSaveAnnual = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const target = Number(annualTarget.replace(",", "."));
+    if (!annualInvestmentId) return;
+    if (!Number.isFinite(target) || target < 0) {
+      alert("Meta anual inválida.");
+      return;
+    }
+    try {
+      setSavingAnnual(true);
+      const res = await fetch("/api/investment-goals-annual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          investment_id: annualInvestmentId,
+          year: currentYear,
+          annual_target: target,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error ?? "Erro ao salvar meta anual.");
+      }
+      const saved: AnnualInvestmentGoal = await res.json();
+      setAnnualGoals((prev) => {
+        const filtered = prev.filter(
+          (g) =>
+            !(
+              g.investment_id === saved.investment_id &&
+              Number(g.year) === Number(saved.year)
+            ),
+        );
+        return [...filtered, saved];
+      });
+      setEditingAnnualInvestmentId(null);
+      setAnnualTarget("");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Erro ao salvar meta anual.");
+    } finally {
+      setSavingAnnual(false);
+    }
+  };
+
+  const handleEditAnnual = (row: AnnualGoalRow) => {
+    setEditingAnnualInvestmentId(row.investment.id);
+    setAnnualInvestmentId(row.investment.id);
+    setAnnualTarget(String(row.target || ""));
+  };
+
+  const handleDeleteAnnual = async (row: AnnualGoalRow) => {
+    const ok = window.confirm(`Excluir meta anual de ${row.investment.name}?`);
+    if (!ok) return;
+    const res = await fetch("/api/investment-goals-annual", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        investment_id: row.investment.id,
+        year: currentYear,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      alert(err?.error ?? "Erro ao excluir meta anual.");
+      return;
+    }
+    setAnnualGoals((prev) =>
+      prev.filter(
+        (g) =>
+          !(
+            g.investment_id === row.investment.id &&
+            Number(g.year) === Number(currentYear)
+          ),
+      ),
+    );
+    if (editingAnnualInvestmentId === row.investment.id) {
+      setEditingAnnualInvestmentId(null);
+      setAnnualTarget("");
+    }
+  };
+
   const handleRepeatNextMonth = async () => {
     const fromYear = currentYear;
     const fromMonth = currentMonth;
@@ -250,6 +375,143 @@ export function GoalsPageClient() {
       </div>
 
       {error && <p className="text-sm text-rose-400">{error}</p>}
+
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <section className="space-y-2">
+          <h3 className="text-sm font-semibold text-slate-200">
+            Meta anual de patrimônio por investimento ({currentYear})
+          </h3>
+          <p className="text-xs text-slate-400">
+            Realizado considera o valor atual da carteira (mesma base da página de
+            Investimentos).
+          </p>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {loading ? (
+              <div className="rounded-xl border border-slate-800 bg-surface/80 p-4 text-sm text-slate-400">
+                Carregando metas anuais...
+              </div>
+            ) : annualGoalRows.length === 0 ? (
+              <div className="rounded-xl border border-slate-800 bg-surface/80 p-4 text-sm text-slate-400">
+                Sem investimentos CDB para exibir metas anuais.
+              </div>
+            ) : (
+              annualGoalRows.map((row) => (
+                <article
+                  key={`annual-kpi-${row.investment.id}`}
+                  className="rounded-xl border border-slate-800 bg-surface/80 p-4"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs text-slate-400">{row.investment.institution}</p>
+                      <h4 className="text-sm font-semibold text-slate-100">
+                        {row.investment.name}
+                      </h4>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleEditAnnual(row)}
+                        className="rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-800"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteAnnual(row)}
+                        className="rounded-md border border-rose-800/70 px-2 py-1 text-[11px] text-rose-200 hover:bg-rose-900/30"
+                      >
+                        Excluir
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <p className="text-slate-400">Meta anual</p>
+                      <p className="font-semibold text-cyan-300">
+                        {formatCurrencyBRL(row.target)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-slate-400">Carteira atual</p>
+                      <p className="font-semibold text-emerald-300">
+                        {formatCurrencyBRL(row.realized)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-slate-400">Progresso</p>
+                      <p className="font-semibold text-slate-100">
+                        {row.target > 0 ? `${row.progressPct.toFixed(1)}%` : "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-slate-400">Gap</p>
+                      <p
+                        className={`font-semibold ${
+                          row.gap > 0 ? "text-amber-300" : "text-emerald-300"
+                        }`}
+                      >
+                        {formatCurrencyBRL(row.gap)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 h-2 w-full overflow-hidden rounded bg-slate-800">
+                    <div
+                      className={`h-2 ${
+                        row.progressPct >= 100 ? "bg-emerald-500" : "bg-cyan-500"
+                      }`}
+                      style={{ width: `${Math.max(0, Math.min(row.progressPct, 100))}%` }}
+                    />
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+        </section>
+
+        <form
+          onSubmit={handleSaveAnnual}
+          className="space-y-3 rounded-xl border border-slate-800 bg-surface/80 p-4"
+        >
+          <h3 className="text-sm font-semibold text-slate-200">
+            {editingAnnualInvestmentId ? "Editar meta anual" : "Nova meta anual"}
+          </h3>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-slate-300">Investimento (CDB)</label>
+            <select
+              value={annualInvestmentId}
+              onChange={(e) => setAnnualInvestmentId(e.target.value)}
+              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+            >
+              {investments
+                .filter((i) => i.type === "CDB")
+                .map((inv) => (
+                  <option key={inv.id} value={inv.id}>
+                    {inv.name} ({inv.institution})
+                  </option>
+                ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-slate-300">Meta anual (R$)</label>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={annualTarget}
+              onChange={(e) => setAnnualTarget(e.target.value)}
+              placeholder="100000,00"
+              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+              required
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={savingAnnual}
+            className="inline-flex h-9 items-center justify-center rounded-lg bg-accent px-4 text-xs font-medium text-white shadow-sm hover:bg-accent-soft disabled:opacity-60"
+          >
+            {savingAnnual ? "Salvando..." : "Salvar meta anual"}
+          </button>
+        </form>
+      </div>
 
       <section className="space-y-2">
         <h3 className="text-sm font-semibold text-slate-200">

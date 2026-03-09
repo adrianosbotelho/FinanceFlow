@@ -66,6 +66,7 @@ export async function GET() {
     runTableCheck("investments"),
     runTableCheck("monthly_returns"),
     runTableCheck("investment_goals_monthly"),
+    runTableCheck("investment_goals_annual"),
     runTableCheck("monthly_positions"),
     runTableCheck("monthly_macro"),
   ]);
