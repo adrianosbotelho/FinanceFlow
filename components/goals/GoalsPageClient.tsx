@@ -9,7 +9,10 @@ import {
 } from "../../types";
 import { formatCurrencyBRL, monthNameFull } from "../../lib/formatters";
 import {
+  Bar,
+  BarChart,
   CartesianGrid,
+  Cell,
   Legend,
   Line,
   LineChart,
@@ -39,6 +42,12 @@ type GoalTrendPoint = {
   month: number;
   realized: number;
   target: number;
+};
+
+type AnnualGoalChartPoint = {
+  label: string;
+  value: number;
+  fill: string;
 };
 
 export function GoalsPageClient() {
@@ -145,6 +154,29 @@ export function GoalsPageClient() {
         return { investment, target, realized, progressPct, gap };
       });
   }, [annualGoals, investments, currentYear]);
+
+  const annualTrends = useMemo(() => {
+    return annualGoalRows.map((row) => {
+      const series: AnnualGoalChartPoint[] = [
+        { label: "Atual", value: row.realized, fill: "#22c55e" },
+        { label: "Meta", value: row.target, fill: "#22d3ee" },
+      ];
+      const ratio = row.target > 0 ? row.realized / row.target : 0;
+      const status =
+        row.target <= 0
+          ? "Sem meta"
+          : ratio >= 1
+            ? "Meta atingida"
+            : ratio >= 0.8
+              ? "Perto da meta"
+              : "Abaixo da meta";
+      return {
+        row,
+        series,
+        status,
+      };
+    });
+  }, [annualGoalRows]);
 
   const monthlyTrends = useMemo(() => {
     return goalRows.map((row) => {
@@ -512,6 +544,80 @@ export function GoalsPageClient() {
           </button>
         </form>
       </div>
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold text-slate-200">
+          Direção de alcance da meta anual por lançamento
+        </h3>
+        <div className="grid gap-4 xl:grid-cols-2">
+          {loading ? (
+            <div className="rounded-xl border border-slate-800 bg-surface/80 p-4 text-sm text-slate-400">
+              Carregando gráficos anuais...
+            </div>
+          ) : annualTrends.length === 0 ? (
+            <div className="rounded-xl border border-slate-800 bg-surface/80 p-4 text-sm text-slate-400">
+              Sem dados para gráfico anual.
+            </div>
+          ) : (
+            annualTrends.map(({ row, series, status }) => (
+              <article
+                key={`annual-trend-${row.investment.id}`}
+                className="rounded-xl border border-slate-800 bg-surface/80 p-4"
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs text-slate-400">{row.investment.institution}</p>
+                    <h4 className="text-sm font-semibold text-slate-100">
+                      {row.investment.name}
+                    </h4>
+                  </div>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                      status === "Meta atingida"
+                        ? "bg-emerald-900/40 text-emerald-300"
+                        : status === "Perto da meta"
+                          ? "bg-cyan-900/40 text-cyan-300"
+                          : status === "Abaixo da meta"
+                            ? "bg-amber-900/40 text-amber-300"
+                            : "bg-slate-800 text-slate-300"
+                    }`}
+                  >
+                    {status}
+                  </span>
+                </div>
+                <div className="h-52">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={series} margin={{ top: 8, right: 8, left: 8 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                      <XAxis dataKey="label" stroke="#94a3b8" />
+                      <YAxis
+                        stroke="#94a3b8"
+                        tickFormatter={formatCurrencyBRL}
+                        width={80}
+                      />
+                      <Tooltip
+                        formatter={(value: number) => formatCurrencyBRL(value)}
+                        contentStyle={{
+                          backgroundColor: "#020617",
+                          borderColor: "#1f2937",
+                        }}
+                      />
+                      <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                        {series.map((entry) => (
+                          <Cell
+                            key={`${row.investment.id}-${entry.label}`}
+                            fill={entry.fill}
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </article>
+            ))
+          )}
+        </div>
+      </section>
 
       <section className="space-y-2">
         <h3 className="text-sm font-semibold text-slate-200">
