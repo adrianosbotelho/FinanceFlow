@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import http from "node:http";
+import https from "node:https";
 import pkg from "../../../package.json";
 import { supabase } from "../../../lib/supabase";
 import { HealthApiCheck, HealthCheckPayload, HealthTableCheck } from "../../../types";
@@ -213,16 +215,9 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function extractApiError(response: Response): Promise<string> {
-  let raw = "";
-  try {
-    raw = await response.text();
-  } catch {
-    return `HTTP ${response.status}`;
-  }
-
+function extractApiError(statusCode: number, raw: string): string {
   if (!raw) {
-    return `HTTP ${response.status}`;
+    return `HTTP ${statusCode}`;
   }
 
   try {
@@ -234,7 +229,7 @@ async function extractApiError(response: Response): Promise<string> {
           ? parsed.message
           : null;
     if (detail) {
-      return `HTTP ${response.status} - ${detail}`;
+      return `HTTP ${statusCode} - ${detail}`;
     }
   } catch {
     // body não era JSON, segue com texto bruto.
@@ -242,9 +237,59 @@ async function extractApiError(response: Response): Promise<string> {
 
   const compact = raw.replace(/\s+/g, " ").trim();
   if (!compact) {
-    return `HTTP ${response.status}`;
+    return `HTTP ${statusCode}`;
   }
-  return `HTTP ${response.status} - ${compact.slice(0, 160)}`;
+  return `HTTP ${statusCode} - ${compact.slice(0, 200)}`;
+}
+
+type HttpProbeResponse = {
+  statusCode: number | null;
+  latencyMs: number;
+  body: string;
+};
+
+async function httpProbeGet(url: string, timeoutMs: number): Promise<HttpProbeResponse> {
+  const parsed = new URL(url);
+  const client = parsed.protocol === "https:" ? https : http;
+  const startedAt = Date.now();
+
+  return new Promise((resolve, reject) => {
+    const req = client.request(
+      {
+        protocol: parsed.protocol,
+        hostname: parsed.hostname,
+        port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+        path: `${parsed.pathname}${parsed.search}`,
+        method: "GET",
+        headers: { Accept: "application/json" },
+        timeout: timeoutMs,
+      },
+      (res) => {
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => {
+          body += chunk;
+        });
+        res.on("end", () => {
+          resolve({
+            statusCode: res.statusCode ?? null,
+            latencyMs: Date.now() - startedAt,
+            body,
+          });
+        });
+      },
+    );
+
+    req.on("error", (error) => {
+      reject(error);
+    });
+
+    req.on("timeout", () => {
+      req.destroy(new Error("Timeout ao chamar endpoint"));
+    });
+
+    req.end();
+  });
 }
 
 async function runApiCheck(origin: string, config: ApiCheckConfig): Promise<HealthApiCheck> {
@@ -262,21 +307,14 @@ async function runApiCheck(origin: string, config: ApiCheckConfig): Promise<Heal
 
   let lastFailure: HealthApiCheck | null = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const start = Date.now();
-    const controller = new AbortController();
-    let timeout: ReturnType<typeof setTimeout> | null = null;
+    const startedAt = Date.now();
     try {
-      timeout = setTimeout(() => controller.abort(), timeoutMs);
-      const response = await fetch(url, {
-        method: "GET",
-        headers: { Accept: "application/json" },
-        cache: "no-store",
-        signal: controller.signal,
-      });
-      const latencyMs = Date.now() - start;
+      const response = await httpProbeGet(url, timeoutMs);
+      const latencyMs = response.latencyMs;
+      const statusCode = response.statusCode;
 
-      if (!response.ok) {
-        const error = await extractApiError(response);
+      if (!statusCode || statusCode >= 400) {
+        const error = extractApiError(statusCode ?? 0, response.body);
         lastFailure = {
           name: config.name,
           panel: config.panel,
@@ -284,11 +322,11 @@ async function runApiCheck(origin: string, config: ApiCheckConfig): Promise<Heal
           endpoint: resolvedEndpoint,
           method: "GET",
           status: "error",
-          httpStatus: response.status,
+          httpStatus: statusCode,
           latencyMs,
           error,
         };
-        const retryable = config.source === "internal" && response.status >= 500;
+        const retryable = config.source === "internal" && (statusCode ?? 0) >= 500;
         if (attempt < maxAttempts && retryable) {
           await sleep(150);
           continue;
@@ -298,7 +336,7 @@ async function runApiCheck(origin: string, config: ApiCheckConfig): Promise<Heal
 
       let payload: unknown = null;
       try {
-        payload = await response.json();
+        payload = response.body ? JSON.parse(response.body) : null;
       } catch {
         payload = null;
       }
@@ -311,7 +349,7 @@ async function runApiCheck(origin: string, config: ApiCheckConfig): Promise<Heal
           endpoint: resolvedEndpoint,
           method: "GET",
           status: "error",
-          httpStatus: response.status,
+          httpStatus: statusCode,
           latencyMs,
           error: "Payload fora do formato esperado",
         };
@@ -324,7 +362,7 @@ async function runApiCheck(origin: string, config: ApiCheckConfig): Promise<Heal
         endpoint: resolvedEndpoint,
         method: "GET",
         status: "ok",
-        httpStatus: response.status,
+        httpStatus: statusCode,
         latencyMs,
         error: null,
       };
@@ -337,7 +375,7 @@ async function runApiCheck(origin: string, config: ApiCheckConfig): Promise<Heal
         method: "GET",
         status: "error",
         httpStatus: null,
-        latencyMs: Date.now() - start,
+        latencyMs: Date.now() - startedAt,
         error: error instanceof Error ? error.message : "Erro ao chamar endpoint",
       };
       if (attempt < maxAttempts && config.source === "internal") {
@@ -345,8 +383,6 @@ async function runApiCheck(origin: string, config: ApiCheckConfig): Promise<Heal
         continue;
       }
       return lastFailure;
-    } finally {
-      if (timeout) clearTimeout(timeout);
     }
   }
 
