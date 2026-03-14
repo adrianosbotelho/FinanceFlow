@@ -191,6 +191,7 @@ export interface HealthTableCheck {
 export interface HealthApiCheck {
   name: string;
   panel: string;
+  source: "internal" | "external";
   endpoint: string;
   method: "GET";
   status: "ok" | "error";

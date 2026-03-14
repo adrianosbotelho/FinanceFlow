@@ -21,6 +21,7 @@ const OPTIONAL_ENV_KEYS = [
 type ApiCheckConfig = {
   name: string;
   panel: string;
+  source: "internal" | "external";
   endpoint: string;
   validate?: (payload: unknown) => boolean;
 };
@@ -59,65 +60,99 @@ async function runTableCheck(table: string): Promise<HealthTableCheck> {
   };
 }
 
-const API_CHECKS: ApiCheckConfig[] = [
+const INTERNAL_API_CHECKS: ApiCheckConfig[] = [
   {
     name: "Dashboard",
     panel: "Dashboard",
+    source: "internal",
     endpoint: "/api/dashboard",
     validate: (payload) => isRecord(payload) && isRecord(payload.kpis),
   },
   {
     name: "Investimentos",
     panel: "Investimentos",
+    source: "internal",
     endpoint: "/api/investments",
     validate: isArray,
   },
   {
     name: "Forecast CDB",
     panel: "Investimentos",
+    source: "internal",
     endpoint: "/api/investments/forecast",
     validate: (payload) => isRecord(payload) && isArray(payload.series),
   },
   {
     name: "Retornos",
     panel: "Retornos Mensais",
+    source: "internal",
     endpoint: "/api/returns",
     validate: isArray,
   },
   {
     name: "Fechamentos Mensais",
     panel: "Retornos Mensais",
+    source: "internal",
     endpoint: "/api/monthly-closures",
     validate: isArray,
   },
   {
     name: "Performance",
     panel: "Performance",
+    source: "internal",
     endpoint: "/api/performance",
     validate: (payload) => isRecord(payload) && isRecord(payload.kpis),
   },
   {
     name: "Metas Mensais",
     panel: "Metas",
+    source: "internal",
     endpoint: "/api/investment-goals-monthly",
     validate: isArray,
   },
   {
     name: "Metas Anuais",
     panel: "Metas",
+    source: "internal",
     endpoint: "/api/investment-goals-annual",
     validate: isArray,
   },
   {
     name: "Posições Mensais",
     panel: "Performance/Metas",
+    source: "internal",
     endpoint: "/api/monthly-positions",
     validate: isArray,
   },
   {
     name: "Macro Mensal",
     panel: "Performance",
+    source: "internal",
     endpoint: "/api/monthly-macro",
+    validate: isArray,
+  },
+];
+
+const EXTERNAL_API_CHECKS: ApiCheckConfig[] = [
+  {
+    name: "BCB CDI diário (SGS 12)",
+    panel: "Dashboard/Insights",
+    source: "external",
+    endpoint: "https://api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados/ultimos/5?formato=json",
+    validate: isArray,
+  },
+  {
+    name: "BCB Selic meta (SGS 432)",
+    panel: "Dashboard/Insights",
+    source: "external",
+    endpoint: "https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados/ultimos/90?formato=json",
+    validate: isArray,
+  },
+  {
+    name: "BCB IPCA 12m (SGS 13522)",
+    panel: "Dashboard/Insights",
+    source: "external",
+    endpoint: "https://api.bcb.gov.br/dados/serie/bcdata.sgs.13522/dados/ultimos/12?formato=json",
     validate: isArray,
   },
 ];
@@ -145,7 +180,12 @@ function endpointWithDefaultParams(endpoint: string): string {
 }
 
 async function runApiCheck(origin: string, config: ApiCheckConfig): Promise<HealthApiCheck> {
-  const url = `${origin}${endpointWithDefaultParams(config.endpoint)}`;
+  const resolvedEndpoint =
+    config.source === "internal"
+      ? endpointWithDefaultParams(config.endpoint)
+      : config.endpoint;
+  const url =
+    config.source === "internal" ? `${origin}${resolvedEndpoint}` : resolvedEndpoint;
   const start = Date.now();
   const controller = new AbortController();
   let timeout: ReturnType<typeof setTimeout> | null = null;
@@ -162,7 +202,8 @@ async function runApiCheck(origin: string, config: ApiCheckConfig): Promise<Heal
       return {
         name: config.name,
         panel: config.panel,
-        endpoint: config.endpoint,
+        source: config.source,
+        endpoint: resolvedEndpoint,
         method: "GET",
         status: "error",
         httpStatus: response.status,
@@ -182,7 +223,8 @@ async function runApiCheck(origin: string, config: ApiCheckConfig): Promise<Heal
       return {
         name: config.name,
         panel: config.panel,
-        endpoint: config.endpoint,
+        source: config.source,
+        endpoint: resolvedEndpoint,
         method: "GET",
         status: "error",
         httpStatus: response.status,
@@ -194,7 +236,8 @@ async function runApiCheck(origin: string, config: ApiCheckConfig): Promise<Heal
     return {
       name: config.name,
       panel: config.panel,
-      endpoint: config.endpoint,
+      source: config.source,
+      endpoint: resolvedEndpoint,
       method: "GET",
       status: "ok",
       httpStatus: response.status,
@@ -205,7 +248,8 @@ async function runApiCheck(origin: string, config: ApiCheckConfig): Promise<Heal
     return {
       name: config.name,
       panel: config.panel,
-      endpoint: config.endpoint,
+      source: config.source,
+      endpoint: resolvedEndpoint,
       method: "GET",
       status: "error",
       httpStatus: null,
@@ -244,7 +288,11 @@ export async function GET(req: Request) {
     runTableCheck("monthly_positions"),
     runTableCheck("monthly_macro"),
   ]);
-  const apiChecks = await Promise.all(API_CHECKS.map((check) => runApiCheck(origin, check)));
+  const apiChecks = await Promise.all(
+    [...INTERNAL_API_CHECKS, ...EXTERNAL_API_CHECKS].map((check) =>
+      runApiCheck(origin, check),
+    ),
+  );
 
   const dbStatus =
     !dbError && tableChecks.every((check) => check.status === "ok")
