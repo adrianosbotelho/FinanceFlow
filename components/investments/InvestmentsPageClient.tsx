@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Investment } from "../../types";
-import { formatCurrencyBRL, formatPercentage } from "../../lib/formatters";
+import { formatCurrencyBRL, formatPercentage, monthLabel } from "../../lib/formatters";
 import { publishDataSyncUpdate } from "../../lib/client-data-sync";
 import { InvestmentForm } from "../forms/InvestmentForm";
 import {
@@ -14,6 +14,7 @@ import {
   Tooltip,
   CartesianGrid,
   Legend,
+  ReferenceLine,
 } from "recharts";
 
 type ForecastResponse = {
@@ -363,7 +364,18 @@ export function InvestmentsPageClient() {
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={forecast.series} margin={{ left: 8, right: 8, top: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                  <XAxis dataKey="month" stroke="#94a3b8" />
+                  <ReferenceLine
+                    x={forecast.currentMonth}
+                    stroke="#f59e0b"
+                    strokeWidth={2}
+                    strokeDasharray="4 4"
+                    strokeOpacity={0.95}
+                  />
+                  <XAxis
+                    dataKey="month"
+                    stroke="#94a3b8"
+                    tickFormatter={(value) => monthLabel(Number(value))}
+                  />
                   <YAxis
                     stroke="#94a3b8"
                     tickFormatter={formatCurrencyBRL}
@@ -371,6 +383,7 @@ export function InvestmentsPageClient() {
                   />
                   <Tooltip
                     formatter={(v: number) => formatCurrencyBRL(v)}
+                    labelFormatter={(value) => `Mês: ${monthLabel(Number(value))}`}
                     contentStyle={{ backgroundColor: "#020617", borderColor: "#1f2937" }}
                   />
                   <Legend />
@@ -414,7 +427,18 @@ export function InvestmentsPageClient() {
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={item.series} margin={{ left: 8, right: 8, top: 8 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                      <XAxis dataKey="month" stroke="#94a3b8" />
+                      <ReferenceLine
+                        x={forecast.currentMonth}
+                        stroke="#f59e0b"
+                        strokeWidth={2}
+                        strokeDasharray="4 4"
+                        strokeOpacity={0.95}
+                      />
+                      <XAxis
+                        dataKey="month"
+                        stroke="#94a3b8"
+                        tickFormatter={(value) => monthLabel(Number(value))}
+                      />
                       <YAxis
                         stroke="#94a3b8"
                         tickFormatter={formatCurrencyBRL}
@@ -422,6 +446,7 @@ export function InvestmentsPageClient() {
                       />
                       <Tooltip
                         formatter={(v: number) => formatCurrencyBRL(v)}
+                        labelFormatter={(value) => `Mês: ${monthLabel(Number(value))}`}
                         contentStyle={{ backgroundColor: "#020617", borderColor: "#1f2937" }}
                       />
                       <Legend />

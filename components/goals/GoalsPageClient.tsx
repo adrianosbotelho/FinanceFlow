@@ -18,6 +18,7 @@ import {
   Line,
   LineChart,
   ReferenceLine,
+  ReferenceDot,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -55,6 +56,20 @@ type AnnualGoalChartPoint = {
   gap: number | null;
 };
 
+function countBusinessDaysRemainingInMonth(referenceDate: Date): number {
+  const year = referenceDate.getFullYear();
+  const month = referenceDate.getMonth();
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  let count = 0;
+  for (let day = referenceDate.getDate() + 1; day <= lastDay; day += 1) {
+    const weekday = new Date(year, month, day).getDay();
+    if (weekday >= 1 && weekday <= 5) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 export function GoalsPageClient() {
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [returns, setReturns] = useState<MonthlyReturn[]>([]);
@@ -74,6 +89,7 @@ export function GoalsPageClient() {
 
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth() + 1;
+  const businessDaysRemaining = countBusinessDaysRemainingInMonth(new Date());
 
   useEffect(() => {
     const load = async () => {
@@ -671,14 +687,28 @@ export function GoalsPageClient() {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={series} margin={{ top: 8, right: 20, left: 24, bottom: 8 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                      <ReferenceLine
+                        x={currentMonth}
+                        stroke="#f59e0b"
+                        strokeWidth={2}
+                        strokeDasharray="4 4"
+                        strokeOpacity={0.95}
+                        label={{
+                          value: "Mês atual",
+                          position: "top",
+                          fill: "#f59e0b",
+                          fontSize: 10,
+                        }}
+                      />
                       <XAxis
-                        dataKey="label"
+                        dataKey="month"
                         stroke="#94a3b8"
                         padding={{ left: 4, right: 12 }}
                         interval={0}
                         minTickGap={0}
                         tick={{ fontSize: 11 }}
                         tickMargin={6}
+                        tickFormatter={(value) => monthLabel(Number(value))}
                       />
                       <YAxis
                         stroke="#94a3b8"
@@ -697,7 +727,7 @@ export function GoalsPageClient() {
                           if (!Number.isFinite(numericValue)) return "—";
                           return formatCurrencyBRL(numericValue);
                         }}
-                        labelFormatter={(value) => `Mês: ${String(value)}`}
+                        labelFormatter={(value) => `Mês: ${monthLabel(Number(value))}`}
                         contentStyle={{
                           backgroundColor: "#020617",
                           borderColor: "#1f2937",
@@ -739,7 +769,7 @@ export function GoalsPageClient() {
         <h3 className="text-sm font-semibold text-slate-200">
           KPIs por investimento ({monthNameFull(currentMonth)}/{currentYear})
         </h3>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid w-full grid-cols-1 gap-4 lg:grid-cols-2">
           {loading ? (
             <div className="rounded-xl border border-slate-800 bg-surface/80 p-4 text-sm text-slate-400">
               Carregando KPIs...
@@ -752,7 +782,7 @@ export function GoalsPageClient() {
             goalRows.map((row) => (
               <article
                 key={`kpi-${row.investment.id}`}
-                className="rounded-xl border border-slate-800 bg-surface/80 p-4"
+                className="w-full rounded-xl border border-slate-800 bg-surface/80 p-4"
               >
                 <p className="text-xs text-slate-400">{row.investment.institution}</p>
                 <h4 className="text-sm font-semibold text-slate-100">
@@ -787,6 +817,31 @@ export function GoalsPageClient() {
                       {formatCurrencyBRL(row.gap)}
                     </p>
                   </div>
+                  <div className="col-span-2 mt-1 rounded-md border border-slate-700/70 bg-slate-900/30 p-2">
+                    <p className="text-slate-400">Necessário por dia útil (restante)</p>
+                    {row.gap <= 0 ? (
+                      <>
+                        <p className="font-semibold text-emerald-300">{formatCurrencyBRL(0)}</p>
+                        <p className="text-[11px] text-slate-500">Meta já atingida no mês.</p>
+                      </>
+                    ) : businessDaysRemaining > 0 ? (
+                      <>
+                        <p className="font-semibold text-amber-300">
+                          {formatCurrencyBRL(row.gap / businessDaysRemaining)}
+                        </p>
+                        <p className="text-[11px] text-slate-500">
+                          Gap dividido por {businessDaysRemaining} dia(s) útil(eis) restante(s).
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-semibold text-rose-300">—</p>
+                        <p className="text-[11px] text-slate-500">
+                          Não há dias úteis restantes neste mês.
+                        </p>
+                      </>
+                    )}
+                  </div>
                 </div>
                 <div className="mt-3 h-2 w-full overflow-hidden rounded bg-slate-800">
                   <div
@@ -816,80 +871,107 @@ export function GoalsPageClient() {
               Sem dados para gráfico.
             </div>
           ) : (
-            monthlyTrends.map(({ row, series, status }) => (
-              <article
-                key={`trend-${row.investment.id}`}
-                className="rounded-xl border border-slate-800 bg-surface/80 p-4"
-              >
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <div>
-                    <p className="text-xs text-slate-400">{row.investment.institution}</p>
-                    <h4 className="text-sm font-semibold text-slate-100">
-                      {row.investment.name}
-                    </h4>
+            monthlyTrends.map(({ row, series, status }) => {
+              const currentPoint = series.find((point) => point.month === currentMonth) ?? null;
+              return (
+                <article
+                  key={`trend-${row.investment.id}`}
+                  className="rounded-xl border border-slate-800 bg-surface/80 p-4"
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs text-slate-400">{row.investment.institution}</p>
+                      <h4 className="text-sm font-semibold text-slate-100">
+                        {row.investment.name}
+                      </h4>
+                    </div>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                        status === "Meta atingida"
+                          ? "bg-emerald-900/40 text-emerald-300"
+                          : status === "Perto da meta"
+                            ? "bg-cyan-900/40 text-cyan-300"
+                            : status === "Abaixo da meta"
+                              ? "bg-amber-900/40 text-amber-300"
+                              : "bg-slate-800 text-slate-300"
+                      }`}
+                    >
+                      {status}
+                    </span>
                   </div>
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                      status === "Meta atingida"
-                        ? "bg-emerald-900/40 text-emerald-300"
-                        : status === "Perto da meta"
-                          ? "bg-cyan-900/40 text-cyan-300"
-                          : status === "Abaixo da meta"
-                            ? "bg-amber-900/40 text-amber-300"
-                            : "bg-slate-800 text-slate-300"
-                    }`}
-                  >
-                    {status}
-                  </span>
-                </div>
-                <div className="h-52">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={series} margin={{ top: 8, right: 8, left: 8 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                      <XAxis
-                        dataKey="label"
-                        stroke="#94a3b8"
-                        interval={0}
-                        minTickGap={0}
-                        tick={{ fontSize: 11 }}
-                        tickMargin={6}
-                      />
-                      <YAxis
-                        stroke="#94a3b8"
-                        tickFormatter={formatCurrencyBRL}
-                        width={80}
-                      />
-                      <Tooltip
-                        formatter={(value: number) => formatCurrencyBRL(value)}
-                        labelFormatter={(value) => `Mês: ${String(value)}`}
-                        contentStyle={{
-                          backgroundColor: "#020617",
-                          borderColor: "#1f2937",
-                        }}
-                      />
-                      <Legend />
-                      <Line
-                        type="monotone"
-                        dataKey="realized"
-                        name="Realizado"
-                        stroke="#22c55e"
-                        strokeWidth={2}
-                        dot={{ r: 2 }}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="target"
-                        name="Meta"
-                        stroke="#22d3ee"
-                        strokeWidth={2}
-                        dot={false}
-                        strokeDasharray="6 3"
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </article>
-            ))
+                  <div className="h-52">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={series} margin={{ top: 8, right: 8, left: 8 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                        <ReferenceLine
+                          x={currentMonth}
+                          stroke="#f59e0b"
+                          strokeWidth={2}
+                          strokeDasharray="4 4"
+                          strokeOpacity={0.95}
+                          label={{
+                            value: "Mês atual",
+                            position: "top",
+                            fill: "#f59e0b",
+                            fontSize: 10,
+                          }}
+                        />
+                        {currentPoint ? (
+                          <ReferenceDot
+                            x={currentPoint.month}
+                            y={currentPoint.realized}
+                            r={4}
+                            fill="#f59e0b"
+                            stroke="#fef3c7"
+                            strokeWidth={1}
+                          />
+                        ) : null}
+                        <XAxis
+                          dataKey="month"
+                          stroke="#94a3b8"
+                          interval={0}
+                          minTickGap={0}
+                          tick={{ fontSize: 11 }}
+                          tickMargin={6}
+                          tickFormatter={(value) => monthLabel(Number(value))}
+                        />
+                        <YAxis
+                          stroke="#94a3b8"
+                          tickFormatter={formatCurrencyBRL}
+                          width={80}
+                        />
+                        <Tooltip
+                          formatter={(value: number) => formatCurrencyBRL(value)}
+                          labelFormatter={(value) => `Mês: ${monthLabel(Number(value))}`}
+                          contentStyle={{
+                            backgroundColor: "#020617",
+                            borderColor: "#1f2937",
+                          }}
+                        />
+                        <Legend />
+                        <Line
+                          type="monotone"
+                          dataKey="realized"
+                          name="Realizado"
+                          stroke="#22c55e"
+                          strokeWidth={2}
+                          dot={{ r: 2 }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="target"
+                          name="Meta"
+                          stroke="#22d3ee"
+                          strokeWidth={2}
+                          dot={false}
+                          strokeDasharray="6 3"
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </article>
+              );
+            })
           )}
         </div>
       </section>
