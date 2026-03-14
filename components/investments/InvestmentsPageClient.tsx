@@ -362,7 +362,7 @@ export function InvestmentsPageClient() {
             </p>
             <div className="h-56">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={forecast.series} margin={{ left: 8, right: 8, top: 8 }}>
+                <LineChart data={forecast.series} margin={{ left: 18, right: 4, top: 8, bottom: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
                   <ReferenceLine
                     x={forecast.currentMonth}
@@ -374,12 +374,17 @@ export function InvestmentsPageClient() {
                   <XAxis
                     dataKey="month"
                     stroke="#94a3b8"
+                    interval={0}
+                    minTickGap={0}
+                    tick={{ fontSize: 11 }}
+                    tickMargin={6}
+                    padding={{ left: 2, right: 2 }}
                     tickFormatter={(value) => monthLabel(Number(value))}
                   />
                   <YAxis
                     stroke="#94a3b8"
                     tickFormatter={formatCurrencyBRL}
-                    width={80}
+                    width={96}
                   />
                   <Tooltip
                     formatter={(v: number) => formatCurrencyBRL(v)}
@@ -425,7 +430,10 @@ export function InvestmentsPageClient() {
                 </div>
                 <div className="h-52">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={item.series} margin={{ left: 8, right: 8, top: 8 }}>
+                    <LineChart
+                      data={item.series}
+                      margin={{ left: 20, right: 4, top: 8, bottom: 8 }}
+                    >
                       <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
                       <ReferenceLine
                         x={forecast.currentMonth}
@@ -437,12 +445,17 @@ export function InvestmentsPageClient() {
                       <XAxis
                         dataKey="month"
                         stroke="#94a3b8"
+                        interval={0}
+                        minTickGap={0}
+                        tick={{ fontSize: 11 }}
+                        tickMargin={6}
+                        padding={{ left: 2, right: 2 }}
                         tickFormatter={(value) => monthLabel(Number(value))}
                       />
                       <YAxis
                         stroke="#94a3b8"
                         tickFormatter={formatCurrencyBRL}
-                        width={80}
+                        width={104}
                       />
                       <Tooltip
                         formatter={(v: number) => formatCurrencyBRL(v)}
