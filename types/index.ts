@@ -188,6 +188,17 @@ export interface HealthTableCheck {
   error: string | null;
 }
 
+export interface HealthApiCheck {
+  name: string;
+  panel: string;
+  endpoint: string;
+  method: "GET";
+  status: "ok" | "error";
+  httpStatus: number | null;
+  latencyMs: number;
+  error: string | null;
+}
+
 export interface HealthCheckPayload {
   status: "ok" | "degraded";
   generatedAt: string;
@@ -216,6 +227,10 @@ export interface HealthCheckPayload {
     latencyMs: number | null;
     error: string | null;
     tables: HealthTableCheck[];
+  };
+  api: {
+    status: "ok" | "error";
+    checks: HealthApiCheck[];
   };
 }
 

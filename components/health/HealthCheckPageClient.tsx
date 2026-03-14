@@ -108,7 +108,7 @@ export function HealthCheckPageClient() {
         )}
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
           <p className="text-xs text-slate-400">Aplicação</p>
           <p className="text-sm font-semibold text-slate-100">
@@ -141,6 +141,20 @@ export function HealthCheckPageClient() {
           </p>
           <p className="text-xs text-slate-500">
             Latência: {data.database.latencyMs ?? "n/d"} ms
+          </p>
+        </article>
+        <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
+          <p className="text-xs text-slate-400">APIs dos painéis</p>
+          <p
+            className={`text-sm font-semibold ${
+              data.api.status === "ok" ? "text-emerald-300" : "text-rose-300"
+            }`}
+          >
+            {data.api.status === "ok" ? "Sem falhas" : "Com falhas"}
+          </p>
+          <p className="text-xs text-slate-500">
+            {data.api.checks.filter((check) => check.status === "ok").length}/
+            {data.api.checks.length} endpoints OK
           </p>
         </article>
       </section>
@@ -206,6 +220,51 @@ export function HealthCheckPageClient() {
             <p className="mt-3 text-xs text-rose-300">Erro de banco: {data.database.error}</p>
           )}
         </article>
+      </section>
+
+      <section className="rounded-xl border border-slate-700 bg-slate-800 p-4">
+        <div className="mb-3">
+          <h3 className="text-sm font-semibold text-slate-100">
+            Saúde das APIs consumidas pelos painéis
+          </h3>
+          <p className="text-xs text-slate-400">
+            Verifica os endpoints GET usados para manter Dashboard, Metas, Investimentos e demais telas atualizados.
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left text-xs md:text-sm">
+            <thead className="border-b border-slate-700 text-slate-400">
+              <tr>
+                <th className="px-2 py-2">Painel</th>
+                <th className="px-2 py-2">API</th>
+                <th className="px-2 py-2">Endpoint</th>
+                <th className="px-2 py-2">Status</th>
+                <th className="px-2 py-2">HTTP</th>
+                <th className="px-2 py-2">Latência</th>
+                <th className="px-2 py-2">Erro</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.api.checks.map((check) => (
+                <tr key={`${check.panel}-${check.endpoint}`} className="border-b border-slate-800/60">
+                  <td className="px-2 py-2 text-slate-300">{check.panel}</td>
+                  <td className="px-2 py-2 text-slate-200">{check.name}</td>
+                  <td className="px-2 py-2 text-slate-400">{check.endpoint}</td>
+                  <td
+                    className={`px-2 py-2 font-semibold ${
+                      check.status === "ok" ? "text-emerald-300" : "text-rose-300"
+                    }`}
+                  >
+                    {check.status.toUpperCase()}
+                  </td>
+                  <td className="px-2 py-2 text-slate-300">{check.httpStatus ?? "n/d"}</td>
+                  <td className="px-2 py-2 text-slate-300">{check.latencyMs} ms</td>
+                  <td className="px-2 py-2 text-xs text-slate-400">{check.error ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
     </div>
   );
