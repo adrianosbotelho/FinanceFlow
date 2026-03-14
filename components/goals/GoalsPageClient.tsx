@@ -5,9 +5,10 @@ import {
   AnnualInvestmentGoal,
   Investment,
   MonthlyInvestmentGoal,
+  MonthlyPosition,
   MonthlyReturn,
 } from "../../types";
-import { formatCurrencyBRL, monthNameFull } from "../../lib/formatters";
+import { formatCurrencyBRL, monthLabel, monthNameFull } from "../../lib/formatters";
 import {
   Bar,
   BarChart,
@@ -16,6 +17,7 @@ import {
   Legend,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -45,41 +47,42 @@ type GoalTrendPoint = {
 };
 
 type AnnualGoalChartPoint = {
+  month: number;
   label: string;
-  value: number;
-  fill: string;
+  realized: number | null;
+  target: number;
+  gap: number | null;
 };
 
 export function GoalsPageClient() {
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [returns, setReturns] = useState<MonthlyReturn[]>([]);
+  const [positions, setPositions] = useState<MonthlyPosition[]>([]);
   const [goals, setGoals] = useState<MonthlyInvestmentGoal[]>([]);
   const [annualGoals, setAnnualGoals] = useState<AnnualInvestmentGoal[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [savingAnnual, setSavingAnnual] = useState(false);
-  const [editingInvestmentId, setEditingInvestmentId] = useState<string | null>(null);
-  const [editingAnnualInvestmentId, setEditingAnnualInvestmentId] = useState<string | null>(
-    null,
-  );
+  const [goalType, setGoalType] = useState<"monthly" | "annual">("monthly");
+  const [formInvestmentId, setFormInvestmentId] = useState("");
+  const [formTarget, setFormTarget] = useState("");
+  const [editingGoal, setEditingGoal] = useState<{
+    type: "monthly" | "annual";
+    investmentId: string;
+  } | null>(null);
 
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth() + 1;
-
-  const [investmentId, setInvestmentId] = useState("");
-  const [monthlyTarget, setMonthlyTarget] = useState("");
-  const [annualInvestmentId, setAnnualInvestmentId] = useState("");
-  const [annualTarget, setAnnualTarget] = useState("");
 
   useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);
         setError(null);
-        const [invRes, retRes, goalRes, annualGoalRes] = await Promise.all([
+        const [invRes, retRes, posRes, goalRes, annualGoalRes] = await Promise.all([
           fetch("/api/investments", { cache: "no-store" }),
           fetch(`/api/returns?year=${currentYear}`, { cache: "no-store" }),
+          fetch(`/api/monthly-positions?year=${currentYear}`, { cache: "no-store" }),
           fetch(
             `/api/investment-goals-monthly?year=${currentYear}&month=${currentMonth}`,
             { cache: "no-store" },
@@ -88,26 +91,27 @@ export function GoalsPageClient() {
             cache: "no-store",
           }),
         ]);
-        if (!invRes.ok || !retRes.ok || !goalRes.ok || !annualGoalRes.ok) {
-          const failed = [invRes, retRes, goalRes, annualGoalRes].find((r) => !r.ok);
+        if (!invRes.ok || !retRes.ok || !posRes.ok || !goalRes.ok || !annualGoalRes.ok) {
+          const failed = [invRes, retRes, posRes, goalRes, annualGoalRes].find((r) => !r.ok);
           const msg = failed ? await failed.json().catch(() => null) : null;
           throw new Error(msg?.error ?? "Erro ao carregar metas.");
         }
-        const [invData, retData, goalData, annualGoalData] = await Promise.all([
+        const [invData, retData, posData, goalData, annualGoalData] = await Promise.all([
           invRes.json(),
           retRes.json(),
+          posRes.json(),
           goalRes.json(),
           annualGoalRes.json(),
         ]);
         const invList: Investment[] = Array.isArray(invData) ? invData : [];
         setInvestments(invList);
         setReturns(Array.isArray(retData) ? retData : []);
+        setPositions(Array.isArray(posData) ? posData : []);
         setGoals(Array.isArray(goalData) ? goalData : []);
         setAnnualGoals(Array.isArray(annualGoalData) ? annualGoalData : []);
         const cdbList = invList.filter((i) => i.type === "CDB");
         if (cdbList.length > 0) {
-          setInvestmentId(cdbList[0].id);
-          setAnnualInvestmentId(cdbList[0].id);
+          setFormInvestmentId(cdbList[0].id);
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Erro ao carregar metas.");
@@ -157,10 +161,58 @@ export function GoalsPageClient() {
 
   const annualTrends = useMemo(() => {
     return annualGoalRows.map((row) => {
-      const series: AnnualGoalChartPoint[] = [
-        { label: "Atual", value: row.realized, fill: "#22c55e" },
-        { label: "Meta", value: row.target, fill: "#22d3ee" },
-      ];
+      const returnsByMonth = new Map<number, number>();
+      for (let month = 1; month <= 12; month += 1) {
+        const monthIncome = returns
+          .filter(
+            (ret) =>
+              ret.investment_id === row.investment.id &&
+              Number(ret.year) === currentYear &&
+              Number(ret.month) === month,
+          )
+          .reduce((acc, ret) => acc + Number(ret.income_value ?? 0), 0);
+        returnsByMonth.set(month, monthIncome);
+      }
+
+      const positionsByMonth = new Map<number, number>();
+      for (const pos of positions) {
+        if (
+          pos.investment_id === row.investment.id &&
+          Number(pos.year) === currentYear &&
+          Number(pos.month) >= 1 &&
+          Number(pos.month) <= 12
+        ) {
+          positionsByMonth.set(Number(pos.month), Number(pos.market_value ?? 0));
+        }
+      }
+
+      const totalYtdReturn = Array.from({ length: currentMonth }, (_, idx) => idx + 1).reduce(
+        (acc, month) => acc + (returnsByMonth.get(month) ?? 0),
+        0,
+      );
+      const estimatedStartOfYear = row.realized - totalYtdReturn;
+
+      let cumulativeReturn = 0;
+      const series: AnnualGoalChartPoint[] = Array.from({ length: 12 }, (_, idx) => {
+        const month = idx + 1;
+        cumulativeReturn += returnsByMonth.get(month) ?? 0;
+        const estimatedMonthValue = estimatedStartOfYear + cumulativeReturn;
+        const monthlyPositionValue = positionsByMonth.get(month);
+        const realizedValue =
+          month <= currentMonth
+            ? monthlyPositionValue ?? Math.max(0, estimatedMonthValue)
+            : null;
+        const monthlyTarget = row.target > 0 ? (row.target * month) / 12 : 0;
+        const gapValue =
+          realizedValue === null ? null : Number((realizedValue - monthlyTarget).toFixed(2));
+        return {
+          month,
+          label: monthLabel(month),
+          realized: realizedValue,
+          target: monthlyTarget,
+          gap: gapValue,
+        };
+      });
       const ratio = row.target > 0 ? row.realized / row.target : 0;
       const status =
         row.target <= 0
@@ -176,7 +228,12 @@ export function GoalsPageClient() {
         status,
       };
     });
-  }, [annualGoalRows]);
+  }, [annualGoalRows, currentMonth, currentYear, positions, returns]);
+
+  const cdbInvestments = useMemo(
+    () => investments.filter((investment) => investment.type === "CDB"),
+    [investments],
+  );
 
   const monthlyTrends = useMemo(() => {
     return goalRows.map((row) => {
@@ -217,36 +274,62 @@ export function GoalsPageClient() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    const target = Number(monthlyTarget.replace(",", "."));
-    if (!investmentId) return;
+    const target = Number(formTarget.replace(",", "."));
+    if (!formInvestmentId) return;
     if (!Number.isFinite(target) || target < 0) {
-      alert("Meta mensal inválida.");
+      alert(`Meta ${goalType === "monthly" ? "mensal" : "anual"} inválida.`);
       return;
     }
     try {
       setSaving(true);
-      const res = await fetch("/api/investment-goals-monthly", {
+      const endpoint =
+        goalType === "monthly"
+          ? "/api/investment-goals-monthly"
+          : "/api/investment-goals-annual";
+      const payload =
+        goalType === "monthly"
+          ? {
+              investment_id: formInvestmentId,
+              year: currentYear,
+              month: currentMonth,
+              monthly_target: target,
+            }
+          : {
+              investment_id: formInvestmentId,
+              year: currentYear,
+              annual_target: target,
+            };
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          investment_id: investmentId,
-          year: currentYear,
-          month: currentMonth,
-          monthly_target: target,
-        }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => null);
         throw new Error(err?.error ?? "Erro ao salvar meta.");
       }
-      const saved: MonthlyInvestmentGoal = await res.json();
-      setGoals((prev) => {
-        const map = new Map(prev.map((g) => [g.investment_id, g]));
-        map.set(saved.investment_id, saved);
-        return Array.from(map.values());
-      });
-      setEditingInvestmentId(null);
-      setMonthlyTarget("");
+      if (goalType === "monthly") {
+        const saved: MonthlyInvestmentGoal = await res.json();
+        setGoals((prev) => {
+          const map = new Map(prev.map((g) => [g.investment_id, g]));
+          map.set(saved.investment_id, saved);
+          return Array.from(map.values());
+        });
+      } else {
+        const saved: AnnualInvestmentGoal = await res.json();
+        setAnnualGoals((prev) => {
+          const filtered = prev.filter(
+            (g) =>
+              !(
+                g.investment_id === saved.investment_id &&
+                Number(g.year) === Number(saved.year)
+              ),
+          );
+          return [...filtered, saved];
+        });
+      }
+      setEditingGoal(null);
+      setFormTarget("");
     } catch (e) {
       alert(e instanceof Error ? e.message : "Erro ao salvar meta.");
     } finally {
@@ -255,9 +338,10 @@ export function GoalsPageClient() {
   };
 
   const handleEdit = (row: GoalRow) => {
-    setEditingInvestmentId(row.investment.id);
-    setInvestmentId(row.investment.id);
-    setMonthlyTarget(String(row.target || ""));
+    setEditingGoal({ type: "monthly", investmentId: row.investment.id });
+    setGoalType("monthly");
+    setFormInvestmentId(row.investment.id);
+    setFormTarget(String(row.target || ""));
   };
 
   const handleDelete = async (row: GoalRow) => {
@@ -278,59 +362,20 @@ export function GoalsPageClient() {
       return;
     }
     setGoals((prev) => prev.filter((g) => g.investment_id !== row.investment.id));
-    if (editingInvestmentId === row.investment.id) {
-      setEditingInvestmentId(null);
-      setMonthlyTarget("");
-    }
-  };
-
-  const handleSaveAnnual = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const target = Number(annualTarget.replace(",", "."));
-    if (!annualInvestmentId) return;
-    if (!Number.isFinite(target) || target < 0) {
-      alert("Meta anual inválida.");
-      return;
-    }
-    try {
-      setSavingAnnual(true);
-      const res = await fetch("/api/investment-goals-annual", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          investment_id: annualInvestmentId,
-          year: currentYear,
-          annual_target: target,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error(err?.error ?? "Erro ao salvar meta anual.");
-      }
-      const saved: AnnualInvestmentGoal = await res.json();
-      setAnnualGoals((prev) => {
-        const filtered = prev.filter(
-          (g) =>
-            !(
-              g.investment_id === saved.investment_id &&
-              Number(g.year) === Number(saved.year)
-            ),
-        );
-        return [...filtered, saved];
-      });
-      setEditingAnnualInvestmentId(null);
-      setAnnualTarget("");
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Erro ao salvar meta anual.");
-    } finally {
-      setSavingAnnual(false);
+    if (
+      editingGoal?.type === "monthly" &&
+      editingGoal.investmentId === row.investment.id
+    ) {
+      setEditingGoal(null);
+      setFormTarget("");
     }
   };
 
   const handleEditAnnual = (row: AnnualGoalRow) => {
-    setEditingAnnualInvestmentId(row.investment.id);
-    setAnnualInvestmentId(row.investment.id);
-    setAnnualTarget(String(row.target || ""));
+    setEditingGoal({ type: "annual", investmentId: row.investment.id });
+    setGoalType("annual");
+    setFormInvestmentId(row.investment.id);
+    setFormTarget(String(row.target || ""));
   };
 
   const handleDeleteAnnual = async (row: AnnualGoalRow) => {
@@ -358,9 +403,12 @@ export function GoalsPageClient() {
           ),
       ),
     );
-    if (editingAnnualInvestmentId === row.investment.id) {
-      setEditingAnnualInvestmentId(null);
-      setAnnualTarget("");
+    if (
+      editingGoal?.type === "annual" &&
+      editingGoal.investmentId === row.investment.id
+    ) {
+      setEditingGoal(null);
+      setFormTarget("");
     }
   };
 
@@ -394,8 +442,7 @@ export function GoalsPageClient() {
       <div>
         <h2 className="text-lg font-semibold text-slate-50">Metas por Lançamento</h2>
         <p className="text-sm text-slate-400">
-          Defina uma meta mensal de rendimento para cada CDB. Ex.: Itaú R$ 800 e
-          Santander R$ 1.800.
+          Defina metas mensais de rendimento e metas anuais de patrimônio para cada CDB.
         </p>
         <button
           type="button"
@@ -501,54 +548,87 @@ export function GoalsPageClient() {
         </section>
 
         <form
-          onSubmit={handleSaveAnnual}
+          onSubmit={handleSave}
           className="space-y-3 rounded-xl border border-slate-800 bg-surface/80 p-4"
         >
           <h3 className="text-sm font-semibold text-slate-200">
-            {editingAnnualInvestmentId ? "Editar meta anual" : "Nova meta anual"}
+            {editingGoal ? "Editar meta" : "Nova meta"}
           </h3>
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-slate-300">Investimento (CDB)</label>
+            <label className="text-xs text-slate-300">Tipo de meta</label>
             <select
-              value={annualInvestmentId}
-              onChange={(e) => setAnnualInvestmentId(e.target.value)}
+              value={goalType}
+              onChange={(e) => {
+                const nextType = e.target.value as "monthly" | "annual";
+                setGoalType(nextType);
+                setEditingGoal(null);
+                setFormTarget("");
+              }}
               className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
             >
-              {investments
-                .filter((i) => i.type === "CDB")
-                .map((inv) => (
-                  <option key={inv.id} value={inv.id}>
-                    {inv.name} ({inv.institution})
-                  </option>
-                ))}
+              <option value="monthly">Mensal (rendimento)</option>
+              <option value="annual">Anual (patrimônio)</option>
             </select>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-slate-300">Meta anual (R$)</label>
+            <label className="text-xs text-slate-300">Investimento (CDB)</label>
+            <select
+              value={formInvestmentId}
+              onChange={(e) => setFormInvestmentId(e.target.value)}
+              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+            >
+              {cdbInvestments.map((inv) => (
+                <option key={inv.id} value={inv.id}>
+                  {inv.name} ({inv.institution})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-slate-300">
+              {goalType === "monthly" ? "Meta mensal (R$)" : "Meta anual (R$)"}
+            </label>
             <input
               type="text"
               inputMode="decimal"
-              value={annualTarget}
-              onChange={(e) => setAnnualTarget(e.target.value)}
-              placeholder="100000,00"
+              value={formTarget}
+              onChange={(e) => setFormTarget(e.target.value)}
+              placeholder={goalType === "monthly" ? "800,00" : "100000,00"}
               className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
               required
             />
           </div>
-          <button
-            type="submit"
-            disabled={savingAnnual}
-            className="inline-flex h-9 items-center justify-center rounded-lg bg-accent px-4 text-xs font-medium text-white shadow-sm hover:bg-accent-soft disabled:opacity-60"
-          >
-            {savingAnnual ? "Salvando..." : "Salvar meta anual"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="submit"
+              disabled={saving}
+              className="inline-flex h-9 items-center justify-center rounded-lg bg-accent px-4 text-xs font-medium text-white shadow-sm hover:bg-accent-soft disabled:opacity-60"
+            >
+              {saving ? "Salvando..." : "Salvar meta"}
+            </button>
+            {editingGoal ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingGoal(null);
+                  setFormTarget("");
+                }}
+                className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-700 px-4 text-xs font-medium text-slate-200 hover:bg-slate-800"
+              >
+                Cancelar edição
+              </button>
+            ) : null}
+          </div>
         </form>
       </div>
 
       <section className="space-y-2">
         <h3 className="text-sm font-semibold text-slate-200">
-          Direção de alcance da meta anual por lançamento
+          Gap da meta anual por mês
         </h3>
+        <p className="text-xs text-slate-400">
+          Gap mensal = realizado acumulado - meta acumulada do mês (sem previsão futura).
+        </p>
         <div className="grid gap-4 xl:grid-cols-2">
           {loading ? (
             <div className="rounded-xl border border-slate-800 bg-surface/80 p-4 text-sm text-slate-400">
@@ -587,26 +667,60 @@ export function GoalsPageClient() {
                 </div>
                 <div className="h-52">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={series} margin={{ top: 8, right: 8, left: 8 }}>
+                    <BarChart data={series} margin={{ top: 8, right: 20, left: 24, bottom: 8 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                      <XAxis dataKey="label" stroke="#94a3b8" />
+                      <XAxis
+                        dataKey="label"
+                        stroke="#94a3b8"
+                        padding={{ left: 4, right: 12 }}
+                        interval={0}
+                        minTickGap={0}
+                        tick={{ fontSize: 11 }}
+                        tickMargin={6}
+                      />
                       <YAxis
                         stroke="#94a3b8"
                         tickFormatter={formatCurrencyBRL}
-                        width={80}
+                        width={110}
+                        domain={[
+                          (dataMin: number) => Math.min(dataMin * 1.1, 0),
+                          (dataMax: number) => Math.max(dataMax * 1.1, 0),
+                        ]}
                       />
+                      <ReferenceLine y={0} stroke="#64748b" strokeOpacity={0.8} />
                       <Tooltip
-                        formatter={(value: number) => formatCurrencyBRL(value)}
+                        formatter={(value) => {
+                          const rawValue = Array.isArray(value) ? value[0] : value;
+                          const numericValue = Number(rawValue);
+                          if (!Number.isFinite(numericValue)) return "—";
+                          return formatCurrencyBRL(numericValue);
+                        }}
+                        labelFormatter={(value) => `Mês: ${String(value)}`}
                         contentStyle={{
                           backgroundColor: "#020617",
                           borderColor: "#1f2937",
+                          color: "#e2e8f0",
                         }}
+                        labelStyle={{ color: "#e2e8f0", fontWeight: 600 }}
+                        itemStyle={{ color: "#e2e8f0" }}
                       />
-                      <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                        {series.map((entry) => (
+                      <Legend
+                        iconType="circle"
+                        formatter={(value) => (
+                          <span style={{ color: "#e2e8f0" }}>{String(value)}</span>
+                        )}
+                      />
+                      <Bar dataKey="gap" name="Gap" fill="#22c55e" legendType="circle">
+                        {series.map((point) => (
                           <Cell
-                            key={`${row.investment.id}-${entry.label}`}
-                            fill={entry.fill}
+                            key={`gap-${row.investment.id}-${point.month}`}
+                            fill={
+                              point.gap === null
+                                ? "#334155"
+                                : point.gap >= 0
+                                  ? "#22c55e"
+                                  : "#f43f5e"
+                            }
                           />
                         ))}
                       </Bar>
@@ -770,128 +884,82 @@ export function GoalsPageClient() {
         </div>
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <div className="rounded-xl border border-slate-800 bg-surface/80 p-4">
-          <h3 className="mb-2 text-sm font-semibold text-slate-200">
-            Progresso no mês atual ({monthNameFull(currentMonth)}/{currentYear})
-          </h3>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-xs md:text-sm">
-              <thead className="border-b border-slate-800 text-slate-400">
+      <div className="rounded-xl border border-slate-800 bg-surface/80 p-4">
+        <h3 className="mb-2 text-sm font-semibold text-slate-200">
+          Progresso no mês atual ({monthNameFull(currentMonth)}/{currentYear})
+        </h3>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left text-xs md:text-sm">
+            <thead className="border-b border-slate-800 text-slate-400">
+              <tr>
+                <th className="px-2 py-2">Investimento</th>
+                <th className="px-2 py-2">Meta mensal</th>
+                <th className="px-2 py-2">Realizado</th>
+                <th className="px-2 py-2">Progresso</th>
+                <th className="px-2 py-2">Gap</th>
+                <th className="px-2 py-2 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
                 <tr>
-                  <th className="px-2 py-2">Investimento</th>
-                  <th className="px-2 py-2">Meta mensal</th>
-                  <th className="px-2 py-2">Realizado</th>
-                  <th className="px-2 py-2">Progresso</th>
-                  <th className="px-2 py-2">Gap</th>
-                  <th className="px-2 py-2 text-right">Ações</th>
+                  <td colSpan={6} className="px-2 py-4 text-center text-slate-400">
+                    Carregando metas...
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={6} className="px-2 py-4 text-center text-slate-400">
-                      Carregando metas...
+              ) : goalRows.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-2 py-4 text-center text-slate-400">
+                    Nenhum CDB encontrado.
+                  </td>
+                </tr>
+              ) : (
+                goalRows.map((row) => (
+                  <tr
+                    key={row.investment.id}
+                    className="border-b border-slate-800/60 last:border-0"
+                  >
+                    <td className="px-2 py-2 text-slate-300">
+                      {row.investment.name} ({row.investment.institution})
                     </td>
-                  </tr>
-                ) : goalRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-2 py-4 text-center text-slate-400">
-                      Nenhum CDB encontrado.
+                    <td className="px-2 py-2 text-cyan-300">
+                      {formatCurrencyBRL(row.target)}
                     </td>
-                  </tr>
-                ) : (
-                  goalRows.map((row) => (
-                    <tr
-                      key={row.investment.id}
-                      className="border-b border-slate-800/60 last:border-0"
+                    <td className="px-2 py-2 text-emerald-300">
+                      {formatCurrencyBRL(row.realized)}
+                    </td>
+                    <td className="px-2 py-2 text-slate-200">
+                      {row.target > 0 ? `${row.progressPct.toFixed(1)}%` : "—"}
+                    </td>
+                    <td
+                      className={`px-2 py-2 ${
+                        row.gap > 0 ? "text-amber-300" : "text-emerald-300"
+                      }`}
                     >
-                      <td className="px-2 py-2 text-slate-300">
-                        {row.investment.name} ({row.investment.institution})
-                      </td>
-                      <td className="px-2 py-2 text-cyan-300">
-                        {formatCurrencyBRL(row.target)}
-                      </td>
-                      <td className="px-2 py-2 text-emerald-300">
-                        {formatCurrencyBRL(row.realized)}
-                      </td>
-                      <td className="px-2 py-2 text-slate-200">
-                        {row.target > 0 ? `${row.progressPct.toFixed(1)}%` : "—"}
-                      </td>
-                      <td
-                        className={`px-2 py-2 ${
-                          row.gap > 0 ? "text-amber-300" : "text-emerald-300"
-                        }`}
+                      {formatCurrencyBRL(row.gap)}
+                    </td>
+                    <td className="px-2 py-2 text-right">
+                      <button
+                        type="button"
+                        onClick={() => handleEdit(row)}
+                        className="rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-800"
                       >
-                        {formatCurrencyBRL(row.gap)}
-                      </td>
-                      <td className="px-2 py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleEdit(row)}
-                          className="rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-800"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleDelete(row)}
-                          className="ml-2 rounded-md border border-rose-800/70 px-2 py-1 text-[11px] text-rose-200 hover:bg-rose-900/30"
-                        >
-                          Excluir
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDelete(row)}
+                        className="ml-2 rounded-md border border-rose-800/70 px-2 py-1 text-[11px] text-rose-200 hover:bg-rose-900/30"
+                      >
+                        Excluir
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
-
-        <form
-          onSubmit={handleSave}
-          className="space-y-3 rounded-xl border border-slate-800 bg-surface/80 p-4"
-        >
-          <h3 className="text-sm font-semibold text-slate-200">
-            {editingInvestmentId ? "Editar meta" : "Nova meta"}
-          </h3>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-slate-300">Investimento (CDB)</label>
-            <select
-              value={investmentId}
-              onChange={(e) => setInvestmentId(e.target.value)}
-              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
-            >
-              {investments
-                .filter((i) => i.type === "CDB")
-                .map((inv) => (
-                  <option key={inv.id} value={inv.id}>
-                    {inv.name} ({inv.institution})
-                  </option>
-                ))}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-slate-300">Meta mensal (R$)</label>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={monthlyTarget}
-              onChange={(e) => setMonthlyTarget(e.target.value)}
-              placeholder="800,00"
-              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
-              required
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={saving}
-            className="inline-flex h-9 items-center justify-center rounded-lg bg-accent px-4 text-xs font-medium text-white shadow-sm hover:bg-accent-soft disabled:opacity-60"
-          >
-            {saving ? "Salvando..." : "Salvar meta"}
-          </button>
-        </form>
       </div>
     </div>
   );

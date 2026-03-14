@@ -24,6 +24,26 @@ export function PassiveIncomeLineChart({ data }: Props) {
 
   const currentTotal =
     data.length > 0 ? data[data.length - 1]?.total ?? 0 : 0;
+  const previousTotal =
+    data.length > 1 ? data[data.length - 2]?.total ?? null : null;
+  const momGrowth =
+    previousTotal !== null && previousTotal > 0
+      ? ((currentTotal - previousTotal) / previousTotal) * 100
+      : null;
+  const isPositive = momGrowth !== null && momGrowth >= 0;
+  const isNegative = momGrowth !== null && momGrowth < 0;
+  const valueClass =
+    isPositive
+      ? "text-emerald-400"
+      : isNegative
+        ? "text-rose-400"
+        : "text-slate-50";
+  const deltaLabel =
+    momGrowth === null
+      ? "–"
+      : `${momGrowth > 0 ? "+" : ""}${momGrowth.toFixed(1)}%`;
+  const deltaArrow =
+    momGrowth === null ? "" : momGrowth > 0 ? "▲ " : momGrowth < 0 ? "▼ " : "• ";
 
   return (
     <section className="flex flex-col gap-2 rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm transition-all hover:shadow-md">
@@ -37,9 +57,24 @@ export function PassiveIncomeLineChart({ data }: Props) {
           </p>
         </div>
         <div className="text-right">
-          <span className="text-3xl font-black text-accent">
+          <span className={`text-3xl font-black ${valueClass}`}>
             {formatCurrencyBRL(currentTotal)}
           </span>
+          <div className="mt-2 flex items-center justify-end gap-1 text-xs">
+            <span
+              className={`inline-flex items-center rounded-full px-2 py-0.5 text-sm font-semibold ${
+                isPositive
+                  ? "text-success"
+                  : isNegative
+                    ? "text-rose-400"
+                    : "text-slate-400"
+              }`}
+            >
+              {deltaArrow}
+              {deltaLabel}
+            </span>
+            <span className="text-[11px] text-slate-500">vs mês anterior</span>
+          </div>
         </div>
       </div>
       <div className="flex-1 p-4 md:p-6">

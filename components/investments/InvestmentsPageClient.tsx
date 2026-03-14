@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Investment } from "../../types";
 import { formatCurrencyBRL, formatPercentage } from "../../lib/formatters";
+import { publishDataSyncUpdate } from "../../lib/client-data-sync";
 import { InvestmentForm } from "../forms/InvestmentForm";
 import {
   ResponsiveContainer,
@@ -167,6 +168,7 @@ export function InvestmentsPageClient() {
     setEditing(null);
     await loadInvestments();
     await loadForecast();
+    publishDataSyncUpdate("investments");
   };
 
   const handleDelete = async (inv: Investment) => {
@@ -192,6 +194,7 @@ export function InvestmentsPageClient() {
       }
       await loadInvestments();
       await loadForecast();
+      publishDataSyncUpdate("investments");
     } catch (e) {
       console.error(e);
       alert(e instanceof Error ? e.message : "Erro ao excluir investimento.");

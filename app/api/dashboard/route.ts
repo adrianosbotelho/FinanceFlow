@@ -27,17 +27,21 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const year = Number(searchParams.get("year") ?? new Date().getFullYear());
 
-  const [{ data: investments, error: invError }, { data: returns, error: retError }] =
-    await Promise.all([
-      supabase.from("investments").select("*"),
-      supabase
-        .from("monthly_returns")
-        .select("*")
-        .gte("year", year - 1)
-        .lte("year", year)
-        .order("year")
-        .order("month"),
-    ]);
+  const [
+    { data: investments, error: invError },
+    { data: returns, error: retError },
+    { data: positions, error: posError },
+  ] = await Promise.all([
+    supabase.from("investments").select("*"),
+    supabase
+      .from("monthly_returns")
+      .select("*")
+      .gte("year", year - 1)
+      .lte("year", year)
+      .order("year")
+      .order("month"),
+    supabase.from("monthly_positions").select("*").eq("year", year).order("month"),
+  ]);
 
   if (invError || retError || !investments || !returns) {
     console.error(invError ?? retError);
@@ -45,6 +49,9 @@ export async function GET(req: NextRequest) {
       { error: (invError ?? retError)?.message ?? "Erro ao buscar dados" },
       { status: 500 },
     );
+  }
+  if (posError && !posError.message?.includes("monthly_positions")) {
+    return NextResponse.json({ error: posError.message }, { status: 500 });
   }
 
   const byInvestment = new Map<string, (typeof investments)[number]>();
@@ -130,7 +137,31 @@ export async function GET(req: NextRequest) {
     0,
   );
 
-  const kpis = buildKpis(monthlySeries, year, totalInvested);
+  const kpisBase = buildKpis(monthlySeries, year, totalInvested);
+  const monthlyPositions = Array.isArray(positions) ? positions : [];
+  const latestPositionMonth = monthlyPositions.reduce((acc, pos) => {
+    const month = Number(pos.month ?? 0);
+    return month > acc ? month : acc;
+  }, 0);
+  const currentMarketValue =
+    latestPositionMonth > 0
+      ? monthlyPositions
+          .filter((pos) => Number(pos.month) === latestPositionMonth)
+          .reduce((acc, pos) => acc + Number(pos.market_value ?? 0), 0)
+      : totalInvested;
+  const capitalGain = currentMarketValue - totalInvested;
+  const capitalGainPct = totalInvested > 0 ? (capitalGain / totalInvested) * 100 : 0;
+  const totalProfit = capitalGain + kpisBase.rolling12Months;
+  const totalProfitPct = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
+  const kpis = {
+    ...kpisBase,
+    investedCapital: totalInvested,
+    currentMarketValue,
+    capitalGain,
+    capitalGainPct,
+    totalProfit,
+    totalProfitPct,
+  };
 
   const distribution: IncomeDistribution = monthlySeries
     .filter((m) => m.year === year)
@@ -260,6 +291,9 @@ function buildInsights(
   monthlySeries: PassiveIncomeByMonth[],
   year: number,
 ): FinancialInsights {
+  const cdiEnv = Number(process.env.FINANCEFLOW_CDI_ANNUAL_RATE ?? 10.65);
+  const cdiAnnualReference =
+    Number.isFinite(cdiEnv) && cdiEnv > 0 ? cdiEnv : 10.65;
   const totalCdb = distribution.itauCdb + distribution.otherCdb;
   const totalFii = distribution.fii;
   const ratio = totalCdb > 0 ? (totalFii / totalCdb) * 100 : 0;
@@ -310,6 +344,7 @@ function buildInsights(
     growthTrend: trend,
     bestSource,
     fiiToCdbRatio: ratio,
+    cdiAnnualReference,
     forecastNextMonth,
     forecastRangeMin,
     forecastRangeMax,

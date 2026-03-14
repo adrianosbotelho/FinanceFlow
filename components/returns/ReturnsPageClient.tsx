@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Investment, MonthlyClosure, MonthlyReturn } from "../../types";
 import { formatCurrencyBRL, monthNameFull } from "../../lib/formatters";
+import { publishDataSyncUpdate } from "../../lib/client-data-sync";
 import { ReturnForm } from "../forms/ReturnForm";
 
 type ReturnRow = {
@@ -15,6 +16,9 @@ type ReturnRow = {
   isAggregated: boolean;
   sourceCount: number;
 };
+
+type ReturnSortField = "year" | "month" | "label" | "income";
+type ReturnSortDirection = "asc" | "desc";
 
 interface ReturnsPageClientProps {}
 
@@ -33,6 +37,8 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
     () => new Date().getFullYear(),
   );
   const [investmentFilter, setInvestmentFilter] = useState<string>("all");
+  const [sortField, setSortField] = useState<ReturnSortField>("year");
+  const [sortDirection, setSortDirection] = useState<ReturnSortDirection>("asc");
 
   const [page, setPage] = useState(1);
   const pageSize = 10;
@@ -158,10 +164,59 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
     });
   }, [rows, yearFilter, investmentFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  const sortedRows = useMemo(() => {
+    const direction = sortDirection === "asc" ? 1 : -1;
+    const sorted = [...filteredRows].sort((a, b) => {
+      if (sortField === "year") {
+        return (
+          (a.year - b.year) * direction ||
+          (a.month - b.month) * direction ||
+          a.label.localeCompare(b.label, "pt-BR")
+        );
+      }
+      if (sortField === "month") {
+        return (
+          (a.month - b.month) * direction ||
+          (a.year - b.year) * direction ||
+          a.label.localeCompare(b.label, "pt-BR")
+        );
+      }
+      if (sortField === "label") {
+        return (
+          a.label.localeCompare(b.label, "pt-BR") * direction ||
+          (a.year - b.year) * direction ||
+          (a.month - b.month) * direction
+        );
+      }
+      return (
+        (a.income - b.income) * direction ||
+        (a.year - b.year) * direction ||
+        (a.month - b.month) * direction ||
+        a.label.localeCompare(b.label, "pt-BR")
+      );
+    });
+    return sorted;
+  }, [filteredRows, sortDirection, sortField]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const startIndex = (currentPage - 1) * pageSize;
-  const pageRows = filteredRows.slice(startIndex, startIndex + pageSize);
+  const pageRows = sortedRows.slice(startIndex, startIndex + pageSize);
+
+  const toggleSort = (field: ReturnSortField) => {
+    setPage(1);
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortField(field);
+    setSortDirection("asc");
+  };
+
+  const sortIndicator = (field: ReturnSortField) => {
+    if (sortField !== field) return "↕";
+    return sortDirection === "asc" ? "↑" : "↓";
+  };
 
   // Resumo mensal consolidado (formato Itau / Santander / FIIs / Total)
   const monthlySummary = useMemo(() => {
@@ -231,6 +286,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
       if (!res.ok) return;
       const data: MonthlyReturn[] = await res.json();
       setRawReturns(data);
+      publishDataSyncUpdate("returns");
     } catch (e) {
       console.error(e);
     }
@@ -393,10 +449,54 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
             <table className="min-w-full text-left text-xs md:text-sm">
               <thead className="border-b border-slate-800 text-slate-400">
                 <tr>
-                  <th className="px-2 py-2">Ano</th>
-                  <th className="px-2 py-2">Mês</th>
-                  <th className="px-2 py-2">Investimento</th>
-                  <th className="px-2 py-2">Renda</th>
+                  <th className="px-2 py-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort("year")}
+                      className="inline-flex items-center gap-1 text-slate-300 hover:text-slate-100"
+                    >
+                      Ano
+                      <span className="text-[10px] text-slate-500">
+                        {sortIndicator("year")}
+                      </span>
+                    </button>
+                  </th>
+                  <th className="px-2 py-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort("month")}
+                      className="inline-flex items-center gap-1 text-slate-300 hover:text-slate-100"
+                    >
+                      Mês
+                      <span className="text-[10px] text-slate-500">
+                        {sortIndicator("month")}
+                      </span>
+                    </button>
+                  </th>
+                  <th className="px-2 py-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort("label")}
+                      className="inline-flex items-center gap-1 text-slate-300 hover:text-slate-100"
+                    >
+                      Investimento
+                      <span className="text-[10px] text-slate-500">
+                        {sortIndicator("label")}
+                      </span>
+                    </button>
+                  </th>
+                  <th className="px-2 py-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort("income")}
+                      className="inline-flex items-center gap-1 text-slate-300 hover:text-slate-100"
+                    >
+                      Renda
+                      <span className="text-[10px] text-slate-500">
+                        {sortIndicator("income")}
+                      </span>
+                    </button>
+                  </th>
                   <th className="px-2 py-2 text-right">Ações</th>
                 </tr>
               </thead>
@@ -470,7 +570,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
           <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400">
             <span>
               Mostrando {pageRows.length === 0 ? 0 : startIndex + 1}-
-              {startIndex + pageRows.length} de {filteredRows.length} registros
+              {startIndex + pageRows.length} de {sortedRows.length} registros
             </span>
             <div className="flex items-center gap-2">
               <button

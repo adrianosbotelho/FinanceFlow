@@ -5,6 +5,7 @@ interface KPICardProps {
   value: number | null;
   variant?: "currency" | "percent";
   delta?: number | null;
+  comparisonLabel?: string;
 }
 
 export function KPICard({
@@ -12,6 +13,7 @@ export function KPICard({
   value,
   variant = "currency",
   delta,
+  comparisonLabel = "vs período base",
 }: KPICardProps) {
   const numericValue = value ?? 0;
   const isPositive = delta !== null && delta !== undefined && delta >= 0;
@@ -33,6 +35,14 @@ export function KPICard({
     delta === null || delta === undefined
       ? "–"
       : `${delta > 0 ? "+" : ""}${delta.toFixed(1)}%`;
+  const deltaArrow =
+    delta === null || delta === undefined
+      ? ""
+      : delta > 0
+        ? "▲ "
+        : delta < 0
+          ? "▼ "
+          : "• ";
 
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm transition-all hover:shadow-md">
@@ -52,9 +62,10 @@ export function KPICard({
                 : "text-slate-400"
           }`}
         >
+          {deltaArrow}
           {deltaLabel}
         </span>
-        <span className="text-[11px] text-slate-500">vs período base</span>
+        <span className="text-[11px] text-slate-500">{comparisonLabel}</span>
       </div>
     </div>
   );

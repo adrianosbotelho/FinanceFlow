@@ -91,6 +91,12 @@ export interface DashboardKPIs {
   passiveIncomeCAGR: number | null;
   rolling12Months: number;
   annualProjection: number;
+  investedCapital: number;
+  currentMarketValue: number;
+  capitalGain: number;
+  capitalGainPct: number;
+  totalProfit: number;
+  totalProfitPct: number;
 }
 
 export interface IncomeDistribution {
@@ -103,6 +109,7 @@ export interface FinancialInsights {
   growthTrend: string;
   bestSource: "CDB_ITAU" | "CDB_OTHER" | "FII";
   fiiToCdbRatio: number;
+  cdiAnnualReference: number;
   forecastNextMonth: number;
   forecastRangeMin: number;
   forecastRangeMax: number;

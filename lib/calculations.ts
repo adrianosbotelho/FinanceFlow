@@ -82,6 +82,12 @@ export function buildKpis(
       passiveIncomeCAGR: null,
       rolling12Months: 0,
       annualProjection: 0,
+      investedCapital: portfolioTotalInvested,
+      currentMarketValue: portfolioTotalInvested,
+      capitalGain: 0,
+      capitalGainPct: 0,
+      totalProfit: 0,
+      totalProfitPct: 0,
     };
   }
 
@@ -103,6 +109,14 @@ export function buildKpis(
     portfolioTotalInvested > 0
       ? (rolling12 / portfolioTotalInvested) * 100
       : 0;
+  const investedCapital = portfolioTotalInvested;
+  const currentMarketValue = investedCapital;
+  const capitalGain = currentMarketValue - investedCapital;
+  const capitalGainPct =
+    investedCapital > 0 ? (capitalGain / investedCapital) * 100 : 0;
+  const totalProfit = capitalGain + rolling12;
+  const totalProfitPct =
+    investedCapital > 0 ? (totalProfit / investedCapital) * 100 : 0;
 
   return {
     totalPassiveIncomeCurrentMonth: current.total,
@@ -115,5 +129,11 @@ export function buildKpis(
     passiveIncomeCAGR: cagr,
     rolling12Months: rolling12,
     annualProjection,
+    investedCapital,
+    currentMarketValue,
+    capitalGain,
+    capitalGainPct,
+    totalProfit,
+    totalProfitPct,
   };
 }

@@ -1,6 +1,7 @@
 import { DashboardPayload } from "../types";
 import { headers } from "next/headers";
 import { KPIGrid } from "../components/dashboard/KPIGrid";
+import { KPIAdvancedGrid } from "../components/dashboard/KPIAdvancedGrid";
 import { PassiveIncomeLineChart } from "../components/dashboard/PassiveIncomeLineChart";
 import { MonthlyBarChart } from "../components/dashboard/MonthlyBarChart";
 import { YoYLineChart } from "../components/dashboard/YoYLineChart";
@@ -56,6 +57,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   return (
     <div className="space-y-6">
       <KPIGrid kpis={data.kpis} />
+      <KPIAdvancedGrid kpis={data.kpis} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <PassiveIncomeLineChart data={data.monthlySeries} />
