@@ -18,10 +18,9 @@ export const revalidate = 0;
 const FALLBACK_CDI_ANNUAL_RATE = 10.65;
 const CDI_SERIES_URL =
   "https://api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados/ultimos/5?formato=json";
-const SELIC_SERIES_URL =
-  "https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados/ultimos/90?formato=json";
 const IPCA_12M_SERIES_URL =
   "https://api.bcb.gov.br/dados/serie/bcdata.sgs.13522/dados/ultimos/12?formato=json";
+const SELIC_TREND_LOOKBACK_DAYS = 120;
 const CDI_CACHE_SUCCESS_TTL_MS = 6 * 60 * 60 * 1000;
 const CDI_CACHE_FALLBACK_TTL_MS = 30 * 60 * 1000;
 const FII_TREND_CACHE_SUCCESS_TTL_MS = 6 * 60 * 60 * 1000;
@@ -482,6 +481,25 @@ function parseBcbSeriesValues(payload: BcbSeriesPoint[]): number[] {
     .filter((value) => Number.isFinite(value));
 }
 
+function formatBcbDate(date: Date): string {
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+function buildBcbSeriesDateRangeUrl(seriesCode: number, lookbackDays: number): string {
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setDate(endDate.getDate() - lookbackDays);
+  const params = new URLSearchParams({
+    formato: "json",
+    dataInicial: formatBcbDate(startDate),
+    dataFinal: formatBcbDate(endDate),
+  });
+  return `https://api.bcb.gov.br/dados/serie/bcdata.sgs.${seriesCode}/dados?${params.toString()}`;
+}
+
 async function fetchBcbSeries(url: string): Promise<number[]> {
   const controller = new AbortController();
   let timeout: ReturnType<typeof setTimeout> | null = null;
@@ -529,7 +547,7 @@ async function resolveFiiMarketTrendSignals(): Promise<{
 
   try {
     const [selicValues, ipcaValues] = await Promise.all([
-      fetchBcbSeries(SELIC_SERIES_URL),
+      fetchBcbSeries(buildBcbSeriesDateRangeUrl(432, SELIC_TREND_LOOKBACK_DAYS)),
       fetchBcbSeries(IPCA_12M_SERIES_URL),
     ]);
 

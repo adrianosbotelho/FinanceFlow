@@ -22,7 +22,7 @@ type ApiCheckConfig = {
   name: string;
   panel: string;
   source: "internal" | "external";
-  endpoint: string;
+  endpoint: string | (() => string);
   validate?: (payload: unknown) => boolean;
 };
 
@@ -42,6 +42,25 @@ function safeHostFromUrl(raw: string | undefined): string | null {
   } catch {
     return null;
   }
+}
+
+function formatBcbDate(date: Date): string {
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+function buildBcbSeriesDateRangeUrl(seriesCode: number, lookbackDays: number): string {
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setDate(endDate.getDate() - lookbackDays);
+  const params = new URLSearchParams({
+    formato: "json",
+    dataInicial: formatBcbDate(startDate),
+    dataFinal: formatBcbDate(endDate),
+  });
+  return `https://api.bcb.gov.br/dados/serie/bcdata.sgs.${seriesCode}/dados?${params.toString()}`;
 }
 
 async function runTableCheck(table: string): Promise<HealthTableCheck> {
@@ -145,7 +164,7 @@ const EXTERNAL_API_CHECKS: ApiCheckConfig[] = [
     name: "BCB Selic meta (SGS 432)",
     panel: "Dashboard/Insights",
     source: "external",
-    endpoint: "https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados/ultimos/90?formato=json",
+    endpoint: () => buildBcbSeriesDateRangeUrl(432, 120),
     validate: isArray,
   },
   {
@@ -180,10 +199,12 @@ function endpointWithDefaultParams(endpoint: string): string {
 }
 
 async function runApiCheck(origin: string, config: ApiCheckConfig): Promise<HealthApiCheck> {
+  const endpointValue =
+    typeof config.endpoint === "function" ? config.endpoint() : config.endpoint;
   const resolvedEndpoint =
     config.source === "internal"
-      ? endpointWithDefaultParams(config.endpoint)
-      : config.endpoint;
+      ? endpointWithDefaultParams(endpointValue)
+      : endpointValue;
   const url =
     config.source === "internal" ? `${origin}${resolvedEndpoint}` : resolvedEndpoint;
   const start = Date.now();
