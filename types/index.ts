@@ -110,6 +110,19 @@ export interface FinancialInsights {
   bestSource: "CDB_ITAU" | "CDB_OTHER" | "FII";
   fiiToCdbRatio: number;
   cdiAnnualReference: number;
+  fiiReinvestment: {
+    tijoloPercent: number;
+    papelPercent: number;
+    confidencePercent: number;
+    marketRegime: "JUROS_RESTRITIVOS" | "AFROUXAMENTO_MONETARIO" | "INFLACAO_REACELERANDO" | "EQUILIBRADO";
+    realRatePercent: number;
+    selicMetaPercent: number;
+    ipca12mPercent: number;
+    selicTrend3mPercent: number | null;
+    ipcaTrend3mPercent: number | null;
+    rationale: string;
+    updatedAt: string;
+  };
   forecastNextMonth: number;
   forecastRangeMin: number;
   forecastRangeMax: number;

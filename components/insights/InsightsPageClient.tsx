@@ -85,6 +85,20 @@ type OperationalInsights = {
   priorityAction: string;
 };
 
+function marketRegimeLabel(
+  regime: DashboardPayload["insights"]["fiiReinvestment"]["marketRegime"],
+): string {
+  if (regime === "JUROS_RESTRITIVOS") return "Juros restritivos";
+  if (regime === "AFROUXAMENTO_MONETARIO") return "Afrouxamento monetário";
+  if (regime === "INFLACAO_REACELERANDO") return "Inflação reacelerando";
+  return "Regime equilibrado";
+}
+
+function formatTrendPp(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return "estável";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2)} p.p.`;
+}
+
 function countBusinessDaysInMonth(year: number, month: number): number {
   const lastDay = new Date(year, month, 0).getDate();
   let count = 0;
@@ -247,6 +261,7 @@ export function InsightsPageClient({ data, year }: Props) {
   const forecastSeries = buildForecastSeries(data);
   const distributionSeries = buildDistributionSeries(data);
   const operational = deriveOperationalInsights(data, year);
+  const fiiSuggestion = data.insights.fiiReinvestment;
 
   return (
     <div className="space-y-6">
@@ -285,7 +300,7 @@ export function InsightsPageClient({ data, year }: Props) {
         </article>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-5">
         <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
           <h3 className="text-sm font-semibold text-slate-100">
             Drivers do mês ({monthLabel(operational.currentMonth)})
@@ -426,6 +441,64 @@ export function InsightsPageClient({ data, year }: Props) {
               </li>
             ))}
           </ul>
+        </article>
+
+        <article className="rounded-xl border border-cyan-800 bg-slate-800 p-4">
+          <h3 className="text-sm font-semibold text-slate-100">
+            Reinvestimento FIIs (Tijolo x Papel)
+          </h3>
+          <p className="mt-1 text-[11px] text-slate-400">
+            Tendência de mercado real (BCB) para o próximo ciclo mensal.
+          </p>
+          <div className="mt-3 space-y-2 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-orange-300">Tijolo</span>
+              <span className="font-semibold text-orange-300">
+                {formatPercentage(fiiSuggestion.tijoloPercent)}
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-slate-700">
+              <div
+                className="h-2 rounded-full bg-orange-400"
+                style={{ width: `${fiiSuggestion.tijoloPercent}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-emerald-300">Papel</span>
+              <span className="font-semibold text-emerald-300">
+                {formatPercentage(fiiSuggestion.papelPercent)}
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-slate-700">
+              <div
+                className="h-2 rounded-full bg-emerald-400"
+                style={{ width: `${fiiSuggestion.papelPercent}%` }}
+              />
+            </div>
+            <p className="text-slate-300">
+              Regime:{" "}
+              <span className="font-semibold text-cyan-300">
+                {marketRegimeLabel(fiiSuggestion.marketRegime)}
+              </span>
+            </p>
+            <p className="text-slate-400">
+              Confiança:{" "}
+              <span className="font-semibold text-slate-100">
+                {formatPercentage(fiiSuggestion.confidencePercent)}
+              </span>
+            </p>
+            <p className="text-slate-400">
+              Juro real:{" "}
+              <span className="font-semibold text-slate-100">
+                {formatPercentage(fiiSuggestion.realRatePercent)}
+              </span>
+            </p>
+            <p className="text-slate-500">
+              Selic 3M {formatTrendPp(fiiSuggestion.selicTrend3mPercent)} | IPCA 3M{" "}
+              {formatTrendPp(fiiSuggestion.ipcaTrend3mPercent)}
+            </p>
+            <p className="text-[11px] text-slate-500">{fiiSuggestion.rationale}</p>
+          </div>
         </article>
       </section>
 

@@ -15,6 +15,36 @@ import { monthLabel } from "../../../lib/formatters";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const FALLBACK_CDI_ANNUAL_RATE = 10.65;
+const CDI_SERIES_URL =
+  "https://api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados/ultimos/5?formato=json";
+const SELIC_SERIES_URL =
+  "https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados/ultimos/90?formato=json";
+const IPCA_12M_SERIES_URL =
+  "https://api.bcb.gov.br/dados/serie/bcdata.sgs.13522/dados/ultimos/12?formato=json";
+const CDI_CACHE_SUCCESS_TTL_MS = 6 * 60 * 60 * 1000;
+const CDI_CACHE_FALLBACK_TTL_MS = 30 * 60 * 1000;
+const FII_TREND_CACHE_SUCCESS_TTL_MS = 6 * 60 * 60 * 1000;
+const FII_TREND_CACHE_FALLBACK_TTL_MS = 30 * 60 * 1000;
+
+let cdiAnnualCache: { value: number; expiresAt: number } | null = null;
+let fiiTrendCache:
+  | {
+      value: {
+        selicMetaPercent: number;
+        ipca12mPercent: number;
+        selicTrend3mPercent: number | null;
+        ipcaTrend3mPercent: number | null;
+      };
+      expiresAt: number;
+    }
+  | null = null;
+
+type BcbSeriesPoint = {
+  data?: string;
+  valor?: string;
+};
+
 function isItauInstitution(institution: string): boolean {
   const normalized = institution
     .normalize("NFD")
@@ -26,6 +56,8 @@ function isItauInstitution(institution: string): boolean {
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const year = Number(searchParams.get("year") ?? new Date().getFullYear());
+  const cdiAnnualPromise = resolveCdiAnnualReference();
+  const fiiTrendSignalsPromise = resolveFiiMarketTrendSignals();
 
   const [
     { data: investments, error: invError },
@@ -53,6 +85,11 @@ export async function GET(req: NextRequest) {
   if (posError && !posError.message?.includes("monthly_positions")) {
     return NextResponse.json({ error: posError.message }, { status: 500 });
   }
+
+  const [cdiAnnualReference, fiiTrendSignals] = await Promise.all([
+    cdiAnnualPromise,
+    fiiTrendSignalsPromise,
+  ]);
 
   const byInvestment = new Map<string, (typeof investments)[number]>();
   for (const inv of investments) {
@@ -180,6 +217,8 @@ export async function GET(req: NextRequest) {
     distribution,
     monthlySeries,
     year,
+    cdiAnnualReference,
+    fiiTrendSignals,
   );
   const goalProgress = buildGoalProgress(kpis);
   const alerts = buildConsistencyAlerts({
@@ -290,10 +329,14 @@ function buildInsights(
   distribution: IncomeDistribution,
   monthlySeries: PassiveIncomeByMonth[],
   year: number,
+  cdiAnnualReference: number,
+  fiiTrendSignals: {
+    selicMetaPercent: number;
+    ipca12mPercent: number;
+    selicTrend3mPercent: number | null;
+    ipcaTrend3mPercent: number | null;
+  },
 ): FinancialInsights {
-  const cdiEnv = Number(process.env.FINANCEFLOW_CDI_ANNUAL_RATE ?? 10.65);
-  const cdiAnnualReference =
-    Number.isFinite(cdiEnv) && cdiEnv > 0 ? cdiEnv : 10.65;
   const totalCdb = distribution.itauCdb + distribution.otherCdb;
   const totalFii = distribution.fii;
   const ratio = totalCdb > 0 ? (totalFii / totalCdb) * 100 : 0;
@@ -345,6 +388,10 @@ function buildInsights(
     bestSource,
     fiiToCdbRatio: ratio,
     cdiAnnualReference,
+    fiiReinvestment: deriveFiiReinvestmentSuggestion(
+      cdiAnnualReference,
+      fiiTrendSignals,
+    ),
     forecastNextMonth,
     forecastRangeMin,
     forecastRangeMax,
@@ -355,6 +402,277 @@ function buildInsights(
     anomalyReason: anomaly.reason,
     commentary,
   };
+}
+
+function resolveEnvCdiAnnualFallback(): number {
+  const cdiEnv = Number(process.env.FINANCEFLOW_CDI_ANNUAL_RATE ?? FALLBACK_CDI_ANNUAL_RATE);
+  return Number.isFinite(cdiEnv) && cdiEnv > 0 ? cdiEnv : FALLBACK_CDI_ANNUAL_RATE;
+}
+
+function annualizeDailyRate(dailyRatePercent: number): number {
+  return (Math.pow(1 + dailyRatePercent / 100, 252) - 1) * 100;
+}
+
+async function resolveCdiAnnualReference(): Promise<number> {
+  const now = Date.now();
+  if (cdiAnnualCache && cdiAnnualCache.expiresAt > now) {
+    return cdiAnnualCache.value;
+  }
+
+  const fallback = resolveEnvCdiAnnualFallback();
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    const controller = new AbortController();
+    timeout = setTimeout(() => controller.abort(), 1800);
+    const response = await fetch(CDI_SERIES_URL, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (timeout) clearTimeout(timeout);
+
+    if (!response.ok) {
+      throw new Error(`BCB status ${response.status}`);
+    }
+
+    const payload = (await response.json()) as BcbSeriesPoint[];
+    if (!Array.isArray(payload) || payload.length === 0) {
+      throw new Error("BCB payload vazio");
+    }
+
+    const latestPoint = [...payload]
+      .reverse()
+      .find((point) => Number.isFinite(Number((point.valor ?? "").replace(",", "."))));
+    if (!latestPoint?.valor) {
+      throw new Error("BCB sem valor válido");
+    }
+
+    const dailyRate = Number(latestPoint.valor.replace(",", "."));
+    if (!Number.isFinite(dailyRate) || dailyRate <= 0) {
+      throw new Error("Taxa CDI diária inválida");
+    }
+
+    const annualized = annualizeDailyRate(dailyRate);
+    if (!Number.isFinite(annualized) || annualized <= 0) {
+      throw new Error("Taxa CDI anualizada inválida");
+    }
+
+    cdiAnnualCache = {
+      value: annualized,
+      expiresAt: now + CDI_CACHE_SUCCESS_TTL_MS,
+    };
+
+    return annualized;
+  } catch (error) {
+    console.warn("Falha ao obter CDI no BCB, usando fallback local.", error);
+    cdiAnnualCache = {
+      value: fallback,
+      expiresAt: now + CDI_CACHE_FALLBACK_TTL_MS,
+    };
+    return fallback;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+function parseBcbSeriesValues(payload: BcbSeriesPoint[]): number[] {
+  return payload
+    .map((point) => Number((point.valor ?? "").replace(",", ".")))
+    .filter((value) => Number.isFinite(value));
+}
+
+async function fetchBcbSeries(url: string): Promise<number[]> {
+  const controller = new AbortController();
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  try {
+    timeout = setTimeout(() => controller.abort(), 1800);
+    const response = await fetch(url, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`BCB status ${response.status}`);
+    }
+    const payload = (await response.json()) as BcbSeriesPoint[];
+    if (!Array.isArray(payload) || payload.length === 0) {
+      throw new Error("BCB payload vazio");
+    }
+    const values = parseBcbSeriesValues(payload);
+    if (values.length === 0) {
+      throw new Error("BCB sem valores válidos");
+    }
+    return values;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+async function resolveFiiMarketTrendSignals(): Promise<{
+  selicMetaPercent: number;
+  ipca12mPercent: number;
+  selicTrend3mPercent: number | null;
+  ipcaTrend3mPercent: number | null;
+}> {
+  const now = Date.now();
+  if (fiiTrendCache && fiiTrendCache.expiresAt > now) {
+    return fiiTrendCache.value;
+  }
+
+  const fallbackSelic = Number(process.env.FINANCEFLOW_SELIC_META_FALLBACK ?? 10.5);
+  const fallbackIpca12m = Number(process.env.FINANCEFLOW_IPCA12M_FALLBACK ?? 4.5);
+  const safeFallbackSelic =
+    Number.isFinite(fallbackSelic) && fallbackSelic > 0 ? fallbackSelic : 10.5;
+  const safeFallbackIpca12m =
+    Number.isFinite(fallbackIpca12m) && fallbackIpca12m > 0 ? fallbackIpca12m : 4.5;
+
+  try {
+    const [selicValues, ipcaValues] = await Promise.all([
+      fetchBcbSeries(SELIC_SERIES_URL),
+      fetchBcbSeries(IPCA_12M_SERIES_URL),
+    ]);
+
+    const selicMetaPercent = selicValues[selicValues.length - 1] ?? safeFallbackSelic;
+    const ipca12mPercent = ipcaValues[ipcaValues.length - 1] ?? safeFallbackIpca12m;
+    const selicBase = selicValues[0] ?? selicMetaPercent;
+    const ipcaBase =
+      ipcaValues.length >= 4 ? ipcaValues[ipcaValues.length - 4] : ipcaValues[0] ?? ipca12mPercent;
+    const selicTrend3mPercent =
+      selicValues.length >= 2 ? selicMetaPercent - selicBase : null;
+    const ipcaTrend3mPercent =
+      ipcaValues.length >= 2 ? ipca12mPercent - ipcaBase : null;
+
+    const value = {
+      selicMetaPercent,
+      ipca12mPercent,
+      selicTrend3mPercent,
+      ipcaTrend3mPercent,
+    };
+
+    fiiTrendCache = {
+      value,
+      expiresAt: now + FII_TREND_CACHE_SUCCESS_TTL_MS,
+    };
+    return value;
+  } catch (error) {
+    console.warn("Falha ao obter sinais de mercado para FIIs no BCB, usando fallback.", error);
+    const value = {
+      selicMetaPercent: safeFallbackSelic,
+      ipca12mPercent: safeFallbackIpca12m,
+      selicTrend3mPercent: null,
+      ipcaTrend3mPercent: null,
+    };
+    fiiTrendCache = {
+      value,
+      expiresAt: now + FII_TREND_CACHE_FALLBACK_TTL_MS,
+    };
+    return value;
+  }
+}
+
+function deriveFiiReinvestmentSuggestion(
+  cdiAnnualReference: number,
+  trendSignals: {
+    selicMetaPercent: number;
+    ipca12mPercent: number;
+    selicTrend3mPercent: number | null;
+    ipcaTrend3mPercent: number | null;
+  },
+): FinancialInsights["fiiReinvestment"] {
+  const realRatePercent = cdiAnnualReference - trendSignals.ipca12mPercent;
+  const realRateAdj = clamp((realRatePercent - 4) * 2.5, -15, 20);
+  const selicTrendAdj = clamp((trendSignals.selicTrend3mPercent ?? 0) * 3.5, -12, 12);
+  const ipcaTrendAdj = clamp((trendSignals.ipcaTrend3mPercent ?? 0) * 2.1, -8, 8);
+  const ipcaLevelAdj = clamp((trendSignals.ipca12mPercent - 4.5) * 1.2, -6, 10);
+
+  const paperRaw = 50 + realRateAdj + selicTrendAdj + ipcaTrendAdj + ipcaLevelAdj;
+  const papelPercent = Math.round(clamp(paperRaw, 25, 75));
+  const tijoloPercent = 100 - papelPercent;
+
+  const alignmentSignals = [
+    realRatePercent >= 5 ? 1 : realRatePercent <= 3 ? -1 : 0,
+    (trendSignals.selicTrend3mPercent ?? 0) >= 0.15
+      ? 1
+      : (trendSignals.selicTrend3mPercent ?? 0) <= -0.15
+        ? -1
+        : 0,
+    (trendSignals.ipcaTrend3mPercent ?? 0) >= 0.25
+      ? 1
+      : (trendSignals.ipcaTrend3mPercent ?? 0) <= -0.25
+        ? -1
+        : 0,
+  ];
+  const alignmentScore = Math.abs(alignmentSignals.reduce((acc, value) => acc + value, 0));
+  const adjustmentMagnitude =
+    Math.abs(realRateAdj) + Math.abs(selicTrendAdj) + Math.abs(ipcaTrendAdj) + Math.abs(ipcaLevelAdj);
+  const confidencePercent = Math.round(
+    clamp(45 + adjustmentMagnitude * 1.1 + alignmentScore * 6, 45, 90),
+  );
+
+  let marketRegime: FinancialInsights["fiiReinvestment"]["marketRegime"] = "EQUILIBRADO";
+  if (realRatePercent >= 6 && (trendSignals.selicTrend3mPercent ?? 0) >= 0) {
+    marketRegime = "JUROS_RESTRITIVOS";
+  } else if ((trendSignals.selicTrend3mPercent ?? 0) <= -0.4 && realRatePercent <= 5) {
+    marketRegime = "AFROUXAMENTO_MONETARIO";
+  } else if (
+    (trendSignals.ipcaTrend3mPercent ?? 0) >= 0.3 ||
+    trendSignals.ipca12mPercent >= 5.5
+  ) {
+    marketRegime = "INFLACAO_REACELERANDO";
+  }
+
+  const drivers = [
+    { key: "realRate", value: realRateAdj },
+    { key: "selicTrend", value: selicTrendAdj },
+    { key: "ipcaTrend", value: ipcaTrendAdj },
+    { key: "ipcaLevel", value: ipcaLevelAdj },
+  ]
+    .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+    .slice(0, 2);
+
+  const driverText = drivers
+    .map((driver) => {
+      if (driver.key === "realRate") {
+        return `juro real em ${realRatePercent.toFixed(2)}%`;
+      }
+      if (driver.key === "selicTrend") {
+        return `Selic 3M em ${
+          trendSignals.selicTrend3mPercent === null
+            ? "estável"
+            : `${trendSignals.selicTrend3mPercent >= 0 ? "+" : ""}${trendSignals.selicTrend3mPercent.toFixed(2)} p.p.`
+        }`;
+      }
+      if (driver.key === "ipcaTrend") {
+        return `IPCA 12M 3M em ${
+          trendSignals.ipcaTrend3mPercent === null
+            ? "estável"
+            : `${trendSignals.ipcaTrend3mPercent >= 0 ? "+" : ""}${trendSignals.ipcaTrend3mPercent.toFixed(2)} p.p.`
+        }`;
+      }
+      return `IPCA 12M em ${trendSignals.ipca12mPercent.toFixed(2)}%`;
+    })
+    .join(" e ");
+
+  const rationale = `Proporção derivada por regime macro (BCB): ${driverText}. Papel ganha peso em ambiente de juro real alto/pressão inflacionária; Tijolo ganha peso quando juros reais aliviam e ciclo monetário afrouxa.`;
+
+  return {
+    tijoloPercent,
+    papelPercent,
+    confidencePercent,
+    marketRegime,
+    realRatePercent,
+    selicMetaPercent: trendSignals.selicMetaPercent,
+    ipca12mPercent: trendSignals.ipca12mPercent,
+    selicTrend3mPercent: trendSignals.selicTrend3mPercent,
+    ipcaTrend3mPercent: trendSignals.ipcaTrend3mPercent,
+    rationale,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 function weightedMovingAverage(values: number[]): number {

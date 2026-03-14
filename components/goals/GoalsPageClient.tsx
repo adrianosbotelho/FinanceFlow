@@ -42,6 +42,7 @@ type AnnualGoalRow = {
 
 type GoalTrendPoint = {
   month: number;
+  label: string;
   realized: number;
   target: number;
 };
@@ -249,6 +250,7 @@ export function GoalsPageClient() {
           .reduce((acc, r) => acc + Number(r.income_value ?? 0), 0);
         return {
           month,
+          label: monthLabel(month),
           realized,
           target: row.target,
         };
@@ -844,7 +846,14 @@ export function GoalsPageClient() {
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={series} margin={{ top: 8, right: 8, left: 8 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                      <XAxis dataKey="month" stroke="#94a3b8" />
+                      <XAxis
+                        dataKey="label"
+                        stroke="#94a3b8"
+                        interval={0}
+                        minTickGap={0}
+                        tick={{ fontSize: 11 }}
+                        tickMargin={6}
+                      />
                       <YAxis
                         stroke="#94a3b8"
                         tickFormatter={formatCurrencyBRL}
@@ -852,6 +861,7 @@ export function GoalsPageClient() {
                       />
                       <Tooltip
                         formatter={(value: number) => formatCurrencyBRL(value)}
+                        labelFormatter={(value) => `Mês: ${String(value)}`}
                         contentStyle={{
                           backgroundColor: "#020617",
                           borderColor: "#1f2937",
