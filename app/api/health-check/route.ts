@@ -26,6 +26,9 @@ type ApiCheckConfig = {
   validate?: (payload: unknown) => boolean;
 };
 
+const INTERNAL_API_TIMEOUT_MS = 5000;
+const EXTERNAL_API_TIMEOUT_MS = 4000;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -206,6 +209,44 @@ function endpointWithDefaultParams(endpoint: string): string {
   return endpoint;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function extractApiError(response: Response): Promise<string> {
+  let raw = "";
+  try {
+    raw = await response.text();
+  } catch {
+    return `HTTP ${response.status}`;
+  }
+
+  if (!raw) {
+    return `HTTP ${response.status}`;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const detail =
+      typeof parsed.error === "string"
+        ? parsed.error
+        : typeof parsed.message === "string"
+          ? parsed.message
+          : null;
+    if (detail) {
+      return `HTTP ${response.status} - ${detail}`;
+    }
+  } catch {
+    // body não era JSON, segue com texto bruto.
+  }
+
+  const compact = raw.replace(/\s+/g, " ").trim();
+  if (!compact) {
+    return `HTTP ${response.status}`;
+  }
+  return `HTTP ${response.status} - ${compact.slice(0, 160)}`;
+}
+
 async function runApiCheck(origin: string, config: ApiCheckConfig): Promise<HealthApiCheck> {
   const endpointValue =
     typeof config.endpoint === "function" ? config.endpoint() : config.endpoint;
@@ -215,66 +256,102 @@ async function runApiCheck(origin: string, config: ApiCheckConfig): Promise<Heal
       : endpointValue;
   const url =
     config.source === "internal" ? `${origin}${resolvedEndpoint}` : resolvedEndpoint;
-  const start = Date.now();
-  const controller = new AbortController();
-  let timeout: ReturnType<typeof setTimeout> | null = null;
-  try {
-    timeout = setTimeout(() => controller.abort(), 3000);
-    const response = await fetch(url, {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    const latencyMs = Date.now() - start;
-    if (!response.ok) {
-      return {
-        name: config.name,
-        panel: config.panel,
-        source: config.source,
-        endpoint: resolvedEndpoint,
-        method: "GET",
-        status: "error",
-        httpStatus: response.status,
-        latencyMs,
-        error: `HTTP ${response.status}`,
-      };
-    }
+  const maxAttempts = config.source === "internal" ? 2 : 1;
+  const timeoutMs =
+    config.source === "internal" ? INTERNAL_API_TIMEOUT_MS : EXTERNAL_API_TIMEOUT_MS;
 
-    let payload: unknown = null;
+  let lastFailure: HealthApiCheck | null = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const start = Date.now();
+    const controller = new AbortController();
+    let timeout: ReturnType<typeof setTimeout> | null = null;
     try {
-      payload = await response.json();
-    } catch {
-      payload = null;
-    }
+      timeout = setTimeout(() => controller.abort(), timeoutMs);
+      const response = await fetch(url, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      const latencyMs = Date.now() - start;
 
-    if (config.validate && !config.validate(payload)) {
+      if (!response.ok) {
+        const error = await extractApiError(response);
+        lastFailure = {
+          name: config.name,
+          panel: config.panel,
+          source: config.source,
+          endpoint: resolvedEndpoint,
+          method: "GET",
+          status: "error",
+          httpStatus: response.status,
+          latencyMs,
+          error,
+        };
+        const retryable = config.source === "internal" && response.status >= 500;
+        if (attempt < maxAttempts && retryable) {
+          await sleep(150);
+          continue;
+        }
+        return lastFailure;
+      }
+
+      let payload: unknown = null;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
+
+      if (config.validate && !config.validate(payload)) {
+        return {
+          name: config.name,
+          panel: config.panel,
+          source: config.source,
+          endpoint: resolvedEndpoint,
+          method: "GET",
+          status: "error",
+          httpStatus: response.status,
+          latencyMs,
+          error: "Payload fora do formato esperado",
+        };
+      }
+
       return {
         name: config.name,
         panel: config.panel,
         source: config.source,
         endpoint: resolvedEndpoint,
         method: "GET",
-        status: "error",
+        status: "ok",
         httpStatus: response.status,
         latencyMs,
-        error: "Payload fora do formato esperado",
+        error: null,
       };
+    } catch (error) {
+      lastFailure = {
+        name: config.name,
+        panel: config.panel,
+        source: config.source,
+        endpoint: resolvedEndpoint,
+        method: "GET",
+        status: "error",
+        httpStatus: null,
+        latencyMs: Date.now() - start,
+        error: error instanceof Error ? error.message : "Erro ao chamar endpoint",
+      };
+      if (attempt < maxAttempts && config.source === "internal") {
+        await sleep(150);
+        continue;
+      }
+      return lastFailure;
+    } finally {
+      if (timeout) clearTimeout(timeout);
     }
+  }
 
-    return {
-      name: config.name,
-      panel: config.panel,
-      source: config.source,
-      endpoint: resolvedEndpoint,
-      method: "GET",
-      status: "ok",
-      httpStatus: response.status,
-      latencyMs,
-      error: null,
-    };
-  } catch (error) {
-    return {
+  return (
+    lastFailure ?? {
       name: config.name,
       panel: config.panel,
       source: config.source,
@@ -282,12 +359,10 @@ async function runApiCheck(origin: string, config: ApiCheckConfig): Promise<Heal
       method: "GET",
       status: "error",
       httpStatus: null,
-      latencyMs: Date.now() - start,
-      error: error instanceof Error ? error.message : "Erro ao chamar endpoint",
-    };
-  } finally {
-    if (timeout) clearTimeout(timeout);
-  }
+      latencyMs: 0,
+      error: "Falha desconhecida",
+    }
+  );
 }
 
 export async function GET(req: Request) {
@@ -318,11 +393,14 @@ export async function GET(req: Request) {
     runTableCheck("monthly_macro"),
     runTableCheck("investment_cash_events"),
   ]);
-  const apiChecks = await Promise.all(
-    [...INTERNAL_API_CHECKS, ...EXTERNAL_API_CHECKS].map((check) =>
-      runApiCheck(origin, check),
-    ),
+  const internalApiChecks: HealthApiCheck[] = [];
+  for (const check of INTERNAL_API_CHECKS) {
+    internalApiChecks.push(await runApiCheck(origin, check));
+  }
+  const externalApiChecks = await Promise.all(
+    EXTERNAL_API_CHECKS.map((check) => runApiCheck(origin, check)),
   );
+  const apiChecks = [...internalApiChecks, ...externalApiChecks];
 
   const dbStatus =
     !dbError && tableChecks.every((check) => check.status === "ok")
