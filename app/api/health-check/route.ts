@@ -144,6 +144,13 @@ const INTERNAL_API_CHECKS: ApiCheckConfig[] = [
     validate: isArray,
   },
   {
+    name: "Eventos de Caixa",
+    panel: "Performance",
+    source: "internal",
+    endpoint: "/api/investment-cash-events",
+    validate: isArray,
+  },
+  {
     name: "Macro Mensal",
     panel: "Performance",
     source: "internal",
@@ -189,6 +196,7 @@ function endpointWithDefaultParams(endpoint: string): string {
     endpoint === "/api/performance" ||
     endpoint === "/api/monthly-positions" ||
     endpoint === "/api/monthly-macro" ||
+    endpoint === "/api/investment-cash-events" ||
     endpoint === "/api/returns" ||
     endpoint === "/api/investments/forecast" ||
     endpoint === "/api/investment-goals-annual"
@@ -308,6 +316,7 @@ export async function GET(req: Request) {
     runTableCheck("investment_goals_annual"),
     runTableCheck("monthly_positions"),
     runTableCheck("monthly_macro"),
+    runTableCheck("investment_cash_events"),
   ]);
   const apiChecks = await Promise.all(
     [...INTERNAL_API_CHECKS, ...EXTERNAL_API_CHECKS].map((check) =>

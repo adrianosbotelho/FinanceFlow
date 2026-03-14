@@ -69,6 +69,21 @@ export interface MonthlyMacro {
   updated_at?: string;
 }
 
+export type CashEventType = "APORTE" | "RESGATE" | "IMPOSTO" | "TAXA";
+
+export interface InvestmentCashEvent {
+  id: string;
+  investment_id: string;
+  event_date: string;
+  year: number;
+  month: number;
+  type: CashEventType;
+  amount: number;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface PassiveIncomeByMonth {
   month: number;
   year: number;
@@ -237,6 +252,7 @@ export interface HealthCheckPayload {
 
 export interface PerformanceKPIs {
   investedCapital: number;
+  currentCostBasis: number;
   currentMarketValue: number;
   ytdPassiveIncomeNet: number;
   ytdTaxes: number;
@@ -253,6 +269,7 @@ export interface PerformanceMonthPoint {
   fees: number;
   netIncome: number;
   marketValue: number;
+  costBasis: number;
   inflationRate: number;
   nominalReturnPercent: number;
   realReturnPercent: number;
@@ -269,5 +286,7 @@ export interface PerformancePayload {
   kpis: PerformanceKPIs;
   monthlySeries: PerformanceMonthPoint[];
   concentration: ConcentrationItem[];
+  cashEvents: InvestmentCashEvent[];
+  inflationSource: "bcb" | "manual" | "none";
   warnings: string[];
 }
