@@ -1,7 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Investment, MonthlyClosure, MonthlyReturn } from "../../types";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  CashEventType,
+  Investment,
+  InvestmentCashEvent,
+  MonthlyClosure,
+  MonthlyReturn,
+} from "../../types";
 import { formatCurrencyBRL, monthNameFull } from "../../lib/formatters";
 import { publishDataSyncUpdate } from "../../lib/client-data-sync";
 import { ReturnForm } from "../forms/ReturnForm";
@@ -19,6 +25,26 @@ type ReturnRow = {
 
 type ReturnSortField = "year" | "month" | "label" | "income";
 type ReturnSortDirection = "asc" | "desc";
+
+const EVENT_TYPE_OPTIONS: Array<{ value: CashEventType; label: string }> = [
+  { value: "APORTE", label: "Aporte" },
+  { value: "RESGATE", label: "Resgate" },
+  { value: "IMPOSTO", label: "Imposto" },
+  { value: "TAXA", label: "Taxa" },
+];
+
+const EVENT_TYPE_COLORS: Record<CashEventType, string> = {
+  APORTE: "text-emerald-300",
+  RESGATE: "text-amber-300",
+  IMPOSTO: "text-rose-300",
+  TAXA: "text-rose-300",
+};
+
+function parseBrDate(raw: string): string {
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  return parsed.toLocaleDateString("pt-BR");
+}
 
 interface ReturnsPageClientProps {}
 
@@ -44,6 +70,14 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
   const pageSize = 10;
 
   const [editing, setEditing] = useState<ReturnRow | null>(null);
+  const [eventYear, setEventYear] = useState(() => new Date().getFullYear());
+  const [cashEvents, setCashEvents] = useState<InvestmentCashEvent[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [eventInvestmentId, setEventInvestmentId] = useState("");
+  const [eventDate, setEventDate] = useState(new Date().toISOString().slice(0, 10));
+  const [eventType, setEventType] = useState<CashEventType>("APORTE");
+  const [eventAmount, setEventAmount] = useState("");
+  const [eventNotes, setEventNotes] = useState("");
 
   useEffect(() => {
     const load = async () => {
@@ -69,6 +103,10 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
         }
         setInvestments(invData);
         setRawReturns(retData);
+        if (invData.length > 0) {
+          const defaultInvestmentId = invData[0].id;
+          setEventInvestmentId((prev) => prev || defaultInvestmentId);
+        }
       } catch (e: any) {
         console.error(e);
         setError(e?.message ?? "Erro inesperado.");
@@ -78,6 +116,30 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
     };
     load();
   }, []);
+
+  const loadCashEvents = useCallback(async (year: number) => {
+    try {
+      setEventsLoading(true);
+      const res = await fetch(`/api/investment-cash-events?year=${year}`, {
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        setCashEvents([]);
+        return;
+      }
+      const data: InvestmentCashEvent[] = await res.json();
+      setCashEvents(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+      setCashEvents([]);
+    } finally {
+      setEventsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadCashEvents(eventYear);
+  }, [eventYear, loadCashEvents]);
 
   const rows: ReturnRow[] = useMemo(() => {
     type MutableRow = ReturnRow & { sourceIds: Set<string> };
@@ -143,6 +205,17 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
     return Array.from(set).sort();
   }, [rows]);
 
+  const eventYearOptions = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    const set = new Set<number>([currentYear, ...years]);
+    cashEvents.forEach((event) => {
+      if (Number.isFinite(event.year)) {
+        set.add(Number(event.year));
+      }
+    });
+    return Array.from(set).sort((a, b) => a - b);
+  }, [cashEvents, years]);
+
   const uiInvestments: Investment[] = useMemo(() => {
     return investments.map((inv) => ({
       ...inv,
@@ -154,6 +227,14 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
             : inv.name,
     }));
   }, [investments]);
+
+  const investmentById = useMemo(() => {
+    const map = new Map<string, Investment>();
+    for (const inv of uiInvestments) {
+      map.set(inv.id, inv);
+    }
+    return map;
+  }, [uiInvestments]);
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
@@ -292,6 +373,52 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
     }
   };
 
+  const handleSaveCashEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch("/api/investment-cash-events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          investment_id: eventInvestmentId,
+          event_date: eventDate,
+          type: eventType,
+          amount: Number(eventAmount),
+          notes: eventNotes.trim() || null,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error ?? "Erro ao salvar evento de caixa.");
+      }
+      setEventAmount("");
+      setEventNotes("");
+      await loadCashEvents(eventYear);
+      publishDataSyncUpdate("returns");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Erro ao salvar evento.");
+    }
+  };
+
+  const handleDeleteCashEvent = async (event: InvestmentCashEvent) => {
+    if (!confirm("Excluir este evento de caixa?")) return;
+    try {
+      const res = await fetch("/api/investment-cash-events", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: event.id }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error ?? "Erro ao excluir evento.");
+      }
+      await loadCashEvents(eventYear);
+      publishDataSyncUpdate("returns");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Erro ao excluir evento.");
+    }
+  };
+
   const handleEdit = (row: ReturnRow) => {
     if (isPeriodClosed(row.year, row.month)) {
       alert(
@@ -374,8 +501,8 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
           Retornos Mensais
         </h2>
         <p className="text-sm text-slate-400">
-          Registre ou atualize o valor acumulado de rendimentos por mês. Se o
-          mês já existir para o investimento, o valor será sobrescrito.
+          Centralize aqui os lançamentos: rendimentos mensais e eventos de caixa
+          (aporte, resgate, imposto e taxa).
         </p>
       </div>
 
@@ -613,6 +740,148 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
               : undefined
           }
         />
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+        <form
+          onSubmit={handleSaveCashEvent}
+          className="space-y-3 rounded-xl border border-slate-800 bg-surface/80 p-4"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-slate-200">Registrar evento de caixa</h3>
+            <select
+              value={eventYear}
+              onChange={(e) => setEventYear(Number(e.target.value))}
+              className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+            >
+              {eventYearOptions.map((yearOption) => (
+                <option key={yearOption} value={yearOption}>
+                  {yearOption}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="text-xs text-slate-400">
+            Use este bloco para aporte, resgate, imposto e taxa. O rendimento continua no formulário de Retorno Mensal.
+          </p>
+
+          <select
+            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+            value={eventInvestmentId}
+            onChange={(e) => setEventInvestmentId(e.target.value)}
+            required
+          >
+            {uiInvestments.map((inv) => (
+              <option key={inv.id} value={inv.id}>
+                {inv.name} ({inv.institution})
+              </option>
+            ))}
+          </select>
+
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              type="date"
+              value={eventDate}
+              onChange={(e) => setEventDate(e.target.value)}
+              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100"
+              required
+            />
+            <select
+              value={eventType}
+              onChange={(e) => setEventType(e.target.value as CashEventType)}
+              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100"
+              required
+            >
+              {EVENT_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="Valor (R$)"
+            value={eventAmount}
+            onChange={(e) => setEventAmount(e.target.value)}
+            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100"
+            required
+          />
+
+          <input
+            type="text"
+            placeholder="Observação (opcional)"
+            value={eventNotes}
+            onChange={(e) => setEventNotes(e.target.value)}
+            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100"
+          />
+
+          <button
+            type="submit"
+            className="inline-flex h-9 items-center justify-center rounded-lg border border-cyan-700 bg-cyan-950/50 px-4 text-xs font-medium text-cyan-100"
+          >
+            Salvar evento
+          </button>
+        </form>
+
+        <div className="rounded-xl border border-slate-800 bg-surface/80 p-4">
+          <h3 className="mb-3 text-sm font-semibold text-slate-200">
+            Eventos de caixa ({eventYear})
+          </h3>
+          {eventsLoading ? (
+            <p className="text-xs text-slate-400">Carregando eventos...</p>
+          ) : cashEvents.length === 0 ? (
+            <p className="text-xs text-slate-400">Nenhum evento lançado para {eventYear}.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-xs">
+                <thead className="text-slate-400">
+                  <tr>
+                    <th className="px-2 py-1">Data</th>
+                    <th className="px-2 py-1">Investimento</th>
+                    <th className="px-2 py-1">Tipo</th>
+                    <th className="px-2 py-1">Valor</th>
+                    <th className="px-2 py-1">Observação</th>
+                    <th className="px-2 py-1 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cashEvents.map((event) => {
+                    const inv = investmentById.get(event.investment_id);
+                    return (
+                      <tr
+                        key={event.id}
+                        className="border-t border-slate-800 text-slate-200"
+                      >
+                        <td className="px-2 py-2">{parseBrDate(event.event_date)}</td>
+                        <td className="px-2 py-2">
+                          {inv ? `${inv.name} (${inv.institution})` : event.investment_id}
+                        </td>
+                        <td className={`px-2 py-2 font-medium ${EVENT_TYPE_COLORS[event.type]}`}>
+                          {EVENT_TYPE_OPTIONS.find((option) => option.value === event.type)?.label ?? event.type}
+                        </td>
+                        <td className="px-2 py-2">{formatCurrencyBRL(Number(event.amount))}</td>
+                        <td className="px-2 py-2 text-slate-400">{event.notes || "-"}</td>
+                        <td className="px-2 py-2 text-right">
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteCashEvent(event)}
+                            className="rounded-md border border-rose-700 px-2 py-1 text-[11px] text-rose-200 hover:bg-rose-900/30"
+                          >
+                            Excluir
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Resumo mensal no formato Itau / Santander / FIIs / Total */}

@@ -11,9 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import {
-  CashEventType,
   Investment,
-  InvestmentCashEvent,
   PerformancePayload,
 } from "../../types";
 import { formatCurrencyBRL, formatPercentage, monthLabel } from "../../lib/formatters";
@@ -23,30 +21,10 @@ interface Props {
   initialYear: number;
 }
 
-const EVENT_TYPE_OPTIONS: Array<{ value: CashEventType; label: string }> = [
-  { value: "APORTE", label: "Aporte" },
-  { value: "RESGATE", label: "Resgate" },
-  { value: "IMPOSTO", label: "Imposto" },
-  { value: "TAXA", label: "Taxa" },
-];
-
-const EVENT_TYPE_COLORS: Record<CashEventType, string> = {
-  APORTE: "text-emerald-300",
-  RESGATE: "text-amber-300",
-  IMPOSTO: "text-rose-300",
-  TAXA: "text-rose-300",
-};
-
 function inflationSourceLabel(source: PerformancePayload["inflationSource"]): string {
   if (source === "bcb") return "Inflação automática: BCB IPCA (SGS 433)";
   if (source === "manual") return "Inflação manual: tabela monthly_macro";
   return "Inflação indisponível (retorno real com fallback em 0%)";
-}
-
-function parseBrDate(raw: string): string {
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) return raw;
-  return parsed.toLocaleDateString("pt-BR");
 }
 
 export function PerformancePageClient({ initialYear }: Props) {
@@ -59,12 +37,6 @@ export function PerformancePageClient({ initialYear }: Props) {
   const [positionInvestmentId, setPositionInvestmentId] = useState("");
   const [positionMonth, setPositionMonth] = useState(new Date().getMonth() + 1);
   const [marketValue, setMarketValue] = useState("");
-
-  const [eventInvestmentId, setEventInvestmentId] = useState("");
-  const [eventDate, setEventDate] = useState(new Date().toISOString().slice(0, 10));
-  const [eventType, setEventType] = useState<CashEventType>("APORTE");
-  const [eventAmount, setEventAmount] = useState("");
-  const [eventNotes, setEventNotes] = useState("");
 
   const years = useMemo(() => {
     const currentYear = new Date().getFullYear();
@@ -90,9 +62,6 @@ export function PerformancePageClient({ initialYear }: Props) {
       if (!positionInvestmentId && invData.length > 0) {
         setPositionInvestmentId(invData[0].id);
       }
-      if (!eventInvestmentId && invData.length > 0) {
-        setEventInvestmentId(invData[0].id);
-      }
 
       setError(null);
     } catch (e) {
@@ -100,7 +69,7 @@ export function PerformancePageClient({ initialYear }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [eventInvestmentId, positionInvestmentId, year]);
+  }, [positionInvestmentId, year]);
 
   useEffect(() => {
     void load();
@@ -138,62 +107,6 @@ export function PerformancePageClient({ initialYear }: Props) {
     }
   };
 
-  const handleSaveCashEvent = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const res = await fetch("/api/investment-cash-events", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          investment_id: eventInvestmentId,
-          event_date: eventDate,
-          type: eventType,
-          amount: Number(eventAmount),
-          notes: eventNotes.trim() || null,
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error(err?.error ?? "Erro ao salvar evento de caixa.");
-      }
-
-      setEventAmount("");
-      setEventNotes("");
-      await load();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Erro ao salvar evento.");
-    }
-  };
-
-  const handleDeleteCashEvent = async (event: InvestmentCashEvent) => {
-    if (!confirm("Excluir este evento de caixa?")) return;
-    try {
-      const res = await fetch("/api/investment-cash-events", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: event.id }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error(err?.error ?? "Erro ao excluir evento.");
-      }
-
-      await load();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Erro ao excluir evento.");
-    }
-  };
-
-  const investmentById = useMemo(() => {
-    const map = new Map<string, Investment>();
-    for (const inv of investments) {
-      map.set(inv.id, inv);
-    }
-    return map;
-  }, [investments]);
-
   const kpis = data?.kpis;
 
   return (
@@ -202,7 +115,7 @@ export function PerformancePageClient({ initialYear }: Props) {
         <div>
           <h2 className="text-lg font-semibold text-slate-50">Performance Financeira</h2>
           <p className="text-sm text-slate-400">
-            Visão de retorno nominal/real para CDBs e FIIs, com inflação automática e eventos de caixa.
+            Visão de retorno nominal/real para CDBs e FIIs, com inflação automática.
           </p>
         </div>
         <select
@@ -224,7 +137,7 @@ export function PerformancePageClient({ initialYear }: Props) {
         <Card>
           <p className="text-xs text-cyan-300">{inflationSourceLabel(data.inflationSource)}</p>
           <p className="mt-1 text-xs text-slate-400">
-            Para CDB, use eventos de caixa para imposto/taxa no momento real de incidência (ex.: resgate).
+            Aportes, resgates, impostos e taxas devem ser lançados em Retornos Mensais no bloco de eventos de caixa.
           </p>
         </Card>
       ) : null}
@@ -292,183 +205,59 @@ export function PerformancePageClient({ initialYear }: Props) {
         </ResponsiveContainer>
       </Card>
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <form
-          onSubmit={handleSavePosition}
-          className="space-y-3 rounded-xl border border-slate-800 bg-surface/80 p-4"
+      <form
+        onSubmit={handleSavePosition}
+        className="space-y-3 rounded-xl border border-slate-800 bg-surface/80 p-4"
+      >
+        <h3 className="text-sm font-semibold text-slate-200">Registrar posição de mercado (opcional)</h3>
+        <p className="text-xs text-slate-400">
+          Use apenas se quiser sobrescrever a estimativa automática do valor de mercado no mês.
+        </p>
+        <select
+          className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+          value={positionInvestmentId}
+          onChange={(e) => setPositionInvestmentId(e.target.value)}
+          required
         >
-          <h3 className="text-sm font-semibold text-slate-200">Registrar posição de mercado (opcional)</h3>
-          <p className="text-xs text-slate-400">
-            Use apenas se quiser sobrescrever a estimativa automática do valor de mercado no mês.
-          </p>
+          {investments.map((inv) => (
+            <option key={inv.id} value={inv.id}>
+              {inv.name} ({inv.institution})
+            </option>
+          ))}
+        </select>
+
+        <div className="grid grid-cols-2 gap-2">
           <select
-            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
-            value={positionInvestmentId}
-            onChange={(e) => setPositionInvestmentId(e.target.value)}
+            value={positionMonth}
+            onChange={(e) => setPositionMonth(Number(e.target.value))}
+            className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100"
             required
           >
-            {investments.map((inv) => (
-              <option key={inv.id} value={inv.id}>
-                {inv.name} ({inv.institution})
+            {Array.from({ length: 12 }, (_, idx) => idx + 1).map((m) => (
+              <option key={m} value={m}>
+                {monthLabel(m)}
               </option>
             ))}
           </select>
-
-          <div className="grid grid-cols-2 gap-2">
-            <select
-              value={positionMonth}
-              onChange={(e) => setPositionMonth(Number(e.target.value))}
-              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100"
-              required
-            >
-              {Array.from({ length: 12 }, (_, idx) => idx + 1).map((m) => (
-                <option key={m} value={m}>
-                  {monthLabel(m)}
-                </option>
-              ))}
-            </select>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="Valor de mercado"
-              value={marketValue}
-              onChange={(e) => setMarketValue(e.target.value)}
-              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100"
-              required
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="inline-flex h-9 items-center justify-center rounded-lg bg-accent px-4 text-xs font-medium text-white"
-          >
-            Salvar posição
-          </button>
-        </form>
-
-        <form
-          onSubmit={handleSaveCashEvent}
-          className="space-y-3 rounded-xl border border-slate-800 bg-surface/80 p-4"
-        >
-          <h3 className="text-sm font-semibold text-slate-200">Registrar evento de caixa</h3>
-          <p className="text-xs text-slate-400">
-            Aporte e resgate ajustam capital base. Imposto e taxa entram como custo líquido do mês.
-          </p>
-
-          <select
-            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
-            value={eventInvestmentId}
-            onChange={(e) => setEventInvestmentId(e.target.value)}
-            required
-          >
-            {investments.map((inv) => (
-              <option key={inv.id} value={inv.id}>
-                {inv.name} ({inv.institution})
-              </option>
-            ))}
-          </select>
-
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              type="date"
-              value={eventDate}
-              onChange={(e) => setEventDate(e.target.value)}
-              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100"
-              required
-            />
-            <select
-              value={eventType}
-              onChange={(e) => setEventType(e.target.value as CashEventType)}
-              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100"
-              required
-            >
-              {EVENT_TYPE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
           <input
             type="number"
-            min="0"
             step="0.01"
-            placeholder="Valor (R$)"
-            value={eventAmount}
-            onChange={(e) => setEventAmount(e.target.value)}
-            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100"
+            min="0"
+            placeholder="Valor de mercado"
+            value={marketValue}
+            onChange={(e) => setMarketValue(e.target.value)}
+            className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100"
             required
           />
+        </div>
 
-          <input
-            type="text"
-            placeholder="Observação (opcional)"
-            value={eventNotes}
-            onChange={(e) => setEventNotes(e.target.value)}
-            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100"
-          />
-
-          <button
-            type="submit"
-            className="inline-flex h-9 items-center justify-center rounded-lg border border-cyan-700 bg-cyan-950/50 px-4 text-xs font-medium text-cyan-100"
-          >
-            Salvar evento
-          </button>
-        </form>
-      </div>
-
-      <Card>
-        <h3 className="mb-2 text-sm font-semibold text-slate-200">Eventos de caixa ({year})</h3>
-        {loading ? (
-          <p className="text-xs text-slate-400">Carregando...</p>
-        ) : !data?.cashEvents?.length ? (
-          <p className="text-xs text-slate-400">Nenhum evento lançado para {year}.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-xs">
-              <thead className="text-slate-400">
-                <tr>
-                  <th className="px-2 py-1">Data</th>
-                  <th className="px-2 py-1">Investimento</th>
-                  <th className="px-2 py-1">Tipo</th>
-                  <th className="px-2 py-1">Valor</th>
-                  <th className="px-2 py-1">Observação</th>
-                  <th className="px-2 py-1 text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.cashEvents.map((event) => {
-                  const inv = investmentById.get(event.investment_id);
-                  return (
-                    <tr key={event.id} className="border-t border-slate-800 text-slate-200">
-                      <td className="px-2 py-2">{parseBrDate(event.event_date)}</td>
-                      <td className="px-2 py-2">
-                        {inv ? `${inv.name} (${inv.institution})` : event.investment_id}
-                      </td>
-                      <td className={`px-2 py-2 font-medium ${EVENT_TYPE_COLORS[event.type]}`}>
-                        {EVENT_TYPE_OPTIONS.find((option) => option.value === event.type)?.label ?? event.type}
-                      </td>
-                      <td className="px-2 py-2">{formatCurrencyBRL(Number(event.amount))}</td>
-                      <td className="px-2 py-2 text-slate-400">{event.notes || "-"}</td>
-                      <td className="px-2 py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => void handleDeleteCashEvent(event)}
-                          className="rounded-md border border-rose-700 px-2 py-1 text-[11px] text-rose-200 hover:bg-rose-900/30"
-                        >
-                          Excluir
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
+        <button
+          type="submit"
+          className="inline-flex h-9 items-center justify-center rounded-lg bg-accent px-4 text-xs font-medium text-white"
+        >
+          Salvar posição
+        </button>
+      </form>
 
       <Card>
         <h3 className="mb-2 text-sm font-semibold text-slate-200">Concentração da carteira</h3>
