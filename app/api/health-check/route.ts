@@ -107,6 +107,13 @@ const INTERNAL_API_CHECKS: ApiCheckConfig[] = [
     validate: (payload) => isRecord(payload) && isArray(payload.series),
   },
   {
+    name: "Insights Diário",
+    panel: "Insights",
+    source: "internal",
+    endpoint: "/api/insights/daily",
+    validate: (payload) => isRecord(payload) && isRecord(payload.report),
+  },
+  {
     name: "Retornos",
     panel: "Retornos Mensais",
     source: "internal",
@@ -204,6 +211,7 @@ function endpointWithDefaultParams(endpoint: string): string {
     endpoint === "/api/investment-cash-events" ||
     endpoint === "/api/returns" ||
     endpoint === "/api/investments/forecast" ||
+    endpoint === "/api/insights/daily" ||
     endpoint === "/api/investment-goals-annual"
   ) {
     return `${endpoint}${joiner}year=${year}`;
@@ -428,6 +436,7 @@ export async function GET(req: Request) {
     runTableCheck("monthly_positions"),
     runTableCheck("monthly_macro"),
     runTableCheck("investment_cash_events"),
+    runTableCheck("insight_daily_runs"),
   ]);
   const internalApiChecks: HealthApiCheck[] = [];
   for (const check of INTERNAL_API_CHECKS) {

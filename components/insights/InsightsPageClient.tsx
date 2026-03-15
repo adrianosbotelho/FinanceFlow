@@ -12,12 +12,13 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { DashboardPayload } from "../../types";
+import { DailyInsightApiPayload, DashboardPayload } from "../../types";
 import { formatCurrencyBRL, formatPercentage, monthLabel } from "../../lib/formatters";
 import { InsightsPanel } from "../dashboard/InsightsPanel";
 
 interface Props {
   data: DashboardPayload;
+  dailyInsights: DailyInsightApiPayload | null;
   year: number;
 }
 
@@ -92,6 +93,24 @@ function marketRegimeLabel(
   if (regime === "AFROUXAMENTO_MONETARIO") return "Afrouxamento monetário";
   if (regime === "INFLACAO_REACELERANDO") return "Inflação reacelerando";
   return "Regime equilibrado";
+}
+
+function radarStyle(status: "VERDE" | "AMARELO" | "VERMELHO") {
+  if (status === "VERDE") return "bg-emerald-900/40 text-emerald-300 border-emerald-700/70";
+  if (status === "AMARELO") return "bg-amber-900/40 text-amber-300 border-amber-700/70";
+  return "bg-rose-900/40 text-rose-300 border-rose-700/70";
+}
+
+function priorityLabel(priority: "high" | "medium" | "low") {
+  if (priority === "high") return "Alta";
+  if (priority === "medium") return "Média";
+  return "Baixa";
+}
+
+function priorityStyle(priority: "high" | "medium" | "low") {
+  if (priority === "high") return "text-rose-300";
+  if (priority === "medium") return "text-amber-300";
+  return "text-emerald-300";
 }
 
 function formatTrendPp(value: number | null): string {
@@ -257,11 +276,12 @@ function deriveOperationalInsights(data: DashboardPayload, year: number): Operat
   };
 }
 
-export function InsightsPageClient({ data, year }: Props) {
+export function InsightsPageClient({ data, dailyInsights, year }: Props) {
   const forecastSeries = buildForecastSeries(data);
   const distributionSeries = buildDistributionSeries(data);
   const operational = deriveOperationalInsights(data, year);
   const fiiSuggestion = data.insights.fiiReinvestment;
+  const dailyReport = dailyInsights?.report ?? null;
 
   return (
     <div className="space-y-6">
@@ -271,6 +291,114 @@ export function InsightsPageClient({ data, year }: Props) {
           Painel avançado com previsão, risco e direção da renda passiva ({year}).
         </p>
       </section>
+
+      {dailyReport ? (
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+          <article className="rounded-xl border border-slate-700 bg-slate-800 p-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-semibold text-slate-100">
+                Agente Financeiro Diário (Nível 4)
+              </h3>
+              <span
+                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${radarStyle(
+                  dailyReport.radarStatus,
+                )}`}
+              >
+                Radar {dailyReport.radarStatus}
+              </span>
+              <span className="text-[11px] text-slate-400">
+                Confiança {formatPercentage(dailyReport.confidencePercent)}
+              </span>
+              <span className="text-[11px] text-slate-500">
+                {dailyReport.generatedBy === "llm"
+                  ? `LLM ${dailyReport.model ?? ""}`.trim()
+                  : "Motor quantitativo"}
+              </span>
+            </div>
+            <p className="mt-2 text-sm font-semibold text-slate-100">{dailyReport.headline}</p>
+            <p className="mt-1 text-xs text-slate-300">{dailyReport.summary}</p>
+            <p className="mt-2 text-xs text-cyan-300">
+              Prioridade do dia: <span className="font-semibold">{dailyReport.priorityAction}</span>
+            </p>
+            {dailyInsights?.warnings?.length ? (
+              <div className="mt-3 rounded-md border border-amber-700/60 bg-amber-950/30 p-2 text-[11px] text-amber-300">
+                {dailyInsights.warnings.join(" | ")}
+              </div>
+            ) : null}
+          </article>
+
+          <article className="rounded-xl border border-slate-700 bg-slate-800 p-5">
+            <h3 className="text-sm font-semibold text-slate-100">Ações sugeridas (hoje)</h3>
+            <div className="mt-3 space-y-2">
+              {dailyReport.actions.slice(0, 3).map((action) => (
+                <div key={action.id} className="rounded-md border border-slate-700 p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-slate-100">{action.title}</p>
+                    <span
+                      className={`text-[11px] font-semibold ${priorityStyle(action.priority)}`}
+                    >
+                      {priorityLabel(action.priority)}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-300">{action.rationale}</p>
+                  <p className="mt-1 text-[11px] text-cyan-300">{action.expectedImpact}</p>
+                </div>
+              ))}
+            </div>
+          </article>
+        </section>
+      ) : null}
+
+      {dailyReport ? (
+        <section className="grid gap-4 xl:grid-cols-3">
+          <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
+            <h3 className="text-sm font-semibold text-slate-100">Riscos monitorados</h3>
+            <ul className="mt-3 space-y-2 text-xs">
+              {dailyReport.risks.slice(0, 3).map((risk) => (
+                <li key={risk.id} className="rounded-md border border-slate-700 p-2">
+                  <p className="font-semibold text-slate-100">{risk.title}</p>
+                  <p className="mt-1 text-slate-300">{risk.description}</p>
+                  <p className="mt-1 text-[11px] text-slate-500">Gatilho: {risk.trigger}</p>
+                </li>
+              ))}
+            </ul>
+          </article>
+
+          <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
+            <h3 className="text-sm font-semibold text-slate-100">Evidências do diagnóstico</h3>
+            <ul className="mt-3 space-y-2 text-xs">
+              {dailyReport.evidence.slice(0, 5).map((item) => (
+                <li key={item.id} className="rounded-md border border-slate-700 p-2">
+                  <p className="text-slate-400">{item.label}</p>
+                  <p className="font-semibold text-slate-100">{item.value}</p>
+                  <p className="text-[11px] text-slate-500">{item.context}</p>
+                </li>
+              ))}
+            </ul>
+          </article>
+
+          <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
+            <h3 className="text-sm font-semibold text-slate-100">Histórico diário recente</h3>
+            <ul className="mt-3 space-y-2 text-xs">
+              {(dailyInsights?.history ?? []).slice(0, 7).map((item) => (
+                <li key={`${item.runDate}-${item.headline}`} className="rounded-md border border-slate-700 p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-slate-400">{item.runDate}</span>
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${radarStyle(
+                        item.radarStatus,
+                      )}`}
+                    >
+                      {item.radarStatus}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-slate-300">{item.headline}</p>
+                </li>
+              ))}
+            </ul>
+          </article>
+        </section>
+      ) : null}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">

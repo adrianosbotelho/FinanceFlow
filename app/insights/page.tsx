@@ -1,5 +1,5 @@
 import { headers } from "next/headers";
-import { DashboardPayload } from "../../types";
+import { DailyInsightApiPayload, DashboardPayload } from "../../types";
 import { InsightsPageClient } from "../../components/insights/InsightsPageClient";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +21,18 @@ async function fetchDashboard(
   return res.json();
 }
 
+async function fetchDailyInsights(
+  year: number,
+  baseUrl: string,
+): Promise<DailyInsightApiPayload | null> {
+  const res = await fetch(`${baseUrl}/api/insights/daily?year=${year}`, {
+    cache: "no-store",
+    next: { revalidate: 0 },
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export default async function InsightsPage({ searchParams }: PageProps) {
   const year =
     searchParams?.year !== undefined
@@ -32,7 +44,10 @@ export default async function InsightsPage({ searchParams }: PageProps) {
   const protocol = requestHeaders.get("x-forwarded-proto") ?? "http";
   const fallbackBase = process.env.NEXT_PUBLIC_BASE_URL ?? "http://127.0.0.1:3000";
   const baseUrl = host ? `${protocol}://${host}` : fallbackBase;
-  const data = await fetchDashboard(year, baseUrl);
+  const [data, dailyInsights] = await Promise.all([
+    fetchDashboard(year, baseUrl),
+    fetchDailyInsights(year, baseUrl),
+  ]);
 
   if (!data) {
     return (
@@ -45,5 +60,5 @@ export default async function InsightsPage({ searchParams }: PageProps) {
     );
   }
 
-  return <InsightsPageClient data={data} year={year} />;
+  return <InsightsPageClient data={data} dailyInsights={dailyInsights} year={year} />;
 }

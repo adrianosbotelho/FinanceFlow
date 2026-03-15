@@ -195,6 +195,65 @@ export interface DashboardPayload {
   alerts: ConsistencyAlert[];
 }
 
+export type DailyInsightRadarStatus = "VERDE" | "AMARELO" | "VERMELHO";
+export type DailyInsightPriority = "high" | "medium" | "low";
+export type DailyInsightRiskLevel = "low" | "medium" | "high";
+export type DailyInsightSource = "rule" | "llm";
+
+export interface DailyInsightAction {
+  id: string;
+  title: string;
+  rationale: string;
+  expectedImpact: string;
+  priority: DailyInsightPriority;
+}
+
+export interface DailyInsightRisk {
+  id: string;
+  title: string;
+  level: DailyInsightRiskLevel;
+  description: string;
+  trigger: string;
+}
+
+export interface DailyInsightEvidence {
+  id: string;
+  label: string;
+  value: string;
+  context: string;
+}
+
+export interface DailyInsightReport {
+  runDate: string;
+  year: number;
+  generatedAt: string;
+  generatedBy: DailyInsightSource;
+  model: string | null;
+  radarStatus: DailyInsightRadarStatus;
+  confidencePercent: number;
+  headline: string;
+  summary: string;
+  priorityAction: string;
+  actions: DailyInsightAction[];
+  risks: DailyInsightRisk[];
+  evidence: DailyInsightEvidence[];
+}
+
+export interface DailyInsightHistoryItem {
+  runDate: string;
+  radarStatus: DailyInsightRadarStatus;
+  confidencePercent: number;
+  headline: string;
+  generatedBy: DailyInsightSource;
+}
+
+export interface DailyInsightApiPayload {
+  source: "cache" | "generated";
+  warnings: string[];
+  report: DailyInsightReport;
+  history: DailyInsightHistoryItem[];
+}
+
 export interface HealthTableCheck {
   table: string;
   status: "ok" | "error";
