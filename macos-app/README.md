@@ -63,7 +63,7 @@ O `main.js` usa o standalone em `../.next/standalone` (com `server.js`). Certifi
 O processo do servidor Next.js (spawnado pelo Electron) herda o ambiente. Para o usuário final, você pode:
 
 - Colocar um `.env` ou `.env.local` no mesmo diretório do `FinanceFlow.app`, ou
-- Documentar que é preciso definir `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` (por exemplo no perfil do shell ou em um script que abre o app).
+- Documentar que é preciso definir `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` (por exemplo no perfil do shell ou em um script que abre o app).
 
 O app usa porta fixa **3000**; não é necessário definir `NEXT_PUBLIC_BASE_URL` para o front (requisições são para a mesma origem).
 
@@ -74,6 +74,7 @@ O app usa porta fixa **3000**; não é necessário definir `NEXT_PUBLIC_BASE_URL
 - Timeout de boot do servidor: padrão de 30s. Para ajustar, use `FINANCEFLOW_SERVER_START_TIMEOUT_MS`.
 - Antes de iniciar, o app valida:
   - `NEXT_PUBLIC_SUPABASE_URL`
+  - `SUPABASE_SERVICE_ROLE_KEY`
   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - Se faltar alguma variável obrigatória, o app exibe erro claro e encerra.
 

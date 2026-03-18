@@ -10,6 +10,7 @@ export const revalidate = 0;
 
 const REQUIRED_ENV_KEYS = [
   "NEXT_PUBLIC_SUPABASE_URL",
+  "SUPABASE_SERVICE_ROLE_KEY",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
 ] as const;
 

@@ -20,6 +20,7 @@ Before `supabase start` will succeed, the schema migration must exist at `supaba
 The app reads from `.env.local`. For local Supabase, use:
 ```
 NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
+SUPABASE_SERVICE_ROLE_KEY=<service role key from supabase start output>
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key from supabase start output>
 NEXT_PUBLIC_BASE_URL=http://localhost:3000
 ```

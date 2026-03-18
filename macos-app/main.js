@@ -24,6 +24,7 @@ const START_TIMEOUT_MS = Number(
 );
 const REQUIRED_ENV_KEYS = [
   "NEXT_PUBLIC_SUPABASE_URL",
+  "SUPABASE_SERVICE_ROLE_KEY",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
 ];
 const APP_NAME = "FinanceFlow";
@@ -152,6 +153,7 @@ function validateRequiredEnv() {
 function getEnvTemplate() {
   return [
     "NEXT_PUBLIC_SUPABASE_URL=",
+    "SUPABASE_SERVICE_ROLE_KEY=",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY=",
     "NEXT_PUBLIC_BASE_URL=http://localhost:3000",
     "",

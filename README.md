@@ -13,10 +13,11 @@ Esse comando:
 - instala automaticamente as dependências (`npm install`)
 - cria um arquivo `.env.local` com:
   - `NEXT_PUBLIC_SUPABASE_URL`
+  - `SUPABASE_SERVICE_ROLE_KEY`
   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
   - `NEXT_PUBLIC_BASE_URL=http://localhost:3000`
 
-Preencha `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` com os dados do seu projeto Supabase.
+Preencha `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` com os dados do seu projeto Supabase.
 
 3. No painel do Supabase, no **SQL Editor**, execute em ordem:
    - o conteúdo de `supabase/schema.sql`
