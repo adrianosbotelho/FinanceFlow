@@ -11,6 +11,21 @@ interface Props {
   data: PassiveIncomeByMonth[];
 }
 
+function resolveMonthOverMonthValue(total: number, momGrowth?: number | null): number | null {
+  if (momGrowth === null || momGrowth === undefined) return null;
+  const growthFactor = 1 + momGrowth / 100;
+  if (growthFactor <= 0) return null;
+  const previousTotal = total / growthFactor;
+  return total - previousTotal;
+}
+
+function toneClass(value: number | null): string {
+  if (value === null) return "text-slate-400";
+  if (value > 0) return "text-emerald-400";
+  if (value < 0) return "text-rose-400";
+  return "text-slate-200";
+}
+
 export function MonthlyTable({ data }: Props) {
   const handleExportCsv = () => {
     const header = [
@@ -21,23 +36,28 @@ export function MonthlyTable({ data }: Props) {
       "fii_dividendos",
       "total_mensal",
       "var_mom_percent",
+      "var_mom_valor",
       "var_yoy_percent",
     ];
 
-    const rows = data.map((m) => [
-      String(m.month),
-      String(m.year),
-      m.cdb_itau.toFixed(2),
-      m.cdb_other.toFixed(2),
-      m.fii_dividends.toFixed(2),
-      m.total.toFixed(2),
-      m.mom_growth === null || m.mom_growth === undefined
-        ? ""
-        : m.mom_growth.toFixed(2),
-      m.yoy_growth === null || m.yoy_growth === undefined
-        ? ""
-        : m.yoy_growth.toFixed(2),
-    ]);
+    const rows = data.map((m) => {
+      const momValue = resolveMonthOverMonthValue(m.total, m.mom_growth);
+      return [
+        String(m.month),
+        String(m.year),
+        m.cdb_itau.toFixed(2),
+        m.cdb_other.toFixed(2),
+        m.fii_dividends.toFixed(2),
+        m.total.toFixed(2),
+        m.mom_growth === null || m.mom_growth === undefined
+          ? ""
+          : m.mom_growth.toFixed(2),
+        momValue === null ? "" : momValue.toFixed(2),
+        m.yoy_growth === null || m.yoy_growth === undefined
+          ? ""
+          : m.yoy_growth.toFixed(2),
+      ];
+    });
 
     const csvBody = [header, ...rows]
       .map((cols) => cols.map((v) => `"${String(v).replace(/"/g, "\"\"")}"`).join(","))
@@ -86,38 +106,45 @@ export function MonthlyTable({ data }: Props) {
               <th className="px-6 py-4 font-bold text-emerald-300">Dividendos FIIs</th>
               <th className="px-6 py-4 font-bold">Total mensal</th>
               <th className="px-6 py-4 font-bold">Var (M/M)</th>
+              <th className="px-6 py-4 font-bold">Var (M/M R$)</th>
               <th className="px-6 py-4 font-bold">Var (A/A)</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-700 text-sm">
-            {data.map((m) => (
-              <tr
-                key={`${m.year}-${m.month}`}
-                className="transition-colors hover:bg-slate-700/50"
-              >
-                <td className="px-6 py-4 font-medium text-slate-100">
-                  {monthLabel(m.month)} {m.year}
-                </td>
-                <td className="px-6 py-4 font-medium text-orange-300">
-                  {formatCurrencyBRL(m.cdb_itau)}
-                </td>
-                <td className="px-6 py-4 font-medium text-rose-300">
-                  {formatCurrencyBRL(m.cdb_other)}
-                </td>
-                <td className="px-6 py-4 font-medium text-emerald-300">
-                  {formatCurrencyBRL(m.fii_dividends)}
-                </td>
-                <td className="px-6 py-4 font-bold">
-                  {formatCurrencyBRL(m.total)}
-                </td>
-                <td className="px-6 py-4 text-success font-medium">
-                  {formatPercentage(m.mom_growth ?? null)}
-                </td>
-                <td className="px-6 py-4 text-success font-medium">
-                  {formatPercentage(m.yoy_growth ?? null)}
-                </td>
-              </tr>
-            ))}
+            {data.map((m) => {
+              const momValue = resolveMonthOverMonthValue(m.total, m.mom_growth);
+              return (
+                <tr
+                  key={`${m.year}-${m.month}`}
+                  className="transition-colors hover:bg-slate-700/50"
+                >
+                  <td className="px-6 py-4 font-medium text-slate-100">
+                    {monthLabel(m.month)} {m.year}
+                  </td>
+                  <td className="px-6 py-4 font-medium text-orange-300">
+                    {formatCurrencyBRL(m.cdb_itau)}
+                  </td>
+                  <td className="px-6 py-4 font-medium text-rose-300">
+                    {formatCurrencyBRL(m.cdb_other)}
+                  </td>
+                  <td className="px-6 py-4 font-medium text-emerald-300">
+                    {formatCurrencyBRL(m.fii_dividends)}
+                  </td>
+                  <td className="px-6 py-4 font-bold">
+                    {formatCurrencyBRL(m.total)}
+                  </td>
+                  <td className={`px-6 py-4 font-medium ${toneClass(m.mom_growth ?? null)}`}>
+                    {formatPercentage(m.mom_growth ?? null)}
+                  </td>
+                  <td className={`px-6 py-4 font-medium ${toneClass(momValue)}`}>
+                    {momValue === null ? "—" : formatCurrencyBRL(momValue)}
+                  </td>
+                  <td className={`px-6 py-4 font-medium ${toneClass(m.yoy_growth ?? null)}`}>
+                    {formatPercentage(m.yoy_growth ?? null)}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
