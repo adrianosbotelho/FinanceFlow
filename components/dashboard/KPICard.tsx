@@ -30,6 +30,12 @@ export function KPICard({
       : isNegative
         ? "text-rose-400"
         : "text-slate-50";
+  const borderClass =
+    isPositive
+      ? "border-emerald-500/60"
+      : isNegative
+        ? "border-rose-500/60"
+        : "border-slate-700";
 
   const deltaLabel =
     delta === null || delta === undefined
@@ -45,7 +51,9 @@ export function KPICard({
           : "• ";
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm transition-all hover:shadow-md">
+    <div
+      className={`flex flex-col gap-2 rounded-xl border bg-slate-800 p-5 shadow-sm transition-all hover:shadow-md ${borderClass}`}
+    >
       <span className="text-sm font-medium text-slate-500">
         {label}
       </span>
