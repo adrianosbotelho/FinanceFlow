@@ -12,13 +12,18 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { DailyInsightApiPayload, DashboardPayload } from "../../types";
+import {
+  DailyInsightApiPayload,
+  DashboardPayload,
+  MarketSnapshotPayload,
+} from "../../types";
 import { formatCurrencyBRL, formatPercentage, monthLabel } from "../../lib/formatters";
 import { InsightsPanel } from "../dashboard/InsightsPanel";
 
 interface Props {
   data: DashboardPayload;
   dailyInsights: DailyInsightApiPayload | null;
+  marketSnapshot: MarketSnapshotPayload | null;
   year: number;
 }
 
@@ -116,6 +121,25 @@ function priorityStyle(priority: "high" | "medium" | "low") {
 function formatTrendPp(value: number | null): string {
   if (value === null || Number.isNaN(value)) return "estável";
   return `${value >= 0 ? "+" : ""}${value.toFixed(2)} p.p.`;
+}
+
+function formatPoints(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return "—";
+  return `${new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value)} pts`;
+}
+
+function formatSnapshotDate(value: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 }
 
 function countBusinessDaysInMonth(year: number, month: number): number {
@@ -276,7 +300,7 @@ function deriveOperationalInsights(data: DashboardPayload, year: number): Operat
   };
 }
 
-export function InsightsPageClient({ data, dailyInsights, year }: Props) {
+export function InsightsPageClient({ data, dailyInsights, marketSnapshot, year }: Props) {
   const forecastSeries = buildForecastSeries(data);
   const distributionSeries = buildDistributionSeries(data);
   const operational = deriveOperationalInsights(data, year);
@@ -290,6 +314,69 @@ export function InsightsPageClient({ data, dailyInsights, year }: Props) {
         <p className="text-sm text-slate-400">
           Painel avançado com previsão, risco e direção da renda passiva ({year}).
         </p>
+      </section>
+
+      <section className="rounded-xl border border-slate-700 bg-slate-800 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-slate-100">
+            Snapshot de mercado (atual e D-1)
+          </h3>
+          <span className="text-[11px] text-slate-500">
+            Atualizado em{" "}
+            {marketSnapshot?.generatedAt
+              ? new Date(marketSnapshot.generatedAt).toLocaleString("pt-BR")
+              : "—"}
+          </span>
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-md border border-slate-700 p-3">
+            <p className="text-[11px] text-slate-400">Selic atual</p>
+            <p className="text-lg font-bold text-cyan-300">
+              {marketSnapshot?.selicPercent !== null && marketSnapshot?.selicPercent !== undefined
+                ? `${marketSnapshot.selicPercent.toFixed(2)}% a.a.`
+                : "—"}
+            </p>
+          </div>
+          <div className="rounded-md border border-slate-700 p-3">
+            <p className="text-[11px] text-slate-400">CDI atual</p>
+            <p className="text-lg font-bold text-emerald-300">
+              {marketSnapshot?.cdiAnnualizedPercent !== null &&
+              marketSnapshot?.cdiAnnualizedPercent !== undefined
+                ? `${marketSnapshot.cdiAnnualizedPercent.toFixed(2)}% a.a.`
+                : "—"}
+            </p>
+            <p className="text-[11px] text-slate-500">
+              Diário:{" "}
+              {marketSnapshot?.cdiDailyPercent !== null &&
+              marketSnapshot?.cdiDailyPercent !== undefined
+                ? `${marketSnapshot.cdiDailyPercent.toFixed(4)}%`
+                : "—"}
+            </p>
+          </div>
+          <div className="rounded-md border border-slate-700 p-3">
+            <p className="text-[11px] text-slate-400">Ibovespa (fechamento D-1)</p>
+            <p className="text-lg font-bold text-slate-100">
+              {formatPoints(marketSnapshot?.ibovespaPreviousClose ?? null)}
+            </p>
+            <p className="text-[11px] text-slate-500">
+              Data: {formatSnapshotDate(marketSnapshot?.ibovespaDate ?? null)}
+            </p>
+          </div>
+          <div className="rounded-md border border-slate-700 p-3">
+            <p className="text-[11px] text-slate-400">IFIX (fechamento D-1)</p>
+            <p className="text-lg font-bold text-slate-100">
+              {formatPoints(marketSnapshot?.ifixPreviousClose ?? null)}
+            </p>
+            <p className="text-[11px] text-slate-500">
+              Data: {formatSnapshotDate(marketSnapshot?.ifixDate ?? null)}
+            </p>
+          </div>
+        </div>
+        {marketSnapshot?.warnings?.length ? (
+          <p className="mt-3 text-xs text-amber-300">
+            {marketSnapshot.warnings.join(" | ")}
+          </p>
+        ) : null}
       </section>
 
       {dailyReport ? (

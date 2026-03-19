@@ -1,5 +1,9 @@
 import { headers } from "next/headers";
-import { DailyInsightApiPayload, DashboardPayload } from "../../types";
+import {
+  DailyInsightApiPayload,
+  DashboardPayload,
+  MarketSnapshotPayload,
+} from "../../types";
 import { InsightsPageClient } from "../../components/insights/InsightsPageClient";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +37,15 @@ async function fetchDailyInsights(
   return res.json();
 }
 
+async function fetchMarketSnapshot(baseUrl: string): Promise<MarketSnapshotPayload | null> {
+  const res = await fetch(`${baseUrl}/api/insights/market-snapshot`, {
+    cache: "no-store",
+    next: { revalidate: 0 },
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export default async function InsightsPage({ searchParams }: PageProps) {
   const year =
     searchParams?.year !== undefined
@@ -44,9 +57,10 @@ export default async function InsightsPage({ searchParams }: PageProps) {
   const protocol = requestHeaders.get("x-forwarded-proto") ?? "http";
   const fallbackBase = process.env.NEXT_PUBLIC_BASE_URL ?? "http://127.0.0.1:3000";
   const baseUrl = host ? `${protocol}://${host}` : fallbackBase;
-  const [data, dailyInsights] = await Promise.all([
+  const [data, dailyInsights, marketSnapshot] = await Promise.all([
     fetchDashboard(year, baseUrl),
     fetchDailyInsights(year, baseUrl),
+    fetchMarketSnapshot(baseUrl),
   ]);
 
   if (!data) {
@@ -60,5 +74,12 @@ export default async function InsightsPage({ searchParams }: PageProps) {
     );
   }
 
-  return <InsightsPageClient data={data} dailyInsights={dailyInsights} year={year} />;
+  return (
+    <InsightsPageClient
+      data={data}
+      dailyInsights={dailyInsights}
+      marketSnapshot={marketSnapshot}
+      year={year}
+    />
+  );
 }

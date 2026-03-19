@@ -40,6 +40,23 @@ function isArray(value: unknown): value is unknown[] {
   return Array.isArray(value);
 }
 
+function isYahooChartPayload(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const chart = value.chart;
+  if (!isRecord(chart)) return false;
+  const result = chart.result;
+  if (!Array.isArray(result) || result.length === 0) return false;
+  const first = result[0];
+  if (!isRecord(first)) return false;
+  const indicators = first.indicators;
+  if (!isRecord(indicators)) return false;
+  const quote = indicators.quote;
+  if (!Array.isArray(quote) || quote.length === 0) return false;
+  const firstQuote = quote[0];
+  if (!isRecord(firstQuote)) return false;
+  return Array.isArray(firstQuote.close);
+}
+
 function safeHostFromUrl(raw: string | undefined): string | null {
   if (!raw) return null;
   try {
@@ -113,6 +130,15 @@ const INTERNAL_API_CHECKS: ApiCheckConfig[] = [
     source: "internal",
     endpoint: "/api/insights/daily",
     validate: (payload) => isRecord(payload) && isRecord(payload.report),
+  },
+  {
+    name: "Insights Mercado (Snapshot)",
+    panel: "Insights",
+    source: "internal",
+    endpoint: "/api/insights/market-snapshot",
+    validate: (payload) =>
+      isRecord(payload) &&
+      ("selicPercent" in payload || "ibovespaPreviousClose" in payload),
   },
   {
     name: "Retornos",
@@ -194,6 +220,20 @@ const EXTERNAL_API_CHECKS: ApiCheckConfig[] = [
     endpoint: "https://api.bcb.gov.br/dados/serie/bcdata.sgs.13522/dados/ultimos/12?formato=json",
     validate: isArray,
   },
+  {
+    name: "Yahoo Ibovespa D-1 (^BVSP)",
+    panel: "Insights",
+    source: "external",
+    endpoint: "https://query1.finance.yahoo.com/v8/finance/chart/%5EBVSP?range=10d&interval=1d",
+    validate: isYahooChartPayload,
+  },
+  {
+    name: "Yahoo IFIX D-1 (IFIX.SA)",
+    panel: "Insights",
+    source: "external",
+    endpoint: "https://query1.finance.yahoo.com/v8/finance/chart/IFIX.SA?range=10d&interval=1d",
+    validate: isYahooChartPayload,
+  },
 ];
 
 function endpointWithDefaultParams(endpoint: string): string {
@@ -270,7 +310,10 @@ async function httpProbeGet(url: string, timeoutMs: number): Promise<HttpProbeRe
         port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
         path: `${parsed.pathname}${parsed.search}`,
         method: "GET",
-        headers: { Accept: "application/json" },
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "Mozilla/5.0 (FinanceFlow Health Check)",
+        },
         timeout: timeoutMs,
       },
       (res) => {

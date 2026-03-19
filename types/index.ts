@@ -254,6 +254,18 @@ export interface DailyInsightApiPayload {
   history: DailyInsightHistoryItem[];
 }
 
+export interface MarketSnapshotPayload {
+  generatedAt: string;
+  selicPercent: number | null;
+  cdiDailyPercent: number | null;
+  cdiAnnualizedPercent: number | null;
+  ibovespaPreviousClose: number | null;
+  ibovespaDate: string | null;
+  ifixPreviousClose: number | null;
+  ifixDate: string | null;
+  warnings: string[];
+}
+
 export interface HealthTableCheck {
   table: string;
   status: "ok" | "error";
