@@ -163,6 +163,22 @@ function dayVariationTone(value: number | null): string {
   return "text-slate-300";
 }
 
+function marketCardTone(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return "border-slate-700 bg-slate-800/40";
+  const normalized = normalizeTinyPercent(value);
+  if (normalized > 0) return "border-emerald-500/60 bg-emerald-950/20";
+  if (normalized < 0) return "border-rose-500/60 bg-rose-950/20";
+  return "border-slate-700 bg-slate-800/40";
+}
+
+function marketValueTone(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return "text-slate-100";
+  const normalized = normalizeTinyPercent(value);
+  if (normalized > 0) return "text-emerald-300";
+  if (normalized < 0) return "text-rose-300";
+  return "text-slate-100";
+}
+
 function countBusinessDaysInMonth(year: number, month: number): number {
   const lastDay = new Date(year, month, 0).getDate();
   let count = 0;
@@ -374,9 +390,17 @@ export function InsightsPageClient({ data, dailyInsights, marketSnapshot, year }
                 : "—"}
             </p>
           </div>
-          <div className="rounded-md border border-slate-700 p-3">
+          <div
+            className={`rounded-md border p-3 ${marketCardTone(
+              marketSnapshot?.ibovespaDayChangePercent ?? null,
+            )}`}
+          >
             <p className="text-[11px] text-slate-400">Ibovespa (fechamento D-1)</p>
-            <p className="text-lg font-bold text-slate-100">
+            <p
+              className={`text-lg font-bold ${marketValueTone(
+                marketSnapshot?.ibovespaDayChangePercent ?? null,
+              )}`}
+            >
               {formatPoints(marketSnapshot?.ibovespaPreviousClose ?? null)}
             </p>
             <p
@@ -390,9 +414,17 @@ export function InsightsPageClient({ data, dailyInsights, marketSnapshot, year }
               Data: {formatSnapshotDate(marketSnapshot?.ibovespaDate ?? null)}
             </p>
           </div>
-          <div className="rounded-md border border-slate-700 p-3">
+          <div
+            className={`rounded-md border p-3 ${marketCardTone(
+              marketSnapshot?.ifixDayChangePercent ?? null,
+            )}`}
+          >
             <p className="text-[11px] text-slate-400">IFIX (fechamento D-1)</p>
-            <p className="text-lg font-bold text-slate-100">
+            <p
+              className={`text-lg font-bold ${marketValueTone(
+                marketSnapshot?.ifixDayChangePercent ?? null,
+              )}`}
+            >
               {formatPoints(marketSnapshot?.ifixPreviousClose ?? null)}
             </p>
             <p
