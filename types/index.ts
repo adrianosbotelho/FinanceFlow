@@ -192,6 +192,20 @@ export interface DashboardPayload {
   /** Comparativo mesmo mês em ano anterior vs ano atual, por tipo (Itaú, Santander, FIIs) */
   comparisonByMonth: MonthComparisonPoint[];
   distribution: IncomeDistribution;
+  monthlyYieldSummary: {
+    month: number | null;
+    year: number;
+    totalInvested: number;
+    totalMonthlyIncome: number;
+    portfolioMonthlyYieldPct: number | null;
+    items: Array<{
+      key: "cdb_itau" | "cdb_santander" | "fiis";
+      label: string;
+      investedAmount: number;
+      monthlyIncome: number;
+      monthlyYieldPct: number | null;
+    }>;
+  };
   insights: FinancialInsights;
   goalProgress: GoalProgress;
   alerts: ConsistencyAlert[];

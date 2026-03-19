@@ -8,6 +8,7 @@ import { YoYLineChart } from "../components/dashboard/YoYLineChart";
 import { IncomeDistributionPie } from "../components/dashboard/IncomeDistributionPie";
 import { MonthlyTable } from "../components/dashboard/MonthlyTable";
 import { MonthOverMonthChart } from "../components/dashboard/MonthOverMonthChart";
+import { MonthlyYieldSummaryCard } from "../components/dashboard/MonthlyYieldSummaryCard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -75,6 +76,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         <IncomeDistributionPie distribution={data.distribution} />
       </div>
 
+      <MonthlyYieldSummaryCard summary={data.monthlyYieldSummary} />
       <MonthlyTable data={data.monthlySeries} />
     </div>
   );

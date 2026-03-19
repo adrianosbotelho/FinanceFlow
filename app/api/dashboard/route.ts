@@ -211,6 +211,69 @@ export async function GET(req: NextRequest) {
       { itauCdb: 0, otherCdb: 0, fii: 0 },
     );
 
+  const investedByTheme = investments.reduce(
+    (acc, inv) => {
+      const amount = Number(inv.amount_invested ?? 0);
+      if (inv.type === "CDB") {
+        if (isItauInstitution(inv.institution)) {
+          acc.cdb_itau += amount;
+        } else {
+          acc.cdb_santander += amount;
+        }
+      } else if (inv.type === "FII") {
+        acc.fiis += amount;
+      }
+      return acc;
+    },
+    { cdb_itau: 0, cdb_santander: 0, fiis: 0 },
+  );
+
+  const currentYearSeries = monthlySeries.filter((m) => m.year === year);
+  const latestMonthEntry =
+    currentYearSeries.length > 0 ? currentYearSeries[currentYearSeries.length - 1] : null;
+  const monthlyYieldSummary: DashboardPayload["monthlyYieldSummary"] = {
+    month: latestMonthEntry?.month ?? null,
+    year,
+    totalInvested: totalInvested,
+    totalMonthlyIncome: latestMonthEntry?.total ?? 0,
+    portfolioMonthlyYieldPct:
+      totalInvested > 0 && latestMonthEntry
+        ? (latestMonthEntry.total / totalInvested) * 100
+        : null,
+    items: [
+      {
+        key: "cdb_itau",
+        label: "CDB Itaú",
+        investedAmount: investedByTheme.cdb_itau,
+        monthlyIncome: latestMonthEntry?.cdb_itau ?? 0,
+        monthlyYieldPct:
+          investedByTheme.cdb_itau > 0 && latestMonthEntry
+            ? (latestMonthEntry.cdb_itau / investedByTheme.cdb_itau) * 100
+            : null,
+      },
+      {
+        key: "cdb_santander",
+        label: "CDB Santander",
+        investedAmount: investedByTheme.cdb_santander,
+        monthlyIncome: latestMonthEntry?.cdb_other ?? 0,
+        monthlyYieldPct:
+          investedByTheme.cdb_santander > 0 && latestMonthEntry
+            ? (latestMonthEntry.cdb_other / investedByTheme.cdb_santander) * 100
+            : null,
+      },
+      {
+        key: "fiis",
+        label: "Dividendos FIIs",
+        investedAmount: investedByTheme.fiis,
+        monthlyIncome: latestMonthEntry?.fii_dividends ?? 0,
+        monthlyYieldPct:
+          investedByTheme.fiis > 0 && latestMonthEntry
+            ? (latestMonthEntry.fii_dividends / investedByTheme.fiis) * 100
+            : null,
+      },
+    ],
+  };
+
   const insights: FinancialInsights = buildInsights(
     kpis,
     distribution,
@@ -232,6 +295,7 @@ export async function GET(req: NextRequest) {
     yoySeries,
     comparisonByMonth,
     distribution,
+    monthlyYieldSummary,
     insights,
     goalProgress,
     alerts,
