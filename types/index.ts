@@ -204,6 +204,8 @@ export interface DashboardPayload {
       investedAmount: number;
       monthlyIncome: number;
       monthlyYieldPct: number | null;
+      forecastMonthlyIncome: number | null;
+      forecastMonthlyYieldPct: number | null;
     }>;
   };
   insights: FinancialInsights;

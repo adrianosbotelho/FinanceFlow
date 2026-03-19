@@ -55,14 +55,38 @@ export function MonthlyYieldSummaryCard({ summary }: Props) {
             }`}
           >
             <p className="text-sm font-semibold text-slate-100">{item.label}</p>
-            <p className={`mt-2 text-2xl font-extrabold ${toneClass(item.monthlyYieldPct)}`}>
-              {formatPercentage(item.monthlyYieldPct)}
-            </p>
-            <div className="mt-3 space-y-1 text-xs">
-              <p className="text-slate-400">Rendimento no mês</p>
-              <p className="font-semibold text-slate-200">{formatCurrencyBRL(item.monthlyIncome)}</p>
-              <p className="text-slate-400">Base investida</p>
-              <p className="font-semibold text-slate-200">{formatCurrencyBRL(item.investedAmount)}</p>
+            <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)]">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Realizado</p>
+                <p className={`text-3xl font-extrabold ${toneClass(item.monthlyYieldPct)}`}>
+                  {formatPercentage(item.monthlyYieldPct)}
+                </p>
+                <p className="text-xs text-slate-400">Rendimento no mês</p>
+                <p className="text-lg font-semibold text-slate-200">
+                  {formatCurrencyBRL(item.monthlyIncome)}
+                </p>
+                <p className="text-xs text-slate-400">Base investida</p>
+                <p className="text-lg font-semibold text-slate-200">
+                  {formatCurrencyBRL(item.investedAmount)}
+                </p>
+              </div>
+              <div className="hidden h-full w-px bg-slate-700 md:block" />
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Previsão</p>
+                <p className={`text-3xl font-extrabold ${toneClass(item.forecastMonthlyYieldPct)}`}>
+                  {formatPercentage(item.forecastMonthlyYieldPct)}
+                </p>
+                <p className="text-xs text-slate-400">Rendimento previsto</p>
+                <p className="text-lg font-semibold text-slate-200">
+                  {item.forecastMonthlyIncome === null
+                    ? "—"
+                    : formatCurrencyBRL(item.forecastMonthlyIncome)}
+                </p>
+                <p className="text-xs text-slate-400">Base investida</p>
+                <p className="text-lg font-semibold text-slate-200">
+                  {formatCurrencyBRL(item.investedAmount)}
+                </p>
+              </div>
             </div>
           </article>
         ))}

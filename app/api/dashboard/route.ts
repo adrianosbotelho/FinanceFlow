@@ -52,6 +52,25 @@ function isItauInstitution(institution: string): boolean {
   return normalized.includes("itau");
 }
 
+function countBusinessDaysInMonth(year: number, month: number): number {
+  const daysInMonth = new Date(year, month, 0).getDate();
+  let count = 0;
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const weekday = new Date(year, month - 1, day).getDay();
+    if (weekday >= 1 && weekday <= 5) count += 1;
+  }
+  return count;
+}
+
+function countBusinessDaysElapsedInMonth(year: number, month: number, dayLimit: number): number {
+  let count = 0;
+  for (let day = 1; day <= dayLimit; day += 1) {
+    const weekday = new Date(year, month - 1, day).getDay();
+    if (weekday >= 1 && weekday <= 5) count += 1;
+  }
+  return count;
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const year = Number(searchParams.get("year") ?? new Date().getFullYear());
@@ -231,6 +250,30 @@ export async function GET(req: NextRequest) {
   const currentYearSeries = monthlySeries.filter((m) => m.year === year);
   const latestMonthEntry =
     currentYearSeries.length > 0 ? currentYearSeries[currentYearSeries.length - 1] : null;
+  const now = new Date();
+  const isCurrentContextMonth =
+    latestMonthEntry !== null &&
+    year === now.getFullYear() &&
+    latestMonthEntry.month === now.getMonth() + 1;
+  const elapsedBusinessDays = isCurrentContextMonth
+    ? countBusinessDaysElapsedInMonth(year, latestMonthEntry.month, now.getDate())
+    : null;
+  const totalBusinessDays = isCurrentContextMonth
+    ? countBusinessDaysInMonth(year, latestMonthEntry.month)
+    : null;
+  const paceFactor =
+    elapsedBusinessDays !== null &&
+    totalBusinessDays !== null &&
+    elapsedBusinessDays > 0
+      ? totalBusinessDays / elapsedBusinessDays
+      : null;
+
+  function resolveForecastIncome(realizedIncome: number): number | null {
+    if (realizedIncome < 0) return null;
+    if (paceFactor !== null) return realizedIncome * paceFactor;
+    return realizedIncome;
+  }
+
   const monthlyYieldSummary: DashboardPayload["monthlyYieldSummary"] = {
     month: latestMonthEntry?.month ?? null,
     year,
@@ -241,36 +284,63 @@ export async function GET(req: NextRequest) {
         ? (latestMonthEntry.total / totalInvested) * 100
         : null,
     items: [
-      {
+      (() => {
+        const realized = latestMonthEntry?.cdb_itau ?? 0;
+        const forecast = latestMonthEntry !== null ? resolveForecastIncome(realized) : null;
+        return {
         key: "cdb_itau",
         label: "CDB Itaú",
         investedAmount: investedByTheme.cdb_itau,
-        monthlyIncome: latestMonthEntry?.cdb_itau ?? 0,
+        monthlyIncome: realized,
         monthlyYieldPct:
           investedByTheme.cdb_itau > 0 && latestMonthEntry
-            ? (latestMonthEntry.cdb_itau / investedByTheme.cdb_itau) * 100
+            ? (realized / investedByTheme.cdb_itau) * 100
             : null,
-      },
-      {
+        forecastMonthlyIncome: forecast,
+        forecastMonthlyYieldPct:
+          investedByTheme.cdb_itau > 0 && forecast !== null
+            ? (forecast / investedByTheme.cdb_itau) * 100
+            : null,
+      };
+      })(),
+      (() => {
+        const realized = latestMonthEntry?.cdb_other ?? 0;
+        const forecast = latestMonthEntry !== null ? resolveForecastIncome(realized) : null;
+        return {
         key: "cdb_santander",
         label: "CDB Santander",
         investedAmount: investedByTheme.cdb_santander,
-        monthlyIncome: latestMonthEntry?.cdb_other ?? 0,
+        monthlyIncome: realized,
         monthlyYieldPct:
           investedByTheme.cdb_santander > 0 && latestMonthEntry
-            ? (latestMonthEntry.cdb_other / investedByTheme.cdb_santander) * 100
+            ? (realized / investedByTheme.cdb_santander) * 100
             : null,
-      },
-      {
+        forecastMonthlyIncome: forecast,
+        forecastMonthlyYieldPct:
+          investedByTheme.cdb_santander > 0 && forecast !== null
+            ? (forecast / investedByTheme.cdb_santander) * 100
+            : null,
+      };
+      })(),
+      (() => {
+        const realized = latestMonthEntry?.fii_dividends ?? 0;
+        const forecast = latestMonthEntry !== null ? resolveForecastIncome(realized) : null;
+        return {
         key: "fiis",
         label: "Dividendos FIIs",
         investedAmount: investedByTheme.fiis,
-        monthlyIncome: latestMonthEntry?.fii_dividends ?? 0,
+        monthlyIncome: realized,
         monthlyYieldPct:
           investedByTheme.fiis > 0 && latestMonthEntry
-            ? (latestMonthEntry.fii_dividends / investedByTheme.fiis) * 100
+            ? (realized / investedByTheme.fiis) * 100
             : null,
-      },
+        forecastMonthlyIncome: forecast,
+        forecastMonthlyYieldPct:
+          investedByTheme.fiis > 0 && forecast !== null
+            ? (forecast / investedByTheme.fiis) * 100
+            : null,
+      };
+      })(),
     ],
   };
 
