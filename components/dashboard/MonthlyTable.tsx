@@ -27,6 +27,43 @@ function toneClass(value: number | null): string {
 }
 
 export function MonthlyTable({ data }: Props) {
+  const summary = data.reduce(
+    (acc, m) => {
+      const momValue = resolveMonthOverMonthValue(m.total, m.mom_growth);
+      acc.totalItau += m.cdb_itau;
+      acc.totalSantander += m.cdb_other;
+      acc.totalFiis += m.fii_dividends;
+      acc.totalMonthly += m.total;
+      if (momValue !== null) {
+        acc.totalMomValue += momValue;
+      }
+      if (m.mom_growth !== null && m.mom_growth !== undefined) {
+        acc.sumMomPercent += m.mom_growth;
+        acc.countMomPercent += 1;
+      }
+      if (m.yoy_growth !== null && m.yoy_growth !== undefined) {
+        acc.sumYoyPercent += m.yoy_growth;
+        acc.countYoyPercent += 1;
+      }
+      return acc;
+    },
+    {
+      totalItau: 0,
+      totalSantander: 0,
+      totalFiis: 0,
+      totalMonthly: 0,
+      totalMomValue: 0,
+      sumMomPercent: 0,
+      countMomPercent: 0,
+      sumYoyPercent: 0,
+      countYoyPercent: 0,
+    },
+  );
+  const avgMomPercent =
+    summary.countMomPercent > 0 ? summary.sumMomPercent / summary.countMomPercent : null;
+  const avgYoyPercent =
+    summary.countYoyPercent > 0 ? summary.sumYoyPercent / summary.countYoyPercent : null;
+
   const handleExportCsv = () => {
     const header = [
       "mes",
@@ -146,6 +183,34 @@ export function MonthlyTable({ data }: Props) {
               );
             })}
           </tbody>
+          <tfoot>
+            <tr className="border-t border-slate-600 bg-slate-900/50">
+              <td className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-300">
+                Resumo
+              </td>
+              <td className="px-6 py-4 font-bold text-orange-300">
+                {formatCurrencyBRL(summary.totalItau)}
+              </td>
+              <td className="px-6 py-4 font-bold text-rose-300">
+                {formatCurrencyBRL(summary.totalSantander)}
+              </td>
+              <td className="px-6 py-4 font-bold text-emerald-300">
+                {formatCurrencyBRL(summary.totalFiis)}
+              </td>
+              <td className="px-6 py-4 font-extrabold text-slate-100">
+                {formatCurrencyBRL(summary.totalMonthly)}
+              </td>
+              <td className={`px-6 py-4 font-bold ${toneClass(avgMomPercent)}`}>
+                {avgMomPercent === null ? "—" : `Média ${formatPercentage(avgMomPercent)}`}
+              </td>
+              <td className={`px-6 py-4 font-bold ${toneClass(summary.totalMomValue)}`}>
+                {formatCurrencyBRL(summary.totalMomValue)}
+              </td>
+              <td className={`px-6 py-4 font-bold ${toneClass(avgYoyPercent)}`}>
+                {avgYoyPercent === null ? "—" : `Média ${formatPercentage(avgYoyPercent)}`}
+              </td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </section>
