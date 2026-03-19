@@ -50,21 +50,40 @@ function extractLatestBcbValue(payload: unknown): number | null {
   return null;
 }
 
-function extractLatestYahooClose(payload: unknown): { close: number | null; date: string | null } {
+function extractLatestYahooClose(payload: unknown): {
+  close: number | null;
+  date: string | null;
+  dayChangePercent: number | null;
+} {
   const data = payload as YahooChartPayload;
   const point = data?.chart?.result?.[0];
   const timestamps = Array.isArray(point?.timestamp) ? point.timestamp : [];
   const closes = point?.indicators?.quote?.[0]?.close ?? [];
 
   const maxLength = Math.min(timestamps.length, closes.length);
+  let latestClose: number | null = null;
+  let latestDate: string | null = null;
+  let previousClose: number | null = null;
+
   for (let i = maxLength - 1; i >= 0; i -= 1) {
     const close = toNumber(closes[i]);
     const ts = Number(timestamps[i]);
     if (close === null || !Number.isFinite(ts)) continue;
-    return { close, date: new Date(ts * 1000).toISOString() };
+    if (latestClose === null) {
+      latestClose = close;
+      latestDate = new Date(ts * 1000).toISOString();
+      continue;
+    }
+    previousClose = close;
+    break;
   }
 
-  return { close: null, date: null };
+  const dayChangePercent =
+    latestClose !== null && previousClose !== null && previousClose !== 0
+      ? ((latestClose - previousClose) / previousClose) * 100
+      : null;
+
+  return { close: latestClose, date: latestDate, dayChangePercent };
 }
 
 async function fetchJson(url: string): Promise<unknown | null> {
@@ -123,8 +142,10 @@ export async function GET() {
     cdiAnnualizedPercent,
     ibovespaPreviousClose: ibov.close,
     ibovespaDate: ibov.date,
+    ibovespaDayChangePercent: ibov.dayChangePercent,
     ifixPreviousClose: ifix.close,
     ifixDate: ifix.date,
+    ifixDayChangePercent: ifix.dayChangePercent,
     warnings,
   };
 

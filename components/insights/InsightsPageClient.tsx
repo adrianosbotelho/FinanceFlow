@@ -142,6 +142,20 @@ function formatSnapshotDate(value: string | null): string {
   });
 }
 
+function signedDayVariation(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return "—";
+  const signal = value > 0 ? "▲ " : value < 0 ? "▼ " : "• ";
+  const signed = value > 0 ? `+${value.toFixed(2)}%` : `${value.toFixed(2)}%`;
+  return `${signal}${signed}`;
+}
+
+function dayVariationTone(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return "text-slate-400";
+  if (value > 0) return "text-emerald-300";
+  if (value < 0) return "text-rose-300";
+  return "text-slate-300";
+}
+
 function countBusinessDaysInMonth(year: number, month: number): number {
   const lastDay = new Date(year, month, 0).getDate();
   let count = 0;
@@ -358,6 +372,13 @@ export function InsightsPageClient({ data, dailyInsights, marketSnapshot, year }
             <p className="text-lg font-bold text-slate-100">
               {formatPoints(marketSnapshot?.ibovespaPreviousClose ?? null)}
             </p>
+            <p
+              className={`text-[11px] font-semibold ${dayVariationTone(
+                marketSnapshot?.ibovespaDayChangePercent ?? null,
+              )}`}
+            >
+              Dia: {signedDayVariation(marketSnapshot?.ibovespaDayChangePercent ?? null)}
+            </p>
             <p className="text-[11px] text-slate-500">
               Data: {formatSnapshotDate(marketSnapshot?.ibovespaDate ?? null)}
             </p>
@@ -366,6 +387,13 @@ export function InsightsPageClient({ data, dailyInsights, marketSnapshot, year }
             <p className="text-[11px] text-slate-400">IFIX (fechamento D-1)</p>
             <p className="text-lg font-bold text-slate-100">
               {formatPoints(marketSnapshot?.ifixPreviousClose ?? null)}
+            </p>
+            <p
+              className={`text-[11px] font-semibold ${dayVariationTone(
+                marketSnapshot?.ifixDayChangePercent ?? null,
+              )}`}
+            >
+              Dia: {signedDayVariation(marketSnapshot?.ifixDayChangePercent ?? null)}
             </p>
             <p className="text-[11px] text-slate-500">
               Data: {formatSnapshotDate(marketSnapshot?.ifixDate ?? null)}

@@ -261,8 +261,10 @@ export interface MarketSnapshotPayload {
   cdiAnnualizedPercent: number | null;
   ibovespaPreviousClose: number | null;
   ibovespaDate: string | null;
+  ibovespaDayChangePercent: number | null;
   ifixPreviousClose: number | null;
   ifixDate: string | null;
+  ifixDayChangePercent: number | null;
   warnings: string[];
 }
 
