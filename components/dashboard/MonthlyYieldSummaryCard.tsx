@@ -17,6 +17,15 @@ function toneClass(value: number | null): string {
 export function MonthlyYieldSummaryCard({ summary }: Props) {
   const monthRef =
     summary.month !== null ? `${monthLabel(summary.month)} ${summary.year}` : `Ano ${summary.year}`;
+  let highlightedKey: Props["summary"]["items"][number]["key"] | null = null;
+  let maxYield = Number.NEGATIVE_INFINITY;
+  for (const item of summary.items) {
+    if (item.monthlyYieldPct === null || Number.isNaN(item.monthlyYieldPct)) continue;
+    if (item.monthlyYieldPct > maxYield) {
+      maxYield = item.monthlyYieldPct;
+      highlightedKey = item.key;
+    }
+  }
 
   return (
     <section className="rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm">
@@ -37,7 +46,14 @@ export function MonthlyYieldSummaryCard({ summary }: Props) {
 
       <div className="mt-4 grid gap-4 md:grid-cols-3">
         {summary.items.map((item) => (
-          <article key={item.key} className="rounded-lg border border-slate-700 bg-slate-900/40 p-4">
+          <article
+            key={item.key}
+            className={`rounded-lg border p-4 ${
+              highlightedKey === item.key
+                ? "border-emerald-500/70 bg-emerald-950/20"
+                : "border-slate-700 bg-slate-900/40"
+            }`}
+          >
             <p className="text-sm font-semibold text-slate-100">{item.label}</p>
             <p className={`mt-2 text-2xl font-extrabold ${toneClass(item.monthlyYieldPct)}`}>
               {formatPercentage(item.monthlyYieldPct)}
