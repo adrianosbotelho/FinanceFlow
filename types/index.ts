@@ -265,6 +265,13 @@ export interface MarketSnapshotPayload {
   ifixPreviousClose: number | null;
   ifixDate: string | null;
   ifixDayChangePercent: number | null;
+  cryptoQuotes: Array<{
+    symbol: "BTC" | "ETH" | "SOL" | "XLM";
+    pair: "BTC-USD" | "ETH-USD" | "SOL-USD" | "XLM-USD";
+    priceUsd: number | null;
+    dayChangePercent: number | null;
+    updatedAt: string | null;
+  }>;
   warnings: string[];
 }
 

@@ -57,6 +57,16 @@ function isYahooChartPayload(value: unknown): boolean {
   return Array.isArray(firstQuote.close);
 }
 
+function isCoinGeckoSimplePricePayload(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return (
+    isRecord(value.bitcoin) &&
+    isRecord(value.ethereum) &&
+    isRecord(value.solana) &&
+    isRecord(value.stellar)
+  );
+}
+
 function safeHostFromUrl(raw: string | undefined): string | null {
   if (!raw) return null;
   try {
@@ -233,6 +243,14 @@ const EXTERNAL_API_CHECKS: ApiCheckConfig[] = [
     source: "external",
     endpoint: "https://query1.finance.yahoo.com/v8/finance/chart/IFIX.SA?range=10d&interval=1d",
     validate: isYahooChartPayload,
+  },
+  {
+    name: "CoinGecko Crypto Quotes (BTC/ETH/SOL/XLM)",
+    panel: "Insights",
+    source: "external",
+    endpoint:
+      "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,stellar&vs_currencies=usd&include_24hr_change=true&include_last_updated_at=true",
+    validate: isCoinGeckoSimplePricePayload,
   },
 ];
 

@@ -131,6 +131,16 @@ function formatPoints(value: number | null): string {
   }).format(value)} pts`;
 }
 
+function formatUsd(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return "—";
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 function formatSnapshotDate(value: string | null): string {
   if (!value) return "—";
   const date = new Date(value);
@@ -343,6 +353,15 @@ export function InsightsPageClient({ data, dailyInsights, marketSnapshot, year }
   const operational = deriveOperationalInsights(data, year);
   const fiiSuggestion = data.insights.fiiReinvestment;
   const dailyReport = dailyInsights?.report ?? null;
+  const cryptoQuotesByPair = new Map(
+    (marketSnapshot?.cryptoQuotes ?? []).map((quote) => [quote.pair, quote]),
+  );
+  const cryptoCardsOrder: Array<"BTC-USD" | "ETH-USD" | "SOL-USD" | "XLM-USD"> = [
+    "BTC-USD",
+    "ETH-USD",
+    "SOL-USD",
+    "XLM-USD",
+  ];
 
   return (
     <div className="space-y-6">
@@ -444,6 +463,40 @@ export function InsightsPageClient({ data, dailyInsights, marketSnapshot, year }
             {marketSnapshot.warnings.join(" | ")}
           </p>
         ) : null}
+      </section>
+
+      <section className="rounded-xl border border-slate-700 bg-slate-800 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-slate-100">
+            Snapshot de cripto (USD, tempo real)
+          </h3>
+          <span className="text-[11px] text-slate-500">
+            BTC, ETH, SOL e XLM
+          </span>
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {cryptoCardsOrder.map((pair) => {
+            const quote = cryptoQuotesByPair.get(pair);
+            const symbol = pair.replace("-USD", "");
+            return (
+              <div
+                key={pair}
+                className={`rounded-md border p-3 ${marketCardTone(quote?.dayChangePercent ?? null)}`}
+              >
+                <p className="text-[11px] text-slate-400">{symbol}/USD</p>
+                <p className={`text-lg font-bold ${marketValueTone(quote?.dayChangePercent ?? null)}`}>
+                  {formatUsd(quote?.priceUsd ?? null)}
+                </p>
+                <p className={`text-[11px] font-semibold ${dayVariationTone(quote?.dayChangePercent ?? null)}`}>
+                  Dia: {signedDayVariation(quote?.dayChangePercent ?? null)}
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  Data: {formatSnapshotDate(quote?.updatedAt ?? null)}
+                </p>
+              </div>
+            );
+          })}
+        </div>
       </section>
 
       {dailyReport ? (

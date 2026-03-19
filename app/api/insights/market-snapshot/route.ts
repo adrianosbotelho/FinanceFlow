@@ -12,6 +12,8 @@ const YAHOO_IBOV_URL =
   "https://query1.finance.yahoo.com/v8/finance/chart/%5EBVSP?range=10d&interval=1d";
 const YAHOO_IFIX_URL =
   "https://query1.finance.yahoo.com/v8/finance/chart/IFIX.SA?range=10d&interval=1d";
+const COINGECKO_CRYPTO_QUOTES_URL =
+  "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,stellar&vs_currencies=usd&include_24hr_change=true&include_last_updated_at=true";
 
 const CACHE_SUCCESS_TTL_MS = 5 * 60 * 1000;
 const CACHE_FALLBACK_TTL_MS = 60 * 1000;
@@ -31,6 +33,39 @@ type YahooChartPayload = {
     }>;
   };
 };
+
+type CryptoSymbol = "BTC" | "ETH" | "SOL" | "XLM";
+type CryptoPair = "BTC-USD" | "ETH-USD" | "SOL-USD" | "XLM-USD";
+
+type CryptoQuoteItem = {
+  symbol: CryptoSymbol;
+  pair: CryptoPair;
+  priceUsd: number | null;
+  dayChangePercent: number | null;
+  updatedAt: string | null;
+};
+
+type CoinGeckoPriceRow = {
+  usd?: number;
+  usd_24h_change?: number;
+  last_updated_at?: number;
+};
+
+type CoinGeckoPayload = Record<
+  "bitcoin" | "ethereum" | "solana" | "stellar",
+  CoinGeckoPriceRow
+>;
+
+const CRYPTO_MAP: Array<{
+  symbol: CryptoSymbol;
+  pair: CryptoPair;
+  coinGeckoId: "bitcoin" | "ethereum" | "solana" | "stellar";
+}> = [
+  { symbol: "BTC", pair: "BTC-USD", coinGeckoId: "bitcoin" },
+  { symbol: "ETH", pair: "ETH-USD", coinGeckoId: "ethereum" },
+  { symbol: "SOL", pair: "SOL-USD", coinGeckoId: "solana" },
+  { symbol: "XLM", pair: "XLM-USD", coinGeckoId: "stellar" },
+];
 
 let marketSnapshotCache: { value: MarketSnapshotPayload; expiresAt: number } | null = null;
 
@@ -119,6 +154,31 @@ function extractLatestYahooClose(payload: unknown): {
   return { close: latestClose, date: latestDate, dayChangePercent };
 }
 
+function extractCryptoQuotes(payload: unknown): CryptoQuoteItem[] {
+  const data =
+    typeof payload === "object" && payload !== null ? (payload as CoinGeckoPayload) : null;
+
+  return CRYPTO_MAP.map(({ symbol, pair, coinGeckoId }) => {
+    const quote = data?.[coinGeckoId];
+    const priceUsd = toNumber(quote?.usd);
+    const dayChangePercent = toNumber(quote?.usd_24h_change);
+    const marketTime = toNumber(quote?.last_updated_at);
+    return {
+      symbol,
+      pair,
+      priceUsd,
+      dayChangePercent:
+        dayChangePercent !== null && Number.isFinite(dayChangePercent)
+          ? dayChangePercent
+          : null,
+      updatedAt:
+        marketTime !== null && Number.isFinite(marketTime)
+          ? new Date(marketTime * 1000).toISOString()
+          : null,
+    };
+  });
+}
+
 async function fetchJson(url: string): Promise<unknown | null> {
   try {
     const response = await fetch(url, {
@@ -148,12 +208,14 @@ export async function GET() {
     });
   }
 
-  const [selicPayload, cdiPayload, ibovPayload, ifixPayload] = await Promise.all([
-    fetchJson(SELIC_META_URL),
-    fetchJson(CDI_DAILY_URL),
-    fetchJson(YAHOO_IBOV_URL),
-    fetchJson(YAHOO_IFIX_URL),
-  ]);
+  const [selicPayload, cdiPayload, ibovPayload, ifixPayload, cryptoPayload] =
+    await Promise.all([
+      fetchJson(SELIC_META_URL),
+      fetchJson(CDI_DAILY_URL),
+      fetchJson(YAHOO_IBOV_URL),
+      fetchJson(YAHOO_IFIX_URL),
+      fetchJson(COINGECKO_CRYPTO_QUOTES_URL),
+    ]);
 
   const warnings: string[] = [];
   const selicPercent = extractLatestBcbValue(selicPayload);
@@ -162,11 +224,17 @@ export async function GET() {
     cdiDailyPercent !== null ? annualizeDailyRate(cdiDailyPercent) : null;
   const ibov = extractLatestYahooClose(ibovPayload);
   const ifix = extractLatestYahooClose(ifixPayload);
+  const cryptoQuotes = extractCryptoQuotes(cryptoPayload);
 
   if (selicPercent === null) warnings.push("Falha ao ler Selic atual (BCB SGS 432).");
   if (cdiDailyPercent === null) warnings.push("Falha ao ler CDI diário atual (BCB SGS 12).");
   if (ibov.close === null) warnings.push("Falha ao ler fechamento do Ibovespa (Yahoo Finance).");
   if (ifix.close === null) warnings.push("Falha ao ler fechamento do IFIX (Yahoo Finance).");
+  for (const quote of cryptoQuotes) {
+    if (quote.priceUsd === null) {
+      warnings.push(`Falha ao ler cotação de ${quote.symbol} (CoinGecko).`);
+    }
+  }
 
   const payload: MarketSnapshotPayload = {
     generatedAt: new Date().toISOString(),
@@ -179,6 +247,7 @@ export async function GET() {
     ifixPreviousClose: ifix.close,
     ifixDate: ifix.date,
     ifixDayChangePercent: ifix.dayChangePercent,
+    cryptoQuotes,
     warnings,
   };
 
