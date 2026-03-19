@@ -22,7 +22,11 @@ type YahooChartPayload = {
   chart?: {
     result?: Array<{
       meta?: {
+        regularMarketPrice?: number;
+        regularMarketTime?: number;
+        regularMarketChangePercent?: number;
         regularMarketPreviousClose?: number;
+        regularMarketChange?: number;
         previousClose?: number;
         chartPreviousClose?: number;
       };
@@ -62,13 +66,15 @@ function extractLatestYahooClose(payload: unknown): {
 } {
   const data = payload as YahooChartPayload;
   const point = data?.chart?.result?.[0];
+  const meta = point?.meta;
   const timestamps = Array.isArray(point?.timestamp) ? point.timestamp : [];
   const closes = point?.indicators?.quote?.[0]?.close ?? [];
 
   const maxLength = Math.min(timestamps.length, closes.length);
+  const metaPrice = toNumber(meta?.regularMarketPrice);
+  const metaTime = toNumber(meta?.regularMarketTime);
   let latestClose: number | null = null;
   let latestDate: string | null = null;
-  let previousClose: number | null = null;
 
   for (let i = maxLength - 1; i >= 0; i -= 1) {
     const close = toNumber(closes[i]);
@@ -79,22 +85,34 @@ function extractLatestYahooClose(payload: unknown): {
       latestDate = new Date(ts * 1000).toISOString();
       continue;
     }
-    previousClose = close;
     break;
   }
 
-  if (previousClose === null) {
-    previousClose = toNumber(
-      point?.meta?.regularMarketPreviousClose ??
-        point?.meta?.previousClose ??
-        point?.meta?.chartPreviousClose,
-    );
+  // Use the quote-level market fields first; Yahoo may duplicate the last candle in the series.
+  if (metaPrice !== null) latestClose = metaPrice;
+  if (metaTime !== null && Number.isFinite(metaTime)) {
+    latestDate = new Date(metaTime * 1000).toISOString();
   }
 
-  const dayChangePercent =
-    latestClose !== null && previousClose !== null && previousClose !== 0
-      ? ((latestClose - previousClose) / previousClose) * 100
-      : null;
+  const previousClose = toNumber(
+    meta?.regularMarketPreviousClose ?? meta?.previousClose ?? meta?.chartPreviousClose,
+  );
+
+  const metaChangePercent = toNumber(meta?.regularMarketChangePercent);
+  const metaChange = toNumber(meta?.regularMarketChange);
+  let dayChangePercent: number | null = null;
+
+  if (metaChangePercent !== null) {
+    dayChangePercent = metaChangePercent;
+  } else if (latestClose !== null && previousClose !== null && previousClose !== 0) {
+    dayChangePercent = ((latestClose - previousClose) / previousClose) * 100;
+  } else if (metaChange !== null && previousClose !== null && previousClose !== 0) {
+    dayChangePercent = (metaChange / previousClose) * 100;
+  }
+
+  if (dayChangePercent !== null && !Number.isFinite(dayChangePercent)) {
+    dayChangePercent = null;
+  }
 
   return { close: latestClose, date: latestDate, dayChangePercent };
 }
