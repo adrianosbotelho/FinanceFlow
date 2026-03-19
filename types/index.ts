@@ -100,6 +100,8 @@ export interface DashboardKPIs {
   cdbTotalYieldCurrentMonth: number;
   fiiDividendsCurrentMonth: number;
   momGrowth: number | null;
+  cdbMomGrowth: number | null;
+  fiiMomGrowth: number | null;
   yoyGrowth: number | null;
   ytdPassiveIncome: number;
   portfolioYield: number;

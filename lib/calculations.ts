@@ -76,6 +76,8 @@ export function buildKpis(
       cdbTotalYieldCurrentMonth: 0,
       fiiDividendsCurrentMonth: 0,
       momGrowth: null,
+      cdbMomGrowth: null,
+      fiiMomGrowth: null,
       yoyGrowth: null,
       ytdPassiveIncome: 0,
       portfolioYield: 0,
@@ -95,6 +97,19 @@ export function buildKpis(
   computeYoY(ordered, (e) => `${e.year}-${e.month}`);
 
   const current = ordered[ordered.length - 1];
+  const previous = ordered.length > 1 ? ordered[ordered.length - 2] : null;
+  const currentCdbTotal = current.cdb_itau + current.cdb_other;
+  const previousCdbTotal =
+    previous ? previous.cdb_itau + previous.cdb_other : null;
+  const cdbMomGrowth =
+    previousCdbTotal !== null && previousCdbTotal !== 0
+      ? ((currentCdbTotal - previousCdbTotal) / previousCdbTotal) * 100
+      : null;
+  const fiiMomGrowth =
+    previous && previous.fii_dividends !== 0
+      ? ((current.fii_dividends - previous.fii_dividends) / previous.fii_dividends) * 100
+      : null;
+
   const ytd = ordered
     .filter((m) => m.year === year)
     .reduce((acc, m) => acc + m.total, 0);
@@ -120,9 +135,11 @@ export function buildKpis(
 
   return {
     totalPassiveIncomeCurrentMonth: current.total,
-    cdbTotalYieldCurrentMonth: current.cdb_itau + current.cdb_other,
+    cdbTotalYieldCurrentMonth: currentCdbTotal,
     fiiDividendsCurrentMonth: current.fii_dividends,
     momGrowth: current.mom_growth ?? null,
+    cdbMomGrowth,
+    fiiMomGrowth,
     yoyGrowth: current.yoy_growth ?? null,
     ytdPassiveIncome: ytd,
     portfolioYield,

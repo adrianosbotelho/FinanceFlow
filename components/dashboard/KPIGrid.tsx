@@ -17,13 +17,13 @@ export function KPIGrid({ kpis }: KPIGridProps) {
       <KPICard
         label="Rendimento CDBs (mês, total)"
         value={kpis.cdbTotalYieldCurrentMonth}
-        delta={kpis.momGrowth}
+        delta={kpis.cdbMomGrowth}
         comparisonLabel="vs mês anterior"
       />
       <KPICard
         label="Dividendos de FIIs (mês)"
         value={kpis.fiiDividendsCurrentMonth}
-        delta={kpis.momGrowth}
+        delta={kpis.fiiMomGrowth}
         comparisonLabel="vs mês anterior"
       />
       <KPICard
