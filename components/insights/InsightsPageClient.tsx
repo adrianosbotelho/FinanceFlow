@@ -142,17 +142,24 @@ function formatSnapshotDate(value: string | null): string {
   });
 }
 
+function normalizeTinyPercent(value: number): number {
+  return Math.abs(value) < 0.005 ? 0 : value;
+}
+
 function signedDayVariation(value: number | null): string {
   if (value === null || Number.isNaN(value)) return "—";
-  const signal = value > 0 ? "▲ " : value < 0 ? "▼ " : "• ";
-  const signed = value > 0 ? `+${value.toFixed(2)}%` : `${value.toFixed(2)}%`;
+  const normalized = normalizeTinyPercent(value);
+  const signal = normalized > 0 ? "▲ " : normalized < 0 ? "▼ " : "• ";
+  const signed =
+    normalized > 0 ? `+${normalized.toFixed(2)}%` : `${normalized.toFixed(2)}%`;
   return `${signal}${signed}`;
 }
 
 function dayVariationTone(value: number | null): string {
   if (value === null || Number.isNaN(value)) return "text-slate-400";
-  if (value > 0) return "text-emerald-300";
-  if (value < 0) return "text-rose-300";
+  const normalized = normalizeTinyPercent(value);
+  if (normalized > 0) return "text-emerald-300";
+  if (normalized < 0) return "text-rose-300";
   return "text-slate-300";
 }
 

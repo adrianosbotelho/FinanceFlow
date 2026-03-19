@@ -21,6 +21,11 @@ type BcbPoint = { valor?: string };
 type YahooChartPayload = {
   chart?: {
     result?: Array<{
+      meta?: {
+        regularMarketPreviousClose?: number;
+        previousClose?: number;
+        chartPreviousClose?: number;
+      };
       timestamp?: number[];
       indicators?: { quote?: Array<{ close?: Array<number | null> }> };
     }>;
@@ -76,6 +81,14 @@ function extractLatestYahooClose(payload: unknown): {
     }
     previousClose = close;
     break;
+  }
+
+  if (previousClose === null) {
+    previousClose = toNumber(
+      point?.meta?.regularMarketPreviousClose ??
+        point?.meta?.previousClose ??
+        point?.meta?.chartPreviousClose,
+    );
   }
 
   const dayChangePercent =
