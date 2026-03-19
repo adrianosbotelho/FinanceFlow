@@ -24,6 +24,8 @@ type YahooChartPayload = {
   chart?: {
     result?: Array<{
       meta?: {
+        regularMarketPrice?: number;
+        regularMarketTime?: number;
         regularMarketPreviousClose?: number;
         previousClose?: number;
         chartPreviousClose?: number;
@@ -129,9 +131,20 @@ function extractLatestYahooClose(payload: unknown): {
   }
   if (targetIndex < 0) targetIndex = sortedByDay.length - 1;
 
-  const [, targetPoint] = sortedByDay[targetIndex];
-  const latestClose = targetPoint.close;
-  const latestDate = new Date(targetPoint.timestamp * 1000).toISOString();
+  const [targetDay, targetPoint] = sortedByDay[targetIndex];
+  let latestClose = targetPoint.close;
+  let latestDate = new Date(targetPoint.timestamp * 1000).toISOString();
+
+  // Preserve Yahoo's own quoted value when it points to the same D-1 day.
+  const marketPrice = toNumber(meta?.regularMarketPrice);
+  const marketTime = toNumber(meta?.regularMarketTime);
+  if (marketPrice !== null && marketTime !== null) {
+    const marketDay = new Date(marketTime * 1000).toISOString().slice(0, 10);
+    if (marketDay === targetDay) {
+      latestClose = marketPrice;
+      latestDate = new Date(marketTime * 1000).toISOString();
+    }
+  }
 
   const previousPoint = targetIndex > 0 ? sortedByDay[targetIndex - 1][1] : null;
   let previousClose = previousPoint?.close ?? null;
