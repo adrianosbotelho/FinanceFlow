@@ -22,11 +22,7 @@ type YahooChartPayload = {
   chart?: {
     result?: Array<{
       meta?: {
-        regularMarketPrice?: number;
-        regularMarketTime?: number;
-        regularMarketChangePercent?: number;
         regularMarketPreviousClose?: number;
-        regularMarketChange?: number;
         previousClose?: number;
         chartPreviousClose?: number;
       };
@@ -69,46 +65,52 @@ function extractLatestYahooClose(payload: unknown): {
   const meta = point?.meta;
   const timestamps = Array.isArray(point?.timestamp) ? point.timestamp : [];
   const closes = point?.indicators?.quote?.[0]?.close ?? [];
-
   const maxLength = Math.min(timestamps.length, closes.length);
-  const metaPrice = toNumber(meta?.regularMarketPrice);
-  const metaTime = toNumber(meta?.regularMarketTime);
-  let latestClose: number | null = null;
-  let latestDate: string | null = null;
 
-  for (let i = maxLength - 1; i >= 0; i -= 1) {
+  const dailySeries = new Map<string, { timestamp: number; close: number }>();
+  for (let i = 0; i < maxLength; i += 1) {
     const close = toNumber(closes[i]);
     const ts = Number(timestamps[i]);
     if (close === null || !Number.isFinite(ts)) continue;
-    if (latestClose === null) {
-      latestClose = close;
-      latestDate = new Date(ts * 1000).toISOString();
-      continue;
+    const dayKey = new Date(ts * 1000).toISOString().slice(0, 10);
+    dailySeries.set(dayKey, { timestamp: ts, close });
+  }
+
+  const sortedByDay = [...dailySeries.entries()].sort(([a], [b]) => a.localeCompare(b));
+  if (sortedByDay.length === 0) {
+    return { close: null, date: null, dayChangePercent: null };
+  }
+
+  const yesterdayUtc = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+
+  let targetIndex = -1;
+  for (let i = sortedByDay.length - 1; i >= 0; i -= 1) {
+    if (sortedByDay[i][0] <= yesterdayUtc) {
+      targetIndex = i;
+      break;
     }
-    break;
+  }
+  if (targetIndex < 0) targetIndex = sortedByDay.length - 1;
+
+  const [, targetPoint] = sortedByDay[targetIndex];
+  const latestClose = targetPoint.close;
+  const latestDate = new Date(targetPoint.timestamp * 1000).toISOString();
+
+  const previousPoint = targetIndex > 0 ? sortedByDay[targetIndex - 1][1] : null;
+  let previousClose = previousPoint?.close ?? null;
+
+  if (previousClose === null) {
+    previousClose = toNumber(
+      meta?.regularMarketPreviousClose ?? meta?.previousClose ?? meta?.chartPreviousClose,
+    );
   }
 
-  // Use the quote-level market fields first; Yahoo may duplicate the last candle in the series.
-  if (metaPrice !== null) latestClose = metaPrice;
-  if (metaTime !== null && Number.isFinite(metaTime)) {
-    latestDate = new Date(metaTime * 1000).toISOString();
-  }
-
-  const previousClose = toNumber(
-    meta?.regularMarketPreviousClose ?? meta?.previousClose ?? meta?.chartPreviousClose,
-  );
-
-  const metaChangePercent = toNumber(meta?.regularMarketChangePercent);
-  const metaChange = toNumber(meta?.regularMarketChange);
-  let dayChangePercent: number | null = null;
-
-  if (metaChangePercent !== null) {
-    dayChangePercent = metaChangePercent;
-  } else if (latestClose !== null && previousClose !== null && previousClose !== 0) {
-    dayChangePercent = ((latestClose - previousClose) / previousClose) * 100;
-  } else if (metaChange !== null && previousClose !== null && previousClose !== 0) {
-    dayChangePercent = (metaChange / previousClose) * 100;
-  }
+  let dayChangePercent: number | null =
+    latestClose !== null && previousClose !== null && previousClose !== 0
+      ? ((latestClose - previousClose) / previousClose) * 100
+      : null;
 
   if (dayChangePercent !== null && !Number.isFinite(dayChangePercent)) {
     dayChangePercent = null;
