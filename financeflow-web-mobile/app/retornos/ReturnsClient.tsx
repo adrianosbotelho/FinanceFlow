@@ -1,0 +1,202 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { ReturnRow, Investment } from "@/types";
+import { formatCurrency, monthName } from "@/lib/format";
+
+export function ReturnsClient({ initialYear }: { initialYear: number }) {
+  const [year, setYear] = useState(initialYear);
+  const [rows, setRows] = useState<ReturnRow[]>([]);
+  const [investments, setInvestments] = useState<Investment[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [investmentId, setInvestmentId] = useState("");
+  const [month, setMonth] = useState(new Date().getMonth() + 1);
+  const [incomeValue, setIncomeValue] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  async function loadAll(selectedYear: number) {
+    setLoading(true);
+    const [invRes, retRes] = await Promise.all([
+      fetch("/api/investments", { cache: "no-store" }),
+      fetch(`/api/returns?year=${selectedYear}`, { cache: "no-store" }),
+    ]);
+    const inv = invRes.ok ? ((await invRes.json()) as Investment[]) : [];
+    const ret = retRes.ok ? ((await retRes.json()) as ReturnRow[]) : [];
+    setInvestments(inv);
+    setRows(ret);
+    if (!investmentId && inv.length > 0) setInvestmentId(inv[0].id);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    void loadAll(year);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [year]);
+
+  const totals = useMemo(() => {
+    return rows.reduce(
+      (acc, r) => {
+        acc.total += Number(r.income_value ?? 0);
+        return acc;
+      },
+      { total: 0 },
+    );
+  }, [rows]);
+
+  async function save() {
+    if (!investmentId || !Number.isFinite(Number(incomeValue))) return;
+    const payload = {
+      investment_id: investmentId,
+      month,
+      year,
+      income_value: Number(incomeValue.replace(",", ".")),
+    };
+
+    if (editingId) {
+      await fetch(`/api/returns/${editingId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ income_value: payload.income_value }),
+      });
+    } else {
+      await fetch("/api/returns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    }
+
+    setIncomeValue("");
+    setEditingId(null);
+    await loadAll(year);
+  }
+
+  async function remove(id: string) {
+    await fetch(`/api/returns/${id}`, { method: "DELETE" });
+    await loadAll(year);
+  }
+
+  return (
+    <div className="space-y-5">
+      <header>
+        <h1 className="text-xl font-bold">Retornos Mensais</h1>
+        <p className="text-sm text-slate-400">Atualize rendimentos pelo celular.</p>
+      </header>
+
+      <section className="card">
+        <div className="grid gap-3 md:grid-cols-4">
+          <div>
+            <label className="mb-1 block text-xs text-slate-400">Ano</label>
+            <input
+              value={year}
+              onChange={(e) => setYear(Number(e.target.value))}
+              className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-slate-400">Investimento</label>
+            <select
+              value={investmentId}
+              onChange={(e) => setInvestmentId(e.target.value)}
+              className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+            >
+              {investments.map((inv) => (
+                <option key={inv.id} value={inv.id}>
+                  {inv.type} • {inv.institution} • {inv.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-slate-400">Mês</label>
+            <select
+              value={month}
+              onChange={(e) => setMonth(Number(e.target.value))}
+              className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+            >
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                <option key={m} value={m}>
+                  {monthName(m)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-slate-400">Rendimento (R$)</label>
+            <input
+              value={incomeValue}
+              onChange={(e) => setIncomeValue(e.target.value)}
+              className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+              placeholder="0,00"
+            />
+          </div>
+        </div>
+
+        <div className="mt-3 flex gap-2">
+          <button
+            onClick={() => void save()}
+            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold hover:bg-indigo-500"
+          >
+            {editingId ? "Atualizar" : "Salvar"}
+          </button>
+          {editingId ? (
+            <button
+              onClick={() => {
+                setEditingId(null);
+                setIncomeValue("");
+              }}
+              className="rounded-md border border-slate-700 px-4 py-2 text-sm"
+            >
+              Cancelar
+            </button>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="mb-3 flex items-end justify-between">
+          <h2 className="text-sm font-semibold">Histórico {year}</h2>
+          <p className="text-sm text-slate-300">Total: {formatCurrency(totals.total)}</p>
+        </div>
+
+        {loading ? (
+          <p className="text-sm text-slate-400">Carregando...</p>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-slate-400">Sem lançamentos no ano.</p>
+        ) : (
+          <div className="space-y-2">
+            {rows.map((r) => (
+              <article key={r.id} className="rounded-lg border border-slate-700 p-3">
+                <p className="text-sm font-semibold text-slate-100">{r.investment_label}</p>
+                <p className="text-xs text-slate-400">
+                  {monthName(r.month)} / {r.year}
+                </p>
+                <p className="mt-1 text-lg font-bold text-emerald-300">{formatCurrency(r.income_value)}</p>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    onClick={() => {
+                      setEditingId(r.id);
+                      setIncomeValue(String(r.income_value));
+                      setMonth(r.month);
+                      setInvestmentId(r.investment_id);
+                    }}
+                    className="rounded-md border border-slate-700 px-3 py-1 text-xs"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => void remove(r.id)}
+                    className="rounded-md border border-rose-700 px-3 py-1 text-xs text-rose-300"
+                  >
+                    Excluir
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
