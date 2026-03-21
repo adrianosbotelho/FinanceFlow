@@ -4,6 +4,7 @@
 
 - deploy publicado em `https://<projeto>.vercel.app`
 - envs do Supabase corretas no Vercel
+- para smoke local completo, `.env.local` deve ter as 4 variaveis do `.env.example`
 
 ## Checklist funcional
 
