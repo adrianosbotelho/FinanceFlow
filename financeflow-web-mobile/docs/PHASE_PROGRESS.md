@@ -39,3 +39,10 @@ Status: EM ANDAMENTO
 - smoke executado com sucesso estrutural (sem env Supabase completo)
 - pagina `/health` adicionada para validar backend/env + cliente/PWA
 - `qa:preflight` adicionado para execucao rapida de validacao continua
+
+## Fase 6 - Go-Live controlado
+
+Status: CONCLUIDA (readiness tecnica)
+- runbook de publicacao e rollback em `GO_LIVE_RUNBOOK.md`
+- smoke remoto por URL de deploy (`npm run smoke:remote`)
+- health com ping real de banco e latencia

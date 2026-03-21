@@ -43,6 +43,12 @@ Smoke local (com servidor `npm run dev` ativo):
 npm run smoke
 ```
 
+Smoke remoto (deploy Vercel):
+
+```bash
+SMOKE_BASE_URL=https://<seu-projeto>.vercel.app npm run smoke:remote
+```
+
 Preflight completo (lint + build + smoke):
 
 ```bash

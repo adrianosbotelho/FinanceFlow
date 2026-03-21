@@ -9,6 +9,7 @@
     "lint": "next lint",
     "check:env": "node scripts/check-env.mjs",
     "smoke": "node scripts/smoke-local.mjs",
+    "smoke:remote": "node scripts/smoke-remote.mjs",
     "qa:preflight": "npm run lint && npm run build && npm run smoke"
   },
   "dependencies": {

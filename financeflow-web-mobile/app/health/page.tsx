@@ -9,6 +9,13 @@ type HealthPayload = {
     supabaseUrl: boolean;
     supabaseAnon: boolean;
     supabaseServiceRole: boolean;
+    dbReachable?: boolean;
+  };
+  metrics?: {
+    dbLatencyMs?: number | null;
+  };
+  errors?: {
+    db?: string | null;
   };
 };
 
@@ -83,6 +90,13 @@ export default function HealthPage() {
         { name: "NEXT_PUBLIC_SUPABASE_URL", ok: data.checks.supabaseUrl, detail: "URL do projeto Supabase" },
         { name: "NEXT_PUBLIC_SUPABASE_ANON_KEY", ok: data.checks.supabaseAnon, detail: "Chave publica do cliente" },
         { name: "SUPABASE_SERVICE_ROLE_KEY", ok: data.checks.supabaseServiceRole, detail: "Chave server-side para API routes" },
+        {
+          name: "Conexao com banco (ping)",
+          ok: Boolean(data.checks.dbReachable),
+          detail: data.checks.dbReachable
+            ? `Banco acessivel (${data.metrics?.dbLatencyMs ?? "-"} ms)`
+            : `Banco indisponivel${data.errors?.db ? `: ${data.errors.db}` : ""}`,
+        },
       ]
     : [];
 

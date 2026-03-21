@@ -42,6 +42,8 @@ Observacao:
 - Testar `/api/health` (deve retornar `status: ok` e checks true).
 - Rodar smoke (com app local no ar):
   - `npm run smoke`
+- Rodar smoke remoto (apos deploy):
+  - `SMOKE_BASE_URL=https://<seu-projeto>.vercel.app npm run smoke:remote`
 - Testar PWA (manifest + install).
 
 ## 5) Regra de seguranca operacional
