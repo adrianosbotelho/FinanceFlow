@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ReturnRow, Investment } from "@/types";
 import { formatCurrency, monthName } from "@/lib/format";
 
-export function ReturnsClient({ initialYear }: { initialYear: number }) {
+export function ReturnsClient({ initialYear, envReady }: { initialYear: number; envReady: boolean }) {
   const [year, setYear] = useState(initialYear);
   const [rows, setRows] = useState<ReturnRow[]>([]);
   const [investments, setInvestments] = useState<Investment[]>([]);
@@ -30,9 +30,13 @@ export function ReturnsClient({ initialYear }: { initialYear: number }) {
   }
 
   useEffect(() => {
+    if (!envReady) {
+      setLoading(false);
+      return;
+    }
     void loadAll(year);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [year]);
+  }, [year, envReady]);
 
   const totals = useMemo(() => {
     return rows.reduce(
@@ -45,6 +49,7 @@ export function ReturnsClient({ initialYear }: { initialYear: number }) {
   }, [rows]);
 
   async function save() {
+    if (!envReady) return;
     if (!investmentId || !Number.isFinite(Number(incomeValue))) return;
     const payload = {
       investment_id: investmentId,
@@ -73,6 +78,7 @@ export function ReturnsClient({ initialYear }: { initialYear: number }) {
   }
 
   async function remove(id: string) {
+    if (!envReady) return;
     await fetch(`/api/returns/${id}`, { method: "DELETE" });
     await loadAll(year);
   }
@@ -84,6 +90,14 @@ export function ReturnsClient({ initialYear }: { initialYear: number }) {
         <p className="text-sm text-slate-400">Atualize rendimentos pelo celular.</p>
       </header>
 
+      {!envReady ? (
+        <section className="card">
+          <p className="text-sm text-slate-300">
+            Configure as variaveis do Supabase para habilitar leitura e edicao de retornos.
+          </p>
+        </section>
+      ) : null}
+
       <section className="card">
         <div className="grid gap-3 md:grid-cols-4">
           <div>
@@ -92,6 +106,7 @@ export function ReturnsClient({ initialYear }: { initialYear: number }) {
               value={year}
               onChange={(e) => setYear(Number(e.target.value))}
               className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+              disabled={!envReady}
             />
           </div>
           <div>
@@ -100,6 +115,7 @@ export function ReturnsClient({ initialYear }: { initialYear: number }) {
               value={investmentId}
               onChange={(e) => setInvestmentId(e.target.value)}
               className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+              disabled={!envReady}
             >
               {investments.map((inv) => (
                 <option key={inv.id} value={inv.id}>
@@ -114,6 +130,7 @@ export function ReturnsClient({ initialYear }: { initialYear: number }) {
               value={month}
               onChange={(e) => setMonth(Number(e.target.value))}
               className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+              disabled={!envReady}
             >
               {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
                 <option key={m} value={m}>
@@ -129,6 +146,7 @@ export function ReturnsClient({ initialYear }: { initialYear: number }) {
               onChange={(e) => setIncomeValue(e.target.value)}
               className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
               placeholder="0,00"
+              disabled={!envReady}
             />
           </div>
         </div>
@@ -136,7 +154,8 @@ export function ReturnsClient({ initialYear }: { initialYear: number }) {
         <div className="mt-3 flex gap-2">
           <button
             onClick={() => void save()}
-            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold hover:bg-indigo-500"
+            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-700"
+            disabled={!envReady}
           >
             {editingId ? "Atualizar" : "Salvar"}
           </button>

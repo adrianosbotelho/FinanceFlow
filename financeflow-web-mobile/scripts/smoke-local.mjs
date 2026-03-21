@@ -1,5 +1,5 @@
 const base = process.env.SMOKE_BASE_URL || "http://localhost:3000";
-const uiRoutes = ["/", "/investimentos", "/retornos", "/metas", "/api/health"];
+const uiRoutes = ["/", "/investimentos", "/retornos", "/metas", "/health", "/api/health"];
 const apiRoutes = [
   "/api/dashboard?year=2026",
   "/api/investments",

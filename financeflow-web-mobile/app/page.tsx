@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { DashboardPayload } from "@/types";
 import { formatCurrency, formatPct, monthName } from "@/lib/format";
+import { hasSupabaseServerEnv } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,7 +17,19 @@ export default async function DashboardPage({
 }: {
   searchParams?: { year?: string };
 }) {
+  const envReady = hasSupabaseServerEnv();
   const year = Number(searchParams?.year ?? new Date().getFullYear());
+  if (!envReady) {
+    return (
+      <div className="card">
+        <h1 className="text-lg font-bold">Dashboard</h1>
+        <p className="mt-2 text-sm text-slate-400">
+          Configure as variaveis do Supabase para carregar dados reais.
+        </p>
+      </div>
+    );
+  }
+
   const h = headers();
   const host = h.get("host");
   const proto = h.get("x-forwarded-proto") ?? "http";

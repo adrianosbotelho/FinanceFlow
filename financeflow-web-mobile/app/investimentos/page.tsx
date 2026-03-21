@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { Investment } from "@/types";
 import { formatCurrency, formatPct } from "@/lib/format";
+import { hasSupabaseServerEnv } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -12,6 +13,18 @@ async function loadInvestments(base: string): Promise<Investment[]> {
 }
 
 export default async function InvestmentsPage() {
+  const envReady = hasSupabaseServerEnv();
+  if (!envReady) {
+    return (
+      <div className="card">
+        <h1 className="text-lg font-bold">Investimentos</h1>
+        <p className="mt-2 text-sm text-slate-400">
+          Configure as variaveis do Supabase para consultar a carteira.
+        </p>
+      </div>
+    );
+  }
+
   const h = headers();
   const host = h.get("host");
   const proto = h.get("x-forwarded-proto") ?? "http";

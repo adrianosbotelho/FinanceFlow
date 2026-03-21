@@ -37,3 +37,5 @@ Status: EM ANDAMENTO
 - checklist completo em `QA_IPHONE_PWA.md`
 - smoke tecnico local implementado (`npm run smoke`)
 - smoke executado com sucesso estrutural (sem env Supabase completo)
+- pagina `/health` adicionada para validar backend/env + cliente/PWA
+- `qa:preflight` adicionado para execucao rapida de validacao continua

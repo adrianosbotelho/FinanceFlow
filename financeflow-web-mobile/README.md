@@ -43,6 +43,12 @@ Smoke local (com servidor `npm run dev` ativo):
 npm run smoke
 ```
 
+Preflight completo (lint + build + smoke):
+
+```bash
+npm run qa:preflight
+```
+
 ## Fases do plano
 
 - Fase 0: isolamento (concluida)

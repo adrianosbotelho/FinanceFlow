@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "check:env": "node scripts/check-env.mjs",
-    "smoke": "node scripts/smoke-local.mjs"
+    "smoke": "node scripts/smoke-local.mjs",
+    "qa:preflight": "npm run lint && npm run build && npm run smoke"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.3",

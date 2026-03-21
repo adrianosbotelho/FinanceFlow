@@ -8,6 +8,7 @@ const links = [
   { href: "/retornos", label: "Retornos" },
   { href: "/investimentos", label: "Investimentos" },
   { href: "/metas", label: "Metas" },
+  { href: "/health", label: "Health" },
 ];
 
 export function AppNav() {
@@ -40,7 +41,7 @@ export function AppNav() {
         </nav>
       </aside>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-slate-800 bg-slate-900/95 p-2 backdrop-blur md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-slate-800 bg-slate-900/95 p-2 backdrop-blur md:hidden">
         {links.map((link) => {
           const active = pathname === link.href;
           return (

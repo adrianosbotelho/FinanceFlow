@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { GoalRow } from "@/types";
 import { formatCurrency, monthName } from "@/lib/format";
+import { hasSupabaseServerEnv } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -12,6 +13,18 @@ async function loadGoals(year: number, month: number, base: string): Promise<Goa
 }
 
 export default async function GoalsPage({ searchParams }: { searchParams?: { year?: string } }) {
+  const envReady = hasSupabaseServerEnv();
+  if (!envReady) {
+    return (
+      <div className="card">
+        <h1 className="text-lg font-bold">Metas</h1>
+        <p className="mt-2 text-sm text-slate-400">
+          Configure as variaveis do Supabase para carregar metas mensais e anuais.
+        </p>
+      </div>
+    );
+  }
+
   const year = Number(searchParams?.year ?? new Date().getFullYear());
   const month = new Date().getMonth() + 1;
   const h = headers();

@@ -15,6 +15,7 @@
 - Excluir retorno e confirmar remocao.
 - Investimentos carrega carteira e percentuais.
 - Metas carrega mensal e anual.
+- Health Check (`/health`) deve mostrar backend/cliente sem pendencias.
 
 ## Checklist iPhone
 
@@ -35,3 +36,4 @@
 - Nenhum erro 500 nas APIs internas.
 - CRUD de retornos funcional no iPhone.
 - App instalavel como PWA.
+- `npm run qa:preflight` concluido sem falhas (com env completo para validar APIs de dados).
