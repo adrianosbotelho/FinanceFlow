@@ -7,6 +7,7 @@ Objetivo: publicar apenas `financeflow-web-mobile` sem impacto no desktop.
 - Importar o repositorio `FinanceFlow`.
 - Em `Root Directory`, selecionar: `financeflow-web-mobile`.
 - Framework detectado: Next.js.
+- Opcional: manter `Production Branch = main`.
 
 ## 2) Variaveis de ambiente
 
@@ -26,13 +27,21 @@ Observacao:
 - Build command: `npm run build`
 - Output: default Next.js
 - Install command: `npm install`
+- Arquivo de apoio presente no projeto: `vercel.json`
 
 ## 4) Validacao pos-deploy
 
+- Rodar local antes do primeiro deploy:
+  - `npm run check:env`
+  - `npm run lint`
+  - `npm run build`
 - Abrir `/` e validar cards do dashboard.
 - Abrir `/retornos` e inserir um lancamento de teste.
 - Confirmar reflexo no dashboard.
 - Testar `/investimentos` e `/metas`.
+- Testar `/api/health` (deve retornar `status: ok` e checks true).
+- Rodar smoke (com app local no ar):
+  - `npm run smoke`
 - Testar PWA (manifest + install).
 
 ## 5) Regra de seguranca operacional

@@ -32,8 +32,15 @@ npm run dev
 4. Validar:
 
 ```bash
+npm run check:env
 npm run lint
 npm run build
+```
+
+Smoke local (com servidor `npm run dev` ativo):
+
+```bash
+npm run smoke
 ```
 
 ## Fases do plano

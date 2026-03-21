@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "check:env": "node scripts/check-env.mjs",
+    "smoke": "node scripts/smoke-local.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.3",
