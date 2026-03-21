@@ -164,6 +164,8 @@ export function InvestmentsPageClient() {
     ).size;
     return { hhi, effectiveCount, top1, top3, institutions };
   }, [allocationRows, investments]);
+  const investmentKpiCardClass =
+    "flex flex-col gap-2 rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm transition-all hover:shadow-md";
 
   const handleSaved = async () => {
     setEditing(null);
@@ -221,63 +223,63 @@ export function InvestmentsPageClient() {
           Isso pode causar leitura confusa nos retornos mensais.
         </p>
       )}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border border-slate-800 bg-surface/80 p-3">
-          <p className="text-xs text-slate-400">Patrimônio investido</p>
-          <p className="mt-1 text-lg font-semibold text-slate-100">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className={investmentKpiCardClass}>
+          <p className="text-sm font-medium text-slate-500">Patrimônio investido</p>
+          <p className="text-2xl font-extrabold tracking-tight text-slate-50">
             {formatCurrencyBRL(totalInvested)}
           </p>
         </div>
-        <div className="rounded-xl border border-slate-800 bg-surface/80 p-3">
-          <p className="text-xs text-slate-400">Maior posição</p>
-          <p className="mt-1 text-lg font-semibold text-slate-100">
+        <div className={investmentKpiCardClass}>
+          <p className="text-sm font-medium text-slate-500">Maior posição</p>
+          <p className="text-2xl font-extrabold tracking-tight text-slate-50">
             {formatPercentage(concentrationMetrics.top1)}
           </p>
-          <p className="text-[11px] text-slate-400">do total da carteira</p>
+          <p className="mt-auto text-[11px] text-slate-500">do total da carteira</p>
         </div>
-        <div className="rounded-xl border border-slate-800 bg-surface/80 p-3">
-          <p className="text-xs text-slate-400">Concentração Top 3</p>
-          <p className="mt-1 text-lg font-semibold text-slate-100">
+        <div className={investmentKpiCardClass}>
+          <p className="text-sm font-medium text-slate-500">Concentração Top 3</p>
+          <p className="text-2xl font-extrabold tracking-tight text-slate-50">
             {formatPercentage(concentrationMetrics.top3)}
           </p>
-          <p className="text-[11px] text-slate-400">três maiores posições</p>
+          <p className="mt-auto text-[11px] text-slate-500">três maiores posições</p>
         </div>
-        <div className="rounded-xl border border-slate-800 bg-surface/80 p-3">
-          <p className="text-xs text-slate-400">Diversificação efetiva</p>
-          <p className="mt-1 text-lg font-semibold text-slate-100">
+        <div className={investmentKpiCardClass}>
+          <p className="text-sm font-medium text-slate-500">Diversificação efetiva</p>
+          <p className="text-2xl font-extrabold tracking-tight text-slate-50">
             {concentrationMetrics.effectiveCount.toFixed(2)}
           </p>
-          <p className="text-[11px] text-slate-400">
+          <p className="mt-auto text-[11px] text-slate-500">
             ativos equivalentes (HHI {concentrationMetrics.hhi.toFixed(0)})
           </p>
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-slate-800 bg-surface/80 p-3">
-          <p className="text-xs text-slate-400">Exposição em CDB</p>
-          <p className="mt-1 text-base font-semibold text-amber-300">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className={investmentKpiCardClass}>
+          <p className="text-sm font-medium text-slate-500">Exposição em CDB</p>
+          <p className="text-2xl font-extrabold tracking-tight text-amber-300">
             {formatCurrencyBRL(byType.cdb)}
           </p>
-          <p className="text-[11px] text-slate-400">
+          <p className="mt-auto text-[11px] text-slate-500">
             {formatPercentage(totalInvested > 0 ? (byType.cdb / totalInvested) * 100 : 0)}
           </p>
         </div>
-        <div className="rounded-xl border border-slate-800 bg-surface/80 p-3">
-          <p className="text-xs text-slate-400">Exposição em FII</p>
-          <p className="mt-1 text-base font-semibold text-emerald-300">
+        <div className={investmentKpiCardClass}>
+          <p className="text-sm font-medium text-slate-500">Exposição em FII</p>
+          <p className="text-2xl font-extrabold tracking-tight text-emerald-300">
             {formatCurrencyBRL(byType.fii)}
           </p>
-          <p className="text-[11px] text-slate-400">
+          <p className="mt-auto text-[11px] text-slate-500">
             {formatPercentage(totalInvested > 0 ? (byType.fii / totalInvested) * 100 : 0)}
           </p>
         </div>
-        <div className="rounded-xl border border-slate-800 bg-surface/80 p-3">
-          <p className="text-xs text-slate-400">Instituições ativas</p>
-          <p className="mt-1 text-base font-semibold text-slate-100">
+        <div className={investmentKpiCardClass}>
+          <p className="text-sm font-medium text-slate-500">Instituições ativas</p>
+          <p className="text-2xl font-extrabold tracking-tight text-slate-50">
             {concentrationMetrics.institutions}
           </p>
-          <p className="text-[11px] text-slate-400">tipo + instituição distintos</p>
+          <p className="mt-auto text-[11px] text-slate-500">tipo + instituição distintos</p>
         </div>
       </div>
 
