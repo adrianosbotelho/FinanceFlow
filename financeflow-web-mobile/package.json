@@ -12,6 +12,7 @@
     "smoke:remote": "node scripts/smoke-remote.mjs",
     "ops:check": "node scripts/ops-check.mjs",
     "ops:report": "node scripts/ops-check.mjs --write",
+    "release:gate": "node scripts/release-gate.mjs",
     "qa:preflight": "npm run lint && npm run build && npm run smoke"
   },
   "dependencies": {

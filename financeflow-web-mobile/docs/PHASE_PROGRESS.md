@@ -61,3 +61,10 @@ Status: CONCLUIDA
 - `rootDirectory` configurado para `financeflow-web-mobile`
 - env de Preview configuradas para a branch `codex/preview-env`
 - deploy Preview validado (com protecao 401 padrao do Vercel em URL nao customizada)
+
+## Fase 9 - Release Gate e evidencias
+
+Status: CONCLUIDA (instrumentacao)
+- comando `release:gate` para aprovar/bloquear release
+- relatorio Markdown automatico em `reports/`
+- playbook da fase em `RELEASE_GATE.md`

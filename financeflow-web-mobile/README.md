@@ -56,6 +56,12 @@ SMOKE_BASE_URL=https://<seu-projeto>.vercel.app npm run ops:check
 SMOKE_BASE_URL=https://<seu-projeto>.vercel.app npm run ops:report
 ```
 
+Gate de release com evidencias:
+
+```bash
+SMOKE_BASE_URL=https://<seu-projeto>.vercel.app npm run release:gate
+```
+
 Preflight completo (lint + build + smoke):
 
 ```bash
