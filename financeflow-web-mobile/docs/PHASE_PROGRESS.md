@@ -75,3 +75,11 @@ Status: CONCLUIDA
 - workflow `web-mobile-ci.yml` (lint + build em push/PR)
 - workflow `web-mobile-ops-gate.yml` (release gate agendado + manual)
 - documentacao da fase em `CI_AUTOMATION.md`
+
+## Fase 11 - Seguranca Single User (Login)
+
+Status: CONCLUIDA
+- login single-user em `/login`
+- middleware global protegendo paginas e APIs
+- sessao por cookie httpOnly assinado
+- fase documentada em `SECURITY_SINGLE_USER.md`

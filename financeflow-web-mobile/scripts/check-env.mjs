@@ -3,6 +3,9 @@ const required = [
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
   "NEXT_PUBLIC_BASE_URL",
+  "AUTH_LOGIN_EMAIL",
+  "AUTH_LOGIN_PASSWORD",
+  "AUTH_SESSION_SECRET",
 ];
 
 const missing = required.filter((k) => !process.env[k] || process.env[k].trim() === "");

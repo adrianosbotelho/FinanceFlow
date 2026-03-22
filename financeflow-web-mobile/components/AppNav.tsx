@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 const links = [
   { href: "/", label: "Dashboard" },
@@ -13,6 +13,17 @@ const links = [
 
 export function AppNav() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  if (pathname.startsWith("/login")) {
+    return null;
+  }
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.replace("/login");
+    router.refresh();
+  }
 
   return (
     <>
@@ -39,9 +50,15 @@ export function AppNav() {
             );
           })}
         </nav>
+        <button
+          onClick={() => void logout()}
+          className="mt-6 w-full rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white"
+        >
+          Sair
+        </button>
       </aside>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-slate-800 bg-slate-900/95 p-2 backdrop-blur md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-slate-800 bg-slate-900/95 p-2 backdrop-blur md:hidden">
         {links.map((link) => {
           const active = pathname === link.href;
           return (
@@ -56,6 +73,12 @@ export function AppNav() {
             </Link>
           );
         })}
+        <button
+          onClick={() => void logout()}
+          className="rounded-md px-2 py-2 text-center text-xs text-slate-300"
+        >
+          Sair
+        </button>
       </nav>
     </>
   );

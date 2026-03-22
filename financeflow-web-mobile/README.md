@@ -7,6 +7,7 @@ Objetivo: permitir consulta e atualizacao de:
 - Retornos Mensais (CRUD)
 - Investimentos
 - Metas
+- com acesso protegido por login single-user
 
 ## Regra de isolamento
 

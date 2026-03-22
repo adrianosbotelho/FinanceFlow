@@ -20,6 +20,9 @@ Configurar no Vercel (Project Settings > Environment Variables):
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `NEXT_PUBLIC_BASE_URL=https://<seu-projeto>.vercel.app`
+- `AUTH_LOGIN_EMAIL`
+- `AUTH_LOGIN_PASSWORD`
+- `AUTH_SESSION_SECRET`
 
 Observacao:
 - `SUPABASE_SERVICE_ROLE_KEY` fica apenas no servidor (API routes).
