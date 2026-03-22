@@ -46,3 +46,10 @@ Status: CONCLUIDA (readiness tecnica)
 - runbook de publicacao e rollback em `GO_LIVE_RUNBOOK.md`
 - smoke remoto por URL de deploy (`npm run smoke:remote`)
 - health com ping real de banco e latencia
+
+## Fase 7 - Operacao continua
+
+Status: CONCLUIDA (instrumentacao)
+- playbook operacional em `OPERACAO_CONTINUA.md`
+- check remoto operacional (`npm run ops:check`)
+- geracao de relatorio de incidente (`npm run ops:report`)

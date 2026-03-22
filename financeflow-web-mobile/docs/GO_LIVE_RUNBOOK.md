@@ -33,6 +33,20 @@ Criterio:
 
 Seguir `docs/QA_IPHONE_PWA.md`.
 
+## Etapa 5 - Operacao apos publicacao
+
+No primeiro dia de producao:
+
+```bash
+SMOKE_BASE_URL=https://<seu-projeto>.vercel.app npm run ops:check
+```
+
+Se falhar:
+
+```bash
+SMOKE_BASE_URL=https://<seu-projeto>.vercel.app npm run ops:report
+```
+
 ## Rollback
 
 Se o gate remoto falhar ou QA iPhone tiver regressao:

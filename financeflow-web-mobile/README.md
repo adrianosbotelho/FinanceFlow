@@ -49,6 +49,13 @@ Smoke remoto (deploy Vercel):
 SMOKE_BASE_URL=https://<seu-projeto>.vercel.app npm run smoke:remote
 ```
 
+Check operacional continuo (pos go-live):
+
+```bash
+SMOKE_BASE_URL=https://<seu-projeto>.vercel.app npm run ops:check
+SMOKE_BASE_URL=https://<seu-projeto>.vercel.app npm run ops:report
+```
+
 Preflight completo (lint + build + smoke):
 
 ```bash
