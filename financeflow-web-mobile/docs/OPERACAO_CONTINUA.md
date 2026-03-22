@@ -24,6 +24,10 @@ Objetivo: manter o web/mobile estavel apos publicacao.
 - `degraded`: uma ou mais rotas com erro
 - `critical`: env incompleto ou db indisponivel
 
+Observacao:
+- se usar URL de Preview com protecao do Vercel ativa, pode retornar `401` sem sessao autenticada.
+- para monitoramento continuo automatico, preferir dominio de producao.
+
 ## Acoes por status
 
 - `ok`: manter monitoramento.

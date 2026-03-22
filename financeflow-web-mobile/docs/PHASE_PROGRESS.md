@@ -53,3 +53,11 @@ Status: CONCLUIDA (instrumentacao)
 - playbook operacional em `OPERACAO_CONTINUA.md`
 - check remoto operacional (`npm run ops:check`)
 - geracao de relatorio de incidente (`npm run ops:report`)
+
+## Fase 8 - Integracao Git + Preview no Vercel
+
+Status: CONCLUIDA
+- repositorio GitHub conectado ao projeto Vercel
+- `rootDirectory` configurado para `financeflow-web-mobile`
+- env de Preview configuradas para a branch `codex/preview-env`
+- deploy Preview validado (com protecao 401 padrao do Vercel em URL nao customizada)

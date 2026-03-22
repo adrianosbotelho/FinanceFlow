@@ -9,6 +9,9 @@ Objetivo: publicar apenas `financeflow-web-mobile` sem impacto no desktop.
 - Framework detectado: Next.js.
 - Opcional: manter `Production Branch = main`.
 
+Se o projeto foi criado antes sem Root Directory correto:
+- ajustar via API/CLI para `rootDirectory = financeflow-web-mobile`.
+
 ## 2) Variaveis de ambiente
 
 Configurar no Vercel (Project Settings > Environment Variables):
@@ -45,6 +48,12 @@ Observacao:
 - Rodar smoke remoto (apos deploy):
   - `SMOKE_BASE_URL=https://<seu-projeto>.vercel.app npm run smoke:remote`
 - Testar PWA (manifest + install).
+
+## Preview por branch (Git)
+
+- Exemplo de branch: `codex/preview-env`.
+- Configurar env de preview para a branch desejada.
+- Em contas com protecao de preview ativa, a URL preview pode responder `401` sem sessao autenticada no Vercel.
 
 ## 5) Regra de seguranca operacional
 
