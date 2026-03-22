@@ -62,6 +62,10 @@ Gate de release com evidencias:
 SMOKE_BASE_URL=https://<seu-projeto>.vercel.app npm run release:gate
 ```
 
+CI/CD automatizado:
+- CI (lint/build): `.github/workflows/web-mobile-ci.yml`
+- Gate operacional diario: `.github/workflows/web-mobile-ops-gate.yml`
+
 Preflight completo (lint + build + smoke):
 
 ```bash

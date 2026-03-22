@@ -68,3 +68,10 @@ Status: CONCLUIDA (instrumentacao)
 - comando `release:gate` para aprovar/bloquear release
 - relatorio Markdown automatico em `reports/`
 - playbook da fase em `RELEASE_GATE.md`
+
+## Fase 10 - CI/CD Automation
+
+Status: CONCLUIDA
+- workflow `web-mobile-ci.yml` (lint + build em push/PR)
+- workflow `web-mobile-ops-gate.yml` (release gate agendado + manual)
+- documentacao da fase em `CI_AUTOMATION.md`
