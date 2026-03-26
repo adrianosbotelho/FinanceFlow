@@ -25,7 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <PwaRegister />
         <div className="min-h-screen bg-gradient-to-b from-slate-950 to-slate-900 text-slate-100 md:flex">
           <AppNav />
-          <main className="w-full p-4 pb-24 md:p-6 md:pb-6">
+          <main className="w-full p-4 pb-[calc(7rem+env(safe-area-inset-bottom))] md:p-6 md:pb-6">
             <div className="mx-auto w-full max-w-6xl space-y-6">{children}</div>
           </main>
         </div>

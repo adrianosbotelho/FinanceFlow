@@ -6,6 +6,8 @@ import { hasSupabaseServerEnv } from "@/lib/env";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+type TrendTone = "positive" | "negative" | "neutral";
+
 async function loadDashboard(year: number, base: string, cookieHeader: string | null): Promise<DashboardPayload | null> {
   const res = await fetch(`${base}/api/dashboard?year=${year}`, {
     cache: "no-store",
@@ -13,6 +15,39 @@ async function loadDashboard(year: number, base: string, cookieHeader: string | 
   });
   if (!res.ok) return null;
   return res.json();
+}
+
+function trendTone(value: number | null | undefined): TrendTone {
+  if (value === null || value === undefined || Number.isNaN(value) || value === 0) return "neutral";
+  return value > 0 ? "positive" : "negative";
+}
+
+function trendSymbol(value: number | null | undefined): string {
+  const tone = trendTone(value);
+  if (tone === "positive") return "▲";
+  if (tone === "negative") return "▼";
+  return "•";
+}
+
+function trendCardClass(value: number | null | undefined): string {
+  const tone = trendTone(value);
+  if (tone === "positive") return "border-emerald-500/60 bg-emerald-950/10";
+  if (tone === "negative") return "border-rose-500/60 bg-rose-950/10";
+  return "border-slate-700";
+}
+
+function trendValueClass(value: number | null | undefined): string {
+  const tone = trendTone(value);
+  if (tone === "positive") return "text-emerald-300";
+  if (tone === "negative") return "text-rose-300";
+  return "text-slate-100";
+}
+
+function trendPctClass(value: number | null | undefined): string {
+  const tone = trendTone(value);
+  if (tone === "positive") return "text-emerald-300";
+  if (tone === "negative") return "text-rose-300";
+  return "text-slate-300";
 }
 
 export default async function DashboardPage({
@@ -52,20 +87,35 @@ export default async function DashboardPage({
       </header>
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        <article className="card">
+        <article className={`card ${trendCardClass(data.kpis.momTotalPct)}`}>
           <p className="card-title">Renda passiva mensal</p>
-          <p className="card-value">{formatCurrency(data.kpis.totalMonth)}</p>
-          <p className="text-xs text-slate-500">{formatPct(data.kpis.momTotalPct)} vs mês anterior</p>
+          <p className={`card-value ${trendValueClass(data.kpis.momTotalPct)}`}>{formatCurrency(data.kpis.totalMonth)}</p>
+          <p className="text-xs text-slate-500">
+            <span className={`mr-1 font-semibold ${trendPctClass(data.kpis.momTotalPct)}`}>
+              {trendSymbol(data.kpis.momTotalPct)} {formatPct(data.kpis.momTotalPct)}
+            </span>
+            vs mês anterior
+          </p>
         </article>
-        <article className="card">
+        <article className={`card ${trendCardClass(data.kpis.momCdbPct)}`}>
           <p className="card-title">Rendimento CDBs</p>
-          <p className="card-value">{formatCurrency(data.kpis.cdbMonth)}</p>
-          <p className="text-xs text-slate-500">{formatPct(data.kpis.momCdbPct)} vs mês anterior</p>
+          <p className={`card-value ${trendValueClass(data.kpis.momCdbPct)}`}>{formatCurrency(data.kpis.cdbMonth)}</p>
+          <p className="text-xs text-slate-500">
+            <span className={`mr-1 font-semibold ${trendPctClass(data.kpis.momCdbPct)}`}>
+              {trendSymbol(data.kpis.momCdbPct)} {formatPct(data.kpis.momCdbPct)}
+            </span>
+            vs mês anterior
+          </p>
         </article>
-        <article className="card">
+        <article className={`card ${trendCardClass(data.kpis.momFiisPct)}`}>
           <p className="card-title">Dividendos FIIs</p>
-          <p className="card-value">{formatCurrency(data.kpis.fiisMonth)}</p>
-          <p className="text-xs text-slate-500">{formatPct(data.kpis.momFiisPct)} vs mês anterior</p>
+          <p className={`card-value ${trendValueClass(data.kpis.momFiisPct)}`}>{formatCurrency(data.kpis.fiisMonth)}</p>
+          <p className="text-xs text-slate-500">
+            <span className={`mr-1 font-semibold ${trendPctClass(data.kpis.momFiisPct)}`}>
+              {trendSymbol(data.kpis.momFiisPct)} {formatPct(data.kpis.momFiisPct)}
+            </span>
+            vs mês anterior
+          </p>
         </article>
         <article className="card">
           <p className="card-title">Renda acumulada no ano</p>
