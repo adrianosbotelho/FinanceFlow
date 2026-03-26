@@ -215,7 +215,7 @@ export function ReturnsClient({ initialYear, envReady }: { initialYear: number; 
                   </button>
                   <button
                     onClick={() => void remove(r.id)}
-                    className="rounded-md border border-rose-700 px-3 py-1 text-xs text-rose-300"
+                    className="hidden rounded-md border border-rose-700 px-3 py-1 text-xs text-rose-300 md:inline-block"
                   >
                     Excluir
                   </button>
