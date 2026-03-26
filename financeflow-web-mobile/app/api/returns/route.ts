@@ -35,6 +35,12 @@ export async function GET(req: NextRequest) {
     investment_label: labelMap.get(r.investment_id) ?? r.investment_id,
   }));
 
+  rows.sort((a, b) => {
+    if (a.year !== b.year) return b.year - a.year;
+    if (a.month !== b.month) return b.month - a.month;
+    return a.investment_label.localeCompare(b.investment_label, "pt-BR");
+  });
+
   return NextResponse.json(rows, {
     headers: { "Cache-Control": "no-store, no-cache, must-revalidate" },
   });
