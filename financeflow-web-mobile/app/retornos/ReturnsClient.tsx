@@ -79,12 +79,6 @@ export function ReturnsClient({ initialYear, envReady }: { initialYear: number; 
     await loadAll(year);
   }
 
-  async function remove(id: string) {
-    if (!envReady) return;
-    await fetch(`/api/returns/${id}`, { method: "DELETE" });
-    await loadAll(year);
-  }
-
   function startEdit(row: ReturnRow) {
     setEditingId(row.id);
     setIncomeValue(String(row.income_value));
@@ -212,12 +206,6 @@ export function ReturnsClient({ initialYear, envReady }: { initialYear: number; 
                     className="rounded-md border border-slate-700 px-3 py-1 text-xs"
                   >
                     Editar
-                  </button>
-                  <button
-                    onClick={() => void remove(r.id)}
-                    className="hidden rounded-md border border-rose-700 px-3 py-1 text-xs text-rose-300 md:inline-block"
-                  >
-                    Excluir
                   </button>
                 </div>
               </article>
