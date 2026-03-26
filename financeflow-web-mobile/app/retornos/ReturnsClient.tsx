@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ReturnRow, Investment } from "@/types";
 import { formatCurrency, monthName } from "@/lib/format";
 
@@ -14,6 +14,8 @@ export function ReturnsClient({ initialYear, envReady }: { initialYear: number; 
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [incomeValue, setIncomeValue] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const formRef = useRef<HTMLElement | null>(null);
+  const incomeInputRef = useRef<HTMLInputElement | null>(null);
 
   async function loadAll(selectedYear: number) {
     setLoading(true);
@@ -83,6 +85,17 @@ export function ReturnsClient({ initialYear, envReady }: { initialYear: number; 
     await loadAll(year);
   }
 
+  function startEdit(row: ReturnRow) {
+    setEditingId(row.id);
+    setIncomeValue(String(row.income_value));
+    setMonth(row.month);
+    setInvestmentId(row.investment_id);
+    requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      setTimeout(() => incomeInputRef.current?.focus(), 200);
+    });
+  }
+
   return (
     <div className="space-y-5">
       <header>
@@ -98,7 +111,7 @@ export function ReturnsClient({ initialYear, envReady }: { initialYear: number; 
         </section>
       ) : null}
 
-      <section className="card">
+      <section ref={formRef} className="card">
         <div className="grid gap-3 md:grid-cols-4">
           <div>
             <label className="mb-1 block text-xs text-slate-400">Ano</label>
@@ -142,6 +155,7 @@ export function ReturnsClient({ initialYear, envReady }: { initialYear: number; 
           <div>
             <label className="mb-1 block text-xs text-slate-400">Rendimento (R$)</label>
             <input
+              ref={incomeInputRef}
               value={incomeValue}
               onChange={(e) => setIncomeValue(e.target.value)}
               className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
@@ -194,12 +208,7 @@ export function ReturnsClient({ initialYear, envReady }: { initialYear: number; 
                 <p className="mt-1 text-lg font-bold text-emerald-300">{formatCurrency(r.income_value)}</p>
                 <div className="mt-2 flex gap-2">
                   <button
-                    onClick={() => {
-                      setEditingId(r.id);
-                      setIncomeValue(String(r.income_value));
-                      setMonth(r.month);
-                      setInvestmentId(r.investment_id);
-                    }}
+                    onClick={() => startEdit(r)}
                     className="rounded-md border border-slate-700 px-3 py-1 text-xs"
                   >
                     Editar
