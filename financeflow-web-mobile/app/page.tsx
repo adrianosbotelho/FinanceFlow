@@ -50,6 +50,13 @@ function trendPctClass(value: number | null | undefined): string {
   return "text-slate-300";
 }
 
+function formatSignedCurrency(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "-";
+  if (value === 0) return "R$ 0,00";
+  const absValue = formatCurrency(Math.abs(value));
+  return `${value > 0 ? "+" : "-"}${absValue}`;
+}
+
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -78,6 +85,18 @@ export default async function DashboardPage({
   if (!data) {
     return <p className="text-sm text-rose-300">Falha ao carregar dashboard.</p>;
   }
+
+  const varValues = data.monthlySeries
+    .map((m) => m.mom_value)
+    .filter((v): v is number => v !== null && v !== undefined && !Number.isNaN(v));
+  const varPcts = data.monthlySeries
+    .map((m) => m.mom_pct)
+    .filter((v): v is number => v !== null && v !== undefined && !Number.isNaN(v));
+  const totalCdbItau = data.monthlySeries.reduce((acc, m) => acc + m.cdb_itau, 0);
+  const totalCdbSantander = data.monthlySeries.reduce((acc, m) => acc + m.cdb_santander, 0);
+  const totalFiis = data.monthlySeries.reduce((acc, m) => acc + m.fiis, 0);
+  const varValueSum = varValues.reduce((acc, v) => acc + v, 0);
+  const varPctAvg = varPcts.length ? varPcts.reduce((acc, v) => acc + v, 0) / varPcts.length : null;
 
   return (
     <div className="space-y-5">
@@ -134,6 +153,8 @@ export default async function DashboardPage({
               <th className="px-2 py-2">CDB Santander</th>
               <th className="px-2 py-2">FIIs</th>
               <th className="px-2 py-2">Total</th>
+              <th className="px-2 py-2">VAR (M/M %)</th>
+              <th className="px-2 py-2">VAR (M/M R$)</th>
             </tr>
           </thead>
           <tbody>
@@ -144,8 +165,23 @@ export default async function DashboardPage({
                 <td className="px-2 py-2 text-rose-300">{formatCurrency(m.cdb_santander)}</td>
                 <td className="px-2 py-2 text-emerald-300">{formatCurrency(m.fiis)}</td>
                 <td className="px-2 py-2 font-semibold text-slate-100">{formatCurrency(m.total)}</td>
+                <td className={`px-2 py-2 font-semibold ${trendPctClass(m.mom_pct)}`}>{formatPct(m.mom_pct)}</td>
+                <td className={`px-2 py-2 font-semibold ${trendPctClass(m.mom_value)}`}>
+                  {formatSignedCurrency(m.mom_value)}
+                </td>
               </tr>
             ))}
+            <tr className="bg-slate-900/70 font-semibold">
+              <td className="px-2 py-2 uppercase tracking-wide text-slate-300">Resumo</td>
+              <td className="px-2 py-2 text-amber-300">{formatCurrency(totalCdbItau)}</td>
+              <td className="px-2 py-2 text-rose-300">{formatCurrency(totalCdbSantander)}</td>
+              <td className="px-2 py-2 text-emerald-300">{formatCurrency(totalFiis)}</td>
+              <td className="px-2 py-2 text-slate-100">{formatCurrency(data.kpis.ytd)}</td>
+              <td className={`px-2 py-2 ${trendPctClass(varPctAvg)}`}>
+                {varPctAvg === null ? "-" : `Média ${formatPct(varPctAvg)}`}
+              </td>
+              <td className={`px-2 py-2 ${trendPctClass(varValueSum)}`}>{formatSignedCurrency(varValueSum)}</td>
+            </tr>
           </tbody>
         </table>
       </section>

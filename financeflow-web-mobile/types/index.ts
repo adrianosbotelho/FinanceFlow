@@ -24,6 +24,8 @@ export interface DashboardMonth {
   cdb_santander: number;
   fiis: number;
   total: number;
+  mom_pct: number | null;
+  mom_value: number | null;
 }
 
 export interface DashboardPayload {

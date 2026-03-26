@@ -50,6 +50,8 @@ export async function GET(req: NextRequest) {
         cdb_santander: 0,
         fiis: 0,
         total: 0,
+        mom_pct: null,
+        mom_value: null,
       };
 
     const income = Number(row.income_value ?? 0);
@@ -67,7 +69,17 @@ export async function GET(req: NextRequest) {
   }
 
   const seriesAll = Array.from(monthMap.values()).sort((a, b) => a.year - b.year || a.month - b.month);
-  const monthlySeries = seriesAll.filter((m) => m.year === year);
+  const seriesWithMom = seriesAll.map((entry, index) => {
+    const prev = index > 0 ? seriesAll[index - 1] : null;
+    const momValue = prev ? entry.total - prev.total : null;
+    const momPct = prev && prev.total > 0 ? ((entry.total - prev.total) / prev.total) * 100 : null;
+    return {
+      ...entry,
+      mom_value: momValue,
+      mom_pct: momPct,
+    };
+  });
+  const monthlySeries = seriesWithMom.filter((m) => m.year === year);
   const current = monthlySeries[monthlySeries.length - 1] ?? null;
 
   const prev = current
