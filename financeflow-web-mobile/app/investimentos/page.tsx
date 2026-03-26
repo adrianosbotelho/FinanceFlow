@@ -6,8 +6,11 @@ import { hasSupabaseServerEnv } from "@/lib/env";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-async function loadInvestments(base: string): Promise<Investment[]> {
-  const res = await fetch(`${base}/api/investments`, { cache: "no-store" });
+async function loadInvestments(base: string, cookieHeader: string | null): Promise<Investment[]> {
+  const res = await fetch(`${base}/api/investments`, {
+    cache: "no-store",
+    headers: cookieHeader ? { cookie: cookieHeader } : undefined,
+  });
   if (!res.ok) return [];
   return res.json();
 }
@@ -28,9 +31,10 @@ export default async function InvestmentsPage() {
   const h = headers();
   const host = h.get("host");
   const proto = h.get("x-forwarded-proto") ?? "http";
+  const cookieHeader = h.get("cookie");
   const base = host ? `${proto}://${host}` : process.env.NEXT_PUBLIC_BASE_URL ?? "http://127.0.0.1:3000";
 
-  const data = await loadInvestments(base);
+  const data = await loadInvestments(base, cookieHeader);
   const total = data.reduce((acc, i) => acc + Number(i.amount_invested ?? 0), 0);
   const cdb = data.filter((i) => i.type === "CDB").reduce((acc, i) => acc + Number(i.amount_invested ?? 0), 0);
   const fii = data.filter((i) => i.type === "FII").reduce((acc, i) => acc + Number(i.amount_invested ?? 0), 0);

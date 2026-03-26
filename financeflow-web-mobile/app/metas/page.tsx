@@ -6,8 +6,11 @@ import { hasSupabaseServerEnv } from "@/lib/env";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-async function loadGoals(year: number, month: number, base: string): Promise<GoalRow[]> {
-  const res = await fetch(`${base}/api/goals?year=${year}&month=${month}`, { cache: "no-store" });
+async function loadGoals(year: number, month: number, base: string, cookieHeader: string | null): Promise<GoalRow[]> {
+  const res = await fetch(`${base}/api/goals?year=${year}&month=${month}`, {
+    cache: "no-store",
+    headers: cookieHeader ? { cookie: cookieHeader } : undefined,
+  });
   if (!res.ok) return [];
   return res.json();
 }
@@ -30,8 +33,9 @@ export default async function GoalsPage({ searchParams }: { searchParams?: { yea
   const h = headers();
   const host = h.get("host");
   const proto = h.get("x-forwarded-proto") ?? "http";
+  const cookieHeader = h.get("cookie");
   const base = host ? `${proto}://${host}` : process.env.NEXT_PUBLIC_BASE_URL ?? "http://127.0.0.1:3000";
-  const rows = await loadGoals(year, month, base);
+  const rows = await loadGoals(year, month, base, cookieHeader);
 
   const monthly = rows.filter((r) => r.type === "monthly");
   const annual = rows.filter((r) => r.type === "annual");

@@ -6,8 +6,11 @@ import { hasSupabaseServerEnv } from "@/lib/env";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-async function loadDashboard(year: number, base: string): Promise<DashboardPayload | null> {
-  const res = await fetch(`${base}/api/dashboard?year=${year}`, { cache: "no-store" });
+async function loadDashboard(year: number, base: string, cookieHeader: string | null): Promise<DashboardPayload | null> {
+  const res = await fetch(`${base}/api/dashboard?year=${year}`, {
+    cache: "no-store",
+    headers: cookieHeader ? { cookie: cookieHeader } : undefined,
+  });
   if (!res.ok) return null;
   return res.json();
 }
@@ -33,8 +36,9 @@ export default async function DashboardPage({
   const h = headers();
   const host = h.get("host");
   const proto = h.get("x-forwarded-proto") ?? "http";
+  const cookieHeader = h.get("cookie");
   const base = host ? `${proto}://${host}` : process.env.NEXT_PUBLIC_BASE_URL ?? "http://127.0.0.1:3000";
-  const data = await loadDashboard(year, base);
+  const data = await loadDashboard(year, base, cookieHeader);
 
   if (!data) {
     return <p className="text-sm text-rose-300">Falha ao carregar dashboard.</p>;
