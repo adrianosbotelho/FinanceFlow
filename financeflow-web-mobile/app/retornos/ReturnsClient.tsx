@@ -40,15 +40,23 @@ export function ReturnsClient({ initialYear, envReady }: { initialYear: number; 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, envReady]);
 
+  const sortedRows = useMemo(() => {
+    return [...rows].sort((a, b) => {
+      if (a.year !== b.year) return b.year - a.year;
+      if (a.month !== b.month) return b.month - a.month;
+      return a.investment_label.localeCompare(b.investment_label, "pt-BR");
+    });
+  }, [rows]);
+
   const totals = useMemo(() => {
-    return rows.reduce(
+    return sortedRows.reduce(
       (acc, r) => {
         acc.total += Number(r.income_value ?? 0);
         return acc;
       },
       { total: 0 },
     );
-  }, [rows]);
+  }, [sortedRows]);
 
   async function save() {
     if (!envReady) return;
@@ -189,11 +197,11 @@ export function ReturnsClient({ initialYear, envReady }: { initialYear: number; 
 
         {loading ? (
           <p className="text-sm text-slate-400">Carregando...</p>
-        ) : rows.length === 0 ? (
+        ) : sortedRows.length === 0 ? (
           <p className="text-sm text-slate-400">Sem lançamentos no ano.</p>
         ) : (
           <div className="space-y-2">
-            {rows.map((r) => (
+            {sortedRows.map((r) => (
               <article key={r.id} className="rounded-lg border border-slate-700 p-3">
                 <p className="text-sm font-semibold text-slate-100">{r.investment_label}</p>
                 <p className="text-xs text-slate-400">

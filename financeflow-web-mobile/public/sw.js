@@ -1,4 +1,4 @@
-const CACHE_VERSION = "financeflow-mobile-v1";
+const CACHE_VERSION = "financeflow-mobile-v2";
 const APP_SHELL = ["/", "/retornos", "/investimentos", "/metas", "/offline", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -24,6 +24,17 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
+  const url = new URL(request.url);
+
+  if (url.origin === self.location.origin && url.pathname.startsWith("/api/")) {
+    event.respondWith(
+      fetch(request).catch(async () => {
+        const cached = await caches.match(request);
+        return cached || Response.error();
+      }),
+    );
+    return;
+  }
 
   if (request.mode === "navigate") {
     event.respondWith(
