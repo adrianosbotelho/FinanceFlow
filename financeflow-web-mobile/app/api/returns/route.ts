@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
         .from("monthly_returns")
         .select("id,investment_id,month,year,income_value")
         .eq("year", year)
-        .order("month")
+        .order("month", { ascending: false })
         .order("investment_id"),
     ]);
 
