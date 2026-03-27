@@ -14,8 +14,23 @@ export function ReturnsClient({ initialYear, envReady }: { initialYear: number; 
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [incomeValue, setIncomeValue] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const formRef = useRef<HTMLElement | null>(null);
   const incomeInputRef = useRef<HTMLInputElement | null>(null);
+
+  function parseIncomeInput(raw: string): number | null {
+    const cleaned = raw.trim().replace(/^R\$\s*/i, "").replace(/\s+/g, "");
+    if (!cleaned) return null;
+    let normalized = cleaned;
+    if (normalized.includes(",") && normalized.includes(".")) {
+      normalized = normalized.replace(/\./g, "").replace(",", ".");
+    } else if (normalized.includes(",")) {
+      normalized = normalized.replace(",", ".");
+    }
+    const value = Number(normalized);
+    return Number.isFinite(value) ? value : null;
+  }
 
   async function loadAll(selectedYear: number) {
     setLoading(true);
@@ -60,31 +75,53 @@ export function ReturnsClient({ initialYear, envReady }: { initialYear: number; 
 
   async function save() {
     if (!envReady) return;
-    if (!investmentId || !Number.isFinite(Number(incomeValue))) return;
+    if (!investmentId) {
+      setFormError("Selecione um investimento.");
+      return;
+    }
+    const parsedIncome = parseIncomeInput(incomeValue);
+    if (parsedIncome === null) {
+      setFormError("Informe um valor valido para o rendimento.");
+      return;
+    }
+    setFormError(null);
+    setSaving(true);
     const payload = {
       investment_id: investmentId,
       month,
       year,
-      income_value: Number(incomeValue.replace(",", ".")),
+      income_value: parsedIncome,
     };
 
-    if (editingId) {
-      await fetch(`/api/returns/${editingId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ income_value: payload.income_value }),
-      });
-    } else {
-      await fetch("/api/returns", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    }
+    try {
+      let response: Response;
+      if (editingId) {
+        response = await fetch(`/api/returns/${editingId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ income_value: payload.income_value }),
+        });
+      } else {
+        response = await fetch("/api/returns", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      }
 
-    setIncomeValue("");
-    setEditingId(null);
-    await loadAll(year);
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body?.error ?? `HTTP ${response.status}`);
+      }
+
+      setIncomeValue("");
+      setEditingId(null);
+      await loadAll(year);
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Falha ao salvar/atualizar.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   function startEdit(row: ReturnRow) {
@@ -171,9 +208,9 @@ export function ReturnsClient({ initialYear, envReady }: { initialYear: number; 
           <button
             onClick={() => void save()}
             className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-700"
-            disabled={!envReady}
+            disabled={!envReady || saving}
           >
-            {editingId ? "Atualizar" : "Salvar"}
+            {saving ? "Salvando..." : editingId ? "Atualizar" : "Salvar"}
           </button>
           {editingId ? (
             <button
@@ -187,6 +224,7 @@ export function ReturnsClient({ initialYear, envReady }: { initialYear: number; 
             </button>
           ) : null}
         </div>
+        {formError ? <p className="mt-2 text-xs text-rose-300">{formError}</p> : null}
       </section>
 
       <section className="card">
