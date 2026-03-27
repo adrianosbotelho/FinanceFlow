@@ -66,7 +66,6 @@ export async function POST(req: NextRequest) {
     month,
     year,
     income_value: Math.round((incomeValue + Number.EPSILON) * 100) / 100,
-    updated_at: new Date().toISOString(),
   };
 
   const { data, error } = await supabase

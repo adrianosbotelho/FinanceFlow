@@ -16,7 +16,6 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     .from("monthly_returns")
     .update({
       income_value: Math.round((incomeValue + Number.EPSILON) * 100) / 100,
-      updated_at: new Date().toISOString(),
     })
     .eq("id", params.id)
     .select("id,investment_id,month,year,income_value")
