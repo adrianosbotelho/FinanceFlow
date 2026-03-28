@@ -102,6 +102,12 @@ export interface DashboardKPIs {
   momGrowth: number | null;
   cdbMomGrowth: number | null;
   fiiMomGrowth: number | null;
+  cdbItauCurrentMonth: number;
+  cdbItauMomGrowth: number | null;
+  cdbItauMomDelta: number | null;
+  cdbSantanderCurrentMonth: number;
+  cdbSantanderMomGrowth: number | null;
+  cdbSantanderMomDelta: number | null;
   yoyGrowth: number | null;
   ytdPassiveIncome: number;
   portfolioYield: number;

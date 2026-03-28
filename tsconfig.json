@@ -42,6 +42,8 @@
     ".next/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "financeflow-web-mobile",
+    "financeflow-web-mobile/**/*"
   ]
 }

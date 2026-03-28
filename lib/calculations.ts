@@ -78,6 +78,12 @@ export function buildKpis(
       momGrowth: null,
       cdbMomGrowth: null,
       fiiMomGrowth: null,
+      cdbItauCurrentMonth: 0,
+      cdbItauMomGrowth: null,
+      cdbItauMomDelta: null,
+      cdbSantanderCurrentMonth: 0,
+      cdbSantanderMomGrowth: null,
+      cdbSantanderMomDelta: null,
       yoyGrowth: null,
       ytdPassiveIncome: 0,
       portfolioYield: 0,
@@ -105,6 +111,16 @@ export function buildKpis(
     previousCdbTotal !== null && previousCdbTotal !== 0
       ? ((currentCdbTotal - previousCdbTotal) / previousCdbTotal) * 100
       : null;
+  const cdbItauMomGrowth =
+    previous && previous.cdb_itau !== 0
+      ? ((current.cdb_itau - previous.cdb_itau) / previous.cdb_itau) * 100
+      : null;
+  const cdbSantanderMomGrowth =
+    previous && previous.cdb_other !== 0
+      ? ((current.cdb_other - previous.cdb_other) / previous.cdb_other) * 100
+      : null;
+  const cdbItauMomDelta = previous ? current.cdb_itau - previous.cdb_itau : null;
+  const cdbSantanderMomDelta = previous ? current.cdb_other - previous.cdb_other : null;
   const fiiMomGrowth =
     previous && previous.fii_dividends !== 0
       ? ((current.fii_dividends - previous.fii_dividends) / previous.fii_dividends) * 100
@@ -140,6 +156,12 @@ export function buildKpis(
     momGrowth: current.mom_growth ?? null,
     cdbMomGrowth,
     fiiMomGrowth,
+    cdbItauCurrentMonth: current.cdb_itau,
+    cdbItauMomGrowth,
+    cdbItauMomDelta,
+    cdbSantanderCurrentMonth: current.cdb_other,
+    cdbSantanderMomGrowth,
+    cdbSantanderMomDelta,
     yoyGrowth: current.yoy_growth ?? null,
     ytdPassiveIncome: ytd,
     portfolioYield,
