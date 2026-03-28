@@ -74,6 +74,7 @@ const routeResults = checks.map((check, index) => {
     return {
       route: routes[index],
       ok: false,
+      redirectedToLogin: false,
       status: 0,
       latencyMs: null,
       error: check.reason instanceof Error ? check.reason.message : String(check.reason),
@@ -84,6 +85,7 @@ const routeResults = checks.map((check, index) => {
   return {
     route: check.value.route,
     ok: check.value.ok,
+    redirectedToLogin: check.value.redirectedToLogin,
     status: check.value.status,
     latencyMs: check.value.latencyMs,
     error: null,
@@ -127,6 +129,7 @@ const report = {
   routes: routeResults.map((r) => ({
     route: r.route,
     ok: r.ok,
+    redirectedToLogin: r.redirectedToLogin,
     status: r.status,
     latencyMs: r.latencyMs,
     error: r.error,
