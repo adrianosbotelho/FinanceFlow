@@ -173,7 +173,7 @@ export default async function DashboardPage({
 
       <section className="card overflow-x-auto">
         <h2 className="mb-3 text-sm font-semibold text-slate-100">Histórico mensal</h2>
-        <table className="min-w-full text-left text-xs md:text-sm">
+        <table className="min-w-[860px] text-left text-xs md:text-sm">
           <thead className="border-b border-slate-700 text-slate-400">
             <tr>
               <th className="px-2 py-2">Mês</th>
@@ -181,8 +181,8 @@ export default async function DashboardPage({
               <th className="px-2 py-2">CDB Santander</th>
               <th className="px-2 py-2">FIIs</th>
               <th className="px-2 py-2">Total</th>
-              <th className="px-2 py-2">VAR (M/M %)</th>
-              <th className="px-2 py-2">VAR (M/M R$)</th>
+              <th className="min-w-[124px] px-2 py-2 whitespace-nowrap">VAR (M/M %)</th>
+              <th className="min-w-[136px] px-2 py-2 whitespace-nowrap">VAR (M/M R$)</th>
             </tr>
           </thead>
           <tbody>
@@ -193,8 +193,10 @@ export default async function DashboardPage({
                 <td className="px-2 py-2 text-rose-300">{formatCurrency(m.cdb_santander)}</td>
                 <td className="px-2 py-2 text-emerald-300">{formatCurrency(m.fiis)}</td>
                 <td className="px-2 py-2 font-semibold text-slate-100">{formatCurrency(m.total)}</td>
-                <td className={`px-2 py-2 font-semibold ${trendPctClass(m.mom_pct)}`}>{formatPct(m.mom_pct)}</td>
-                <td className={`px-2 py-2 font-semibold ${trendPctClass(m.mom_value)}`}>
+                <td className={`min-w-[124px] px-2 py-2 font-semibold whitespace-nowrap ${trendPctClass(m.mom_pct)}`}>
+                  {formatPct(m.mom_pct)}
+                </td>
+                <td className={`min-w-[136px] px-2 py-2 font-semibold whitespace-nowrap ${trendPctClass(m.mom_value)}`}>
                   {formatSignedCurrency(m.mom_value)}
                 </td>
               </tr>
@@ -205,10 +207,12 @@ export default async function DashboardPage({
               <td className="px-2 py-2 text-rose-300">{formatCurrency(totalCdbSantander)}</td>
               <td className="px-2 py-2 text-emerald-300">{formatCurrency(totalFiis)}</td>
               <td className="px-2 py-2 text-slate-100">{formatCurrency(data.kpis.ytd)}</td>
-              <td className={`px-2 py-2 ${trendPctClass(varPctAvg)}`}>
+              <td className={`min-w-[124px] px-2 py-2 whitespace-nowrap ${trendPctClass(varPctAvg)}`}>
                 {varPctAvg === null ? "-" : `Média ${formatPct(varPctAvg)}`}
               </td>
-              <td className={`px-2 py-2 ${trendPctClass(varValueSum)}`}>{formatSignedCurrency(varValueSum)}</td>
+              <td className={`min-w-[136px] px-2 py-2 whitespace-nowrap ${trendPctClass(varValueSum)}`}>
+                {formatSignedCurrency(varValueSum)}
+              </td>
             </tr>
           </tbody>
         </table>
