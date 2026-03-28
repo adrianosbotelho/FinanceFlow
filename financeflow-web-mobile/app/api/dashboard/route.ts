@@ -90,6 +90,10 @@ export async function GET(req: NextRequest) {
 
   const cdbCurrent = current ? current.cdb_itau + current.cdb_santander : 0;
   const cdbPrev = prev ? prev.cdb_itau + prev.cdb_santander : 0;
+  const cdbItauCurrent = current?.cdb_itau ?? 0;
+  const cdbItauPrev = prev?.cdb_itau ?? null;
+  const cdbSantanderCurrent = current?.cdb_santander ?? 0;
+  const cdbSantanderPrev = prev?.cdb_santander ?? null;
 
   const payload: DashboardPayload = {
     year,
@@ -97,9 +101,22 @@ export async function GET(req: NextRequest) {
       totalMonth: current?.total ?? 0,
       cdbMonth: cdbCurrent,
       fiisMonth: current?.fiis ?? 0,
+      cdbItauMonth: cdbItauCurrent,
+      cdbSantanderMonth: cdbSantanderCurrent,
       momTotalPct: prev && prev.total > 0 && current ? ((current.total - prev.total) / prev.total) * 100 : null,
       momCdbPct: cdbPrev > 0 ? ((cdbCurrent - cdbPrev) / cdbPrev) * 100 : null,
       momFiisPct: prev && prev.fiis > 0 && current ? ((current.fiis - prev.fiis) / prev.fiis) * 100 : null,
+      momCdbItauPct:
+        cdbItauPrev !== null && cdbItauPrev > 0
+          ? ((cdbItauCurrent - cdbItauPrev) / cdbItauPrev) * 100
+          : null,
+      momCdbSantanderPct:
+        cdbSantanderPrev !== null && cdbSantanderPrev > 0
+          ? ((cdbSantanderCurrent - cdbSantanderPrev) / cdbSantanderPrev) * 100
+          : null,
+      momCdbItauValue: cdbItauPrev !== null ? cdbItauCurrent - cdbItauPrev : null,
+      momCdbSantanderValue:
+        cdbSantanderPrev !== null ? cdbSantanderCurrent - cdbSantanderPrev : null,
       ytd: monthlySeries.reduce((acc, m) => acc + m.total, 0),
     },
     monthlySeries,

@@ -34,9 +34,15 @@ export interface DashboardPayload {
     totalMonth: number;
     cdbMonth: number;
     fiisMonth: number;
+    cdbItauMonth: number;
+    cdbSantanderMonth: number;
     momTotalPct: number | null;
     momCdbPct: number | null;
     momFiisPct: number | null;
+    momCdbItauPct: number | null;
+    momCdbSantanderPct: number | null;
+    momCdbItauValue: number | null;
+    momCdbSantanderValue: number | null;
     ytd: number;
   };
   monthlySeries: DashboardMonth[];

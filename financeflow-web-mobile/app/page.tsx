@@ -143,6 +143,34 @@ export default async function DashboardPage({
         </article>
       </section>
 
+      <section className="grid gap-4 sm:grid-cols-2">
+        <article className={`card ${trendCardClass(data.kpis.momCdbItauPct)}`}>
+          <p className="card-title">CDB Itaú (M/M)</p>
+          <p className={`card-value ${trendValueClass(data.kpis.momCdbItauPct)}`}>
+            {formatPct(data.kpis.momCdbItauPct)}
+          </p>
+          <p className="text-xs text-slate-500">
+            <span className={`mr-1 font-semibold ${trendPctClass(data.kpis.momCdbItauPct)}`}>
+              {trendSymbol(data.kpis.momCdbItauPct)} Δ {formatSignedCurrency(data.kpis.momCdbItauValue)}
+            </span>
+            mês atual: {formatCurrency(data.kpis.cdbItauMonth)}
+          </p>
+        </article>
+
+        <article className={`card ${trendCardClass(data.kpis.momCdbSantanderPct)}`}>
+          <p className="card-title">CDB Santander (M/M)</p>
+          <p className={`card-value ${trendValueClass(data.kpis.momCdbSantanderPct)}`}>
+            {formatPct(data.kpis.momCdbSantanderPct)}
+          </p>
+          <p className="text-xs text-slate-500">
+            <span className={`mr-1 font-semibold ${trendPctClass(data.kpis.momCdbSantanderPct)}`}>
+              {trendSymbol(data.kpis.momCdbSantanderPct)} Δ {formatSignedCurrency(data.kpis.momCdbSantanderValue)}
+            </span>
+            mês atual: {formatCurrency(data.kpis.cdbSantanderMonth)}
+          </p>
+        </article>
+      </section>
+
       <section className="card overflow-x-auto">
         <h2 className="mb-3 text-sm font-semibold text-slate-100">Histórico mensal</h2>
         <table className="min-w-full text-left text-xs md:text-sm">
