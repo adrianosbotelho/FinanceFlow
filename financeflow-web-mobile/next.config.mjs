@@ -8,7 +8,7 @@ const csp = [
   "font-src 'self' data:",
   "style-src 'self' 'unsafe-inline'",
   "script-src 'self' 'unsafe-inline'",
-  "connect-src 'self' https://*.supabase.co https://*.supabase.in https://*.vercel.app",
+  "connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co wss://*.supabase.in https://*.vercel.app",
 ].join("; ");
 
 const securityHeaders = [

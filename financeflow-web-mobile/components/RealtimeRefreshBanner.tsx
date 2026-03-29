@@ -19,37 +19,51 @@ export function RealtimeRefreshBanner() {
   const pathname = usePathname();
   const [pendingRefresh, setPendingRefresh] = useState(false);
   const [lastSignalAt, setLastSignalAt] = useState<number | null>(null);
+  const [realtimeDisabled, setRealtimeDisabled] = useState(false);
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const supabase = useMemo(() => {
-    if (!url || !anon) return null;
-    return createClient(url, anon, {
-      auth: { persistSession: false, autoRefreshToken: false },
-      realtime: { params: { eventsPerSecond: 5 } },
-    });
-  }, [url, anon]);
+    if (!url || !anon || realtimeDisabled) return null;
+    try {
+      return createClient(url, anon, {
+        auth: { persistSession: false, autoRefreshToken: false },
+        realtime: { params: { eventsPerSecond: 5 } },
+      });
+    } catch {
+      return null;
+    }
+  }, [url, anon, realtimeDisabled]);
 
   useEffect(() => {
     if (!supabase) return;
     if (pathname.startsWith("/login")) return;
 
-    const channel = supabase.channel("ff-mobile-refresh");
-    for (const table of TRACKED_TABLES) {
-      channel.on(
-        "postgres_changes",
-        { event: "*", schema: "public", table },
-        () => {
-          setPendingRefresh(true);
-          setLastSignalAt(Date.now());
-        },
-      );
-    }
-    channel.subscribe();
+    try {
+      const channel = supabase.channel("ff-mobile-refresh");
+      for (const table of TRACKED_TABLES) {
+        channel.on(
+          "postgres_changes",
+          { event: "*", schema: "public", table },
+          () => {
+            setPendingRefresh(true);
+            setLastSignalAt(Date.now());
+          },
+        );
+      }
+      channel.subscribe((status) => {
+        if (status === "CHANNEL_ERROR") {
+          setRealtimeDisabled(true);
+        }
+      });
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    } catch {
+      setRealtimeDisabled(true);
+      return;
+    }
   }, [pathname, supabase]);
 
   if (!pendingRefresh || pathname.startsWith("/login")) return null;
