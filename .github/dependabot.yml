@@ -12,6 +12,10 @@ updates:
     labels:
       - "dependencies"
       - "web-mobile"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
     groups:
       web-mobile-non-major:
         patterns:
@@ -32,3 +36,7 @@ updates:
     labels:
       - "dependencies"
       - "ci"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
