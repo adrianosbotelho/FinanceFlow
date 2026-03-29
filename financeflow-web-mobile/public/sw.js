@@ -1,5 +1,5 @@
-const CACHE_VERSION = "financeflow-mobile-v2";
-const APP_SHELL = ["/", "/retornos", "/investimentos", "/metas", "/offline", "/manifest.webmanifest"];
+const CACHE_VERSION = "financeflow-mobile-v3";
+const APP_SHELL = ["/login", "/offline", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -26,12 +26,9 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
 
-  if (url.origin === self.location.origin && url.pathname.startsWith("/api/")) {
+  if (url.origin === self.location.origin && (url.pathname.startsWith("/api/") || url.pathname.startsWith("/_next/"))) {
     event.respondWith(
-      fetch(request).catch(async () => {
-        const cached = await caches.match(request);
-        return cached || Response.error();
-      }),
+      fetch(request).catch(() => Response.error()),
     );
     return;
   }
@@ -40,8 +37,11 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_VERSION).then((cache) => cache.put(request, clone)).catch(() => undefined);
+          const path = new URL(request.url).pathname;
+          if (response.ok && (path === "/login" || path === "/offline")) {
+            const clone = response.clone();
+            caches.open(CACHE_VERSION).then((cache) => cache.put(request, clone)).catch(() => undefined);
+          }
           return response;
         })
         .catch(async () => {
@@ -58,11 +58,13 @@ self.addEventListener("fetch", (event) => {
       if (cached) return cached;
       return fetch(request)
         .then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_VERSION).then((cache) => cache.put(request, clone)).catch(() => undefined);
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_VERSION).then((cache) => cache.put(request, clone)).catch(() => undefined);
+          }
           return response;
         })
-        .catch(() => cached);
+        .catch(() => cached || Response.error());
     }),
   );
 });
