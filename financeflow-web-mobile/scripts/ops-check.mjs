@@ -24,7 +24,11 @@ async function loginAndGetCookie() {
   if (!authEmail || !authPassword) return null;
   const res = await fetch(`${base}/api/auth/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Origin: base,
+      Referer: `${base}/login`,
+    },
     body: JSON.stringify({ email: authEmail, password: authPassword }),
     redirect: "manual",
   });
@@ -95,11 +99,16 @@ const routeResults = checks.map((check, index) => {
 
 const health = routeResults.find((r) => r.route === "/api/health")?.payload ?? null;
 const healthChecks = health?.checks ?? {};
-const envOk =
-  Boolean(healthChecks.supabaseUrl) &&
-  Boolean(healthChecks.supabaseAnon) &&
-  Boolean(healthChecks.supabaseServiceRole);
-const dbOk = Boolean(healthChecks.dbReachable);
+const hasDetailedHealth = Boolean(
+  health?.checks && typeof health?.checks?.supabaseUrl === "boolean",
+);
+const envOk = cookie
+  ? hasDetailedHealth &&
+    Boolean(healthChecks.supabaseUrl) &&
+    Boolean(healthChecks.supabaseAnon) &&
+    Boolean(healthChecks.supabaseServiceRole)
+  : true;
+const dbOk = cookie ? hasDetailedHealth && Boolean(healthChecks.dbReachable) : true;
 
 const routesOk = routeResults.every((r) => {
   if (cookie) return r.ok;
@@ -121,10 +130,11 @@ const report = {
     routesTotal: routeResults.length,
     authMode: cookie ? "authenticated" : "guard-check",
     loginError,
+    healthScope: health?.scope ?? "unknown",
     envOk,
     dbOk,
-    dbLatencyMs: health?.metrics?.dbLatencyMs ?? null,
-    dbError: health?.errors?.db ?? null,
+    dbLatencyMs: cookie ? (health?.metrics?.dbLatencyMs ?? null) : null,
+    dbError: cookie ? (health?.errors?.db ?? null) : null,
   },
   routes: routeResults.map((r) => ({
     route: r.route,
@@ -148,7 +158,7 @@ if (loginError) {
   console.error(`[ops-check] FAIL login técnico: ${loginError}`);
 }
 console.log(
-  `[ops-check] overall=${report.overall} env=${report.summary.envOk ? "OK" : "PENDENTE"} db=${report.summary.dbOk ? "OK" : "PENDENTE"} dbLatency=${report.summary.dbLatencyMs ?? "-"}ms`,
+  `[ops-check] overall=${report.overall} env=${cookie ? (report.summary.envOk ? "OK" : "PENDENTE") : "N/A"} db=${cookie ? (report.summary.dbOk ? "OK" : "PENDENTE") : "N/A"} dbLatency=${cookie ? (report.summary.dbLatencyMs ?? "-") : "N/A"}ms scope=${report.summary.healthScope}`,
 );
 
 if (shouldWrite) {

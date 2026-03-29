@@ -23,7 +23,11 @@ async function loginAndGetCookie() {
   if (!authEmail || !authPassword) return null;
   const res = await fetch(`${base}/api/auth/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Origin: base,
+      Referer: `${base}/login`,
+    },
     body: JSON.stringify({ email: authEmail, password: authPassword }),
     redirect: "manual",
   });
@@ -89,11 +93,16 @@ const results = checks.map((c, i) => {
 });
 
 const health = results.find((r) => r.route === "/api/health")?.payload ?? null;
-const envOk =
-  Boolean(health?.checks?.supabaseUrl) &&
-  Boolean(health?.checks?.supabaseAnon) &&
-  Boolean(health?.checks?.supabaseServiceRole);
-const dbOk = Boolean(health?.checks?.dbReachable);
+const hasDetailedHealth = Boolean(
+  health?.checks && typeof health?.checks?.supabaseUrl === "boolean",
+);
+const envOk = cookie
+  ? hasDetailedHealth &&
+    Boolean(health?.checks?.supabaseUrl) &&
+    Boolean(health?.checks?.supabaseAnon) &&
+    Boolean(health?.checks?.supabaseServiceRole)
+  : true;
+const dbOk = cookie ? hasDetailedHealth && Boolean(health?.checks?.dbReachable) : true;
 const routesOk = results.every((r) => {
   if (cookie) return r.ok;
   if (r.route === "/login" || r.route === "/api/health") return r.ok;
@@ -119,10 +128,11 @@ lines.push("");
 lines.push(`- Rotas principais OK: ${routesOk ? "SIM" : "NAO"}`);
 lines.push(`- Modo de validacao auth: ${cookie ? "autenticado" : "guard-check (sem credenciais)"}`);
 lines.push(`- Login tecnico: ${loginError ? `FALHA (${loginError})` : cookie ? "OK" : "nao executado"}`);
-lines.push(`- Env backend OK: ${envOk ? "SIM" : "NAO"}`);
-lines.push(`- Banco acessivel OK: ${dbOk ? "SIM" : "NAO"}`);
-lines.push(`- Latencia DB (ms): ${health?.metrics?.dbLatencyMs ?? "-"}`);
-if (health?.errors?.db) lines.push(`- Erro DB: ${health.errors.db}`);
+lines.push(`- Escopo /api/health: ${health?.scope ?? "desconhecido"}`);
+lines.push(`- Env backend OK: ${cookie ? (envOk ? "SIM" : "NAO") : "N/A (modo publico)"}`);
+lines.push(`- Banco acessivel OK: ${cookie ? (dbOk ? "SIM" : "NAO") : "N/A (modo publico)"}`);
+lines.push(`- Latencia DB (ms): ${cookie ? (health?.metrics?.dbLatencyMs ?? "-") : "N/A"}`);
+if (cookie && health?.errors?.db) lines.push(`- Erro DB: ${health.errors.db}`);
 lines.push("");
 lines.push("| Rota | Status | Latencia | Resultado |");
 lines.push("| --- | ---: | ---: | --- |");

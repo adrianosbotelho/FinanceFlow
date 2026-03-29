@@ -21,7 +21,11 @@ async function loginAndGetCookie() {
   if (!authEmail || !authPassword) return null;
   const res = await fetch(`${base}/api/auth/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Origin: base,
+      Referer: `${base}/login`,
+    },
     body: JSON.stringify({ email: authEmail, password: authPassword }),
     redirect: "manual",
   });
@@ -85,15 +89,20 @@ for (const route of structuralRoutes) {
     if (!finalOk) failed = true;
     if (route === "/api/health" && out.body) {
       const checks = out.body.checks ?? {};
-      const envOk =
-        Boolean(checks.supabaseUrl) &&
-        Boolean(checks.supabaseAnon) &&
-        Boolean(checks.supabaseServiceRole);
-      const dbOk = Boolean(checks.dbReachable);
-      console.log(
-        `[smoke-remote] health env=${envOk ? "OK" : "PENDENTE"} db=${dbOk ? "OK" : "PENDENTE"} latencyDb=${out.body?.metrics?.dbLatencyMs ?? "-"}ms`,
+      const hasDetailedHealth = Boolean(
+        out.body?.checks && typeof out.body?.checks?.supabaseUrl === "boolean",
       );
-      if (!envOk || !dbOk) {
+      const envOk = cookie
+        ? hasDetailedHealth &&
+          Boolean(checks.supabaseUrl) &&
+          Boolean(checks.supabaseAnon) &&
+          Boolean(checks.supabaseServiceRole)
+        : true;
+      const dbOk = cookie ? hasDetailedHealth && Boolean(checks.dbReachable) : true;
+      console.log(
+        `[smoke-remote] health scope=${out.body?.scope ?? "unknown"} env=${cookie ? (envOk ? "OK" : "PENDENTE") : "N/A"} db=${cookie ? (dbOk ? "OK" : "PENDENTE") : "N/A"} latencyDb=${cookie ? (out.body?.metrics?.dbLatencyMs ?? "-") : "N/A"}ms`,
+      );
+      if (cookie && (!envOk || !dbOk)) {
         failed = true;
         if (out.body?.errors?.db) {
           console.error(`[smoke-remote] db error: ${out.body.errors.db}`);

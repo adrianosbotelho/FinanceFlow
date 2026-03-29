@@ -18,7 +18,11 @@ async function loginAndGetCookie() {
   if (!authEmail || !authPassword) return null;
   const res = await fetch(`${base}/api/auth/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Origin: base,
+      Referer: `${base}/login`,
+    },
     body: JSON.stringify({ email: authEmail, password: authPassword }),
     redirect: "manual",
   });

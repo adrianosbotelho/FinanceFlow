@@ -8,6 +8,7 @@ import {
   isSingleUserAuthConfigured,
   validateSingleUserCredentials,
 } from "@/lib/single-user-auth";
+import { rejectUntrustedOrigin } from "@/lib/origin-guard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -49,6 +50,9 @@ function clearAttempts(ip: string): void {
 }
 
 export async function POST(req: NextRequest) {
+  const originError = rejectUntrustedOrigin(req);
+  if (originError) return originError;
+
   if (!isSingleUserAuthConfigured()) {
     return NextResponse.json(
       {

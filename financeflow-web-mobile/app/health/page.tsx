@@ -5,7 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 type HealthPayload = {
   status: string;
   timestamp: string;
-  checks: {
+  scope?: "public" | "private";
+  checks?: {
     supabaseUrl: boolean;
     supabaseAnon: boolean;
     supabaseServiceRole: boolean;
@@ -85,20 +86,41 @@ export default function HealthPage() {
     ];
   }, []);
 
-  const serverRows: Row[] = data
+  const hasDetailedChecks = Boolean(data?.checks);
+  const serverRows: Row[] = data && hasDetailedChecks
     ? [
-        { name: "NEXT_PUBLIC_SUPABASE_URL", ok: data.checks.supabaseUrl, detail: "URL do projeto Supabase" },
-        { name: "NEXT_PUBLIC_SUPABASE_ANON_KEY", ok: data.checks.supabaseAnon, detail: "Chave publica do cliente" },
-        { name: "SUPABASE_SERVICE_ROLE_KEY", ok: data.checks.supabaseServiceRole, detail: "Chave server-side para API routes" },
+        {
+          name: "NEXT_PUBLIC_SUPABASE_URL",
+          ok: Boolean(data.checks?.supabaseUrl),
+          detail: "URL do projeto Supabase",
+        },
+        {
+          name: "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+          ok: Boolean(data.checks?.supabaseAnon),
+          detail: "Chave publica do cliente",
+        },
+        {
+          name: "SUPABASE_SERVICE_ROLE_KEY",
+          ok: Boolean(data.checks?.supabaseServiceRole),
+          detail: "Chave server-side para API routes",
+        },
         {
           name: "Conexao com banco (ping)",
-          ok: Boolean(data.checks.dbReachable),
-          detail: data.checks.dbReachable
+          ok: Boolean(data.checks?.dbReachable),
+          detail: data.checks?.dbReachable
             ? `Banco acessivel (${data.metrics?.dbLatencyMs ?? "-"} ms)`
             : `Banco indisponivel${data.errors?.db ? `: ${data.errors.db}` : ""}`,
         },
       ]
-    : [];
+    : data
+      ? [
+          {
+            name: "Health público",
+            ok: data.status === "ok",
+            detail: "Detalhes internos ocultos sem sessão autenticada.",
+          },
+        ]
+      : [];
 
   const serverOk = serverRows.every((r) => r.ok);
   const clientOk = clientRows.every((r) => r.ok);
