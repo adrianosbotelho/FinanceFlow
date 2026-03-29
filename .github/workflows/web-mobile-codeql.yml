@@ -1,0 +1,43 @@
+name: Web Mobile CodeQL
+
+on:
+  push:
+    branches:
+      - main
+      - "codex/**"
+    paths:
+      - "financeflow-web-mobile/**"
+      - ".github/workflows/web-mobile-codeql.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "financeflow-web-mobile/**"
+      - ".github/workflows/web-mobile-codeql.yml"
+  schedule:
+    - cron: "35 10 * * 1"
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    name: Analyze (javascript-typescript)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+

@@ -1,6 +1,34 @@
 version: 2
 updates:
   - package-ecosystem: "npm"
+    directory: "/financeflow-web-mobile"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Sao_Paulo"
+    target-branch: "main"
+    open-pull-requests-limit: 8
+    labels:
+      - "dependencies"
+      - "web-mobile"
+    groups:
+      web-mobile-non-major:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "monday"
+      time: "09:30"
+      timezone: "America/Sao_Paulo"
+    target-branch: "main"
+    open-pull-requests-limit: 4
+    labels:
+      - "dependencies"
+      - "ci"
