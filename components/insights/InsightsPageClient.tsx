@@ -16,6 +16,7 @@ import {
   DailyInsightApiPayload,
   DashboardPayload,
   MarketSnapshotPayload,
+  ProfessionalInsightsPayload,
 } from "../../types";
 import { formatCurrencyBRL, formatPercentage, monthLabel } from "../../lib/formatters";
 import { InsightsPanel } from "../dashboard/InsightsPanel";
@@ -24,6 +25,7 @@ interface Props {
   data: DashboardPayload;
   dailyInsights: DailyInsightApiPayload | null;
   marketSnapshot: MarketSnapshotPayload | null;
+  professionalInsights: ProfessionalInsightsPayload | null;
   year: number;
 }
 
@@ -189,6 +191,54 @@ function marketValueTone(value: number | null): string {
   return "text-slate-100";
 }
 
+function goalProgressTone(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return "text-slate-300";
+  if (value >= 100) return "text-emerald-300";
+  if (value >= 80) return "text-amber-300";
+  return "text-rose-300";
+}
+
+function goalCardTone(progress: number | null): string {
+  if (progress === null || Number.isNaN(progress)) return "border-slate-700 bg-slate-800/40";
+  if (progress >= 100) return "border-emerald-600/50 bg-emerald-950/20";
+  if (progress >= 80) return "border-amber-600/50 bg-amber-950/20";
+  return "border-rose-600/50 bg-rose-950/20";
+}
+
+function qualityGradeTone(grade: "A" | "B" | "C"): string {
+  if (grade === "A") return "text-emerald-300";
+  if (grade === "B") return "text-amber-300";
+  return "text-rose-300";
+}
+
+function signedCurrency(value: number): string {
+  return `${value >= 0 ? "+" : "-"}${formatCurrencyBRL(Math.abs(value))}`;
+}
+
+function signedPercentage(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return "—";
+  const signal = value > 0 ? "+" : "";
+  return `${signal}${value.toFixed(1)}%`;
+}
+
+function riskRegimeTone(regime: "ESTAVEL" | "ATENCAO" | "ESTRESSADO"): string {
+  if (regime === "ESTAVEL") return "text-emerald-300";
+  if (regime === "ATENCAO") return "text-amber-300";
+  return "text-rose-300";
+}
+
+function diagnosticAlertTone(severity: "low" | "medium" | "high"): string {
+  if (severity === "high") return "border-rose-700/70 bg-rose-950/30 text-rose-200";
+  if (severity === "medium") return "border-amber-700/70 bg-amber-950/30 text-amber-200";
+  return "border-emerald-700/70 bg-emerald-950/30 text-emerald-200";
+}
+
+function shortDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+}
+
 function countBusinessDaysInMonth(year: number, month: number): number {
   const lastDay = new Date(year, month, 0).getDate();
   let count = 0;
@@ -347,7 +397,13 @@ function deriveOperationalInsights(data: DashboardPayload, year: number): Operat
   };
 }
 
-export function InsightsPageClient({ data, dailyInsights, marketSnapshot, year }: Props) {
+export function InsightsPageClient({
+  data,
+  dailyInsights,
+  marketSnapshot,
+  professionalInsights,
+  year,
+}: Props) {
   const forecastSeries = buildForecastSeries(data);
   const distributionSeries = buildDistributionSeries(data);
   const operational = deriveOperationalInsights(data, year);
@@ -362,6 +418,17 @@ export function InsightsPageClient({ data, dailyInsights, marketSnapshot, year }
     "SOL-USD",
     "XLM-USD",
   ];
+  const diagnosisHistorySeries = (professionalInsights?.diagnosisHistory ?? [])
+    .slice()
+    .reverse()
+    .map((item) => ({
+      date: shortDate(item.runDate),
+      hitRate: item.hitRatePercent ?? 0,
+      edge: item.cumulativeEdgeValue,
+      risk: item.riskScore,
+      headline: item.headline,
+      regime: item.riskRegime,
+    }));
 
   return (
     <div className="space-y-6">
@@ -527,6 +594,54 @@ export function InsightsPageClient({ data, dailyInsights, marketSnapshot, year }
             <p className="mt-2 text-xs text-cyan-300">
               Prioridade do dia: <span className="font-semibold">{dailyReport.priorityAction}</span>
             </p>
+            {dailyReport.goalContext ? (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <div
+                  className={`rounded-md border px-3 py-2 text-xs ${goalCardTone(
+                    dailyReport.goalContext.monthlyIncomeProgressPercent,
+                  )}`}
+                >
+                  <p className="text-slate-400">Meta mensal CDB</p>
+                  <p className={`font-semibold ${goalProgressTone(dailyReport.goalContext.monthlyIncomeProgressPercent)}`}>
+                    {dailyReport.goalContext.monthlyIncomeTarget !== null
+                      ? `${formatCurrencyBRL(dailyReport.goalContext.monthlyIncomeRealized)} / ${formatCurrencyBRL(
+                          dailyReport.goalContext.monthlyIncomeTarget,
+                        )}`
+                      : "Não configurada"}
+                  </p>
+                  <p className="text-slate-400">
+                    {dailyReport.goalContext.monthlyIncomeTarget !== null
+                      ? dailyReport.goalContext.monthlyIncomeGap !== null &&
+                        dailyReport.goalContext.monthlyIncomeGap > 0
+                        ? `Gap ${formatCurrencyBRL(dailyReport.goalContext.monthlyIncomeGap)}`
+                        : "Meta atingida"
+                      : "Defina meta em Metas"}
+                  </p>
+                </div>
+                <div
+                  className={`rounded-md border px-3 py-2 text-xs ${goalCardTone(
+                    dailyReport.goalContext.annualCapitalProgressPercent,
+                  )}`}
+                >
+                  <p className="text-slate-400">Meta anual patrimônio</p>
+                  <p className={`font-semibold ${goalProgressTone(dailyReport.goalContext.annualCapitalProgressPercent)}`}>
+                    {dailyReport.goalContext.annualCapitalTarget !== null
+                      ? `${formatCurrencyBRL(dailyReport.goalContext.annualCapitalCurrent)} / ${formatCurrencyBRL(
+                          dailyReport.goalContext.annualCapitalTarget,
+                        )}`
+                      : "Não configurada"}
+                  </p>
+                  <p className="text-slate-400">
+                    {dailyReport.goalContext.annualCapitalTarget !== null
+                      ? dailyReport.goalContext.annualCapitalGap !== null &&
+                        dailyReport.goalContext.annualCapitalGap > 0
+                        ? `Gap ${formatCurrencyBRL(dailyReport.goalContext.annualCapitalGap)}`
+                        : "Meta atingida"
+                      : "Defina meta em Metas"}
+                  </p>
+                </div>
+              </div>
+            ) : null}
             {dailyInsights?.warnings?.length ? (
               <div className="mt-3 rounded-md border border-amber-700/60 bg-amber-950/30 p-2 text-[11px] text-amber-300">
                 {dailyInsights.warnings.join(" | ")}
@@ -604,6 +719,659 @@ export function InsightsPageClient({ data, dailyInsights, marketSnapshot, year }
               ))}
             </ul>
           </article>
+        </section>
+      ) : null}
+
+      {professionalInsights ? (
+        <section className="space-y-4 rounded-xl border border-cyan-900/70 bg-slate-900/30 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-semibold text-cyan-200">
+                Insights Financeiros Nível 5 (Analista)
+              </h3>
+              <p className="text-xs text-slate-400">
+                Qualidade preditiva, probabilidade de metas, atribuição e governança de dados.
+              </p>
+            </div>
+            <span className="text-[11px] text-slate-500">
+              Atualizado em {new Date(professionalInsights.generatedAt).toLocaleString("pt-BR")}
+            </span>
+          </div>
+          {professionalInsights.warnings.length > 0 ? (
+            <div className="rounded-md border border-amber-700/60 bg-amber-950/30 p-2 text-[11px] text-amber-300">
+              {professionalInsights.warnings.join(" | ")}
+            </div>
+          ) : null}
+          {professionalInsights.diagnosticAlerts.length > 0 ? (
+            <div className="grid gap-2 xl:grid-cols-3">
+              {professionalInsights.diagnosticAlerts.map((alert) => (
+                <article
+                  key={alert.id}
+                  className={`rounded-md border p-3 text-xs ${diagnosticAlertTone(alert.severity)}`}
+                >
+                  <p className="font-semibold">{alert.title}</p>
+                  <p className="mt-1">{alert.message}</p>
+                  <p className="mt-1 text-[11px] opacity-90">Trigger: {alert.trigger}</p>
+                </article>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="grid gap-4 xl:grid-cols-2">
+            <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
+              <h4 className="text-sm font-semibold text-slate-100">Qualidade da previsão</h4>
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full min-w-[620px] text-left text-xs">
+                  <thead className="text-slate-400">
+                    <tr>
+                      <th className="py-2">Série</th>
+                      <th className="py-2">MAPE</th>
+                      <th className="py-2">MAE</th>
+                      <th className="py-2">Viés</th>
+                      <th className="py-2">Direção</th>
+                      <th className="py-2">Amostra</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {professionalInsights.forecastQuality.metrics.map((metric) => (
+                      <tr key={metric.key} className="border-t border-slate-700/70 text-slate-200">
+                        <td className="py-2">{metric.label}</td>
+                        <td className="py-2 text-cyan-300">
+                          {metric.mapePercent === null ? "—" : formatPercentage(metric.mapePercent)}
+                        </td>
+                        <td className="py-2">{metric.maeValue === null ? "—" : formatCurrencyBRL(metric.maeValue)}</td>
+                        <td
+                          className={`py-2 font-semibold ${
+                            metric.biasValue === null
+                              ? "text-slate-400"
+                              : metric.biasValue > 0
+                                ? "text-emerald-300"
+                                : metric.biasValue < 0
+                                  ? "text-rose-300"
+                                  : "text-slate-300"
+                          }`}
+                        >
+                          {metric.biasValue === null ? "—" : signedCurrency(metric.biasValue)}
+                        </td>
+                        <td className="py-2 text-amber-300">
+                          {metric.directionAccuracyPercent === null
+                            ? "—"
+                            : formatPercentage(metric.directionAccuracyPercent)}
+                        </td>
+                        <td className="py-2 text-slate-400">{metric.sampleSize}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
+            <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
+              <h4 className="text-sm font-semibold text-slate-100">Probabilidade de metas</h4>
+              <div className="mt-3 grid gap-3">
+                {[
+                  professionalInsights.goalProbabilities.monthlyIncome,
+                  professionalInsights.goalProbabilities.annualCapital,
+                ].map((goal) => (
+                  <div key={goal.label} className="rounded-md border border-slate-700 p-3 text-xs">
+                    <p className="text-slate-400">{goal.label}</p>
+                    <p className="mt-1 text-slate-100">
+                      Realizado: <span className="font-semibold">{formatCurrencyBRL(goal.realizedValue)}</span>
+                    </p>
+                    <p className="text-slate-100">
+                      Projeção: <span className="font-semibold text-cyan-300">{formatCurrencyBRL(goal.projectedValue)}</span>
+                    </p>
+                    <p className="text-slate-100">
+                      Alvo:{" "}
+                      <span className="font-semibold">
+                        {goal.targetValue === null ? "Não configurado" : formatCurrencyBRL(goal.targetValue)}
+                      </span>
+                    </p>
+                    <p
+                      className={`mt-1 font-semibold ${
+                        goal.probabilityPercent === null
+                          ? "text-slate-400"
+                          : goal.probabilityPercent >= 70
+                            ? "text-emerald-300"
+                            : goal.probabilityPercent >= 40
+                              ? "text-amber-300"
+                              : "text-rose-300"
+                      }`}
+                    >
+                      Probabilidade:{" "}
+                      {goal.probabilityPercent === null ? "—" : formatPercentage(goal.probabilityPercent)}
+                    </p>
+                    {goal.confidenceBand ? (
+                      <p className="text-[11px] text-slate-500">
+                        Faixa: {formatCurrencyBRL(goal.confidenceBand.pessimistic)} •{" "}
+                        {formatCurrencyBRL(goal.confidenceBand.base)} •{" "}
+                        {formatCurrencyBRL(goal.confidenceBand.optimistic)}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </article>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-3">
+            <article className="rounded-xl border border-slate-700 bg-slate-800 p-4 xl:col-span-2">
+              <h4 className="text-sm font-semibold text-slate-100">
+                Benchmark profissional ({professionalInsights.benchmark.referenceMonthLabel})
+              </h4>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4 text-xs">
+                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
+                  Carteira M/M:{" "}
+                  <span className="font-semibold text-cyan-300">
+                    {signedPercentage(professionalInsights.benchmark.portfolioMomPercent)}
+                  </span>
+                </p>
+                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
+                  CDI M/M:{" "}
+                  <span className="font-semibold text-slate-100">
+                    {signedPercentage(professionalInsights.benchmark.cdiMomPercent)}
+                  </span>
+                </p>
+                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
+                  IFIX M/M:{" "}
+                  <span className="font-semibold text-slate-100">
+                    {signedPercentage(professionalInsights.benchmark.ifixMomPercent)}
+                  </span>
+                </p>
+                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
+                  Ibov M/M:{" "}
+                  <span className="font-semibold text-slate-100">
+                    {signedPercentage(professionalInsights.benchmark.ibovMomPercent)}
+                  </span>
+                </p>
+                <p
+                  className={`rounded-md border border-slate-700 px-2 py-1 ${
+                    (professionalInsights.benchmark.excessVsCdiPercent ?? 0) >= 0
+                      ? "text-emerald-300"
+                      : "text-rose-300"
+                  }`}
+                >
+                  Excesso vs CDI:{" "}
+                  <span className="font-semibold">
+                    {signedPercentage(professionalInsights.benchmark.excessVsCdiPercent)}
+                  </span>
+                </p>
+                <p
+                  className={`rounded-md border border-slate-700 px-2 py-1 ${
+                    (professionalInsights.benchmark.excessVsIfixPercent ?? 0) >= 0
+                      ? "text-emerald-300"
+                      : "text-rose-300"
+                  }`}
+                >
+                  Excesso vs IFIX:{" "}
+                  <span className="font-semibold">
+                    {signedPercentage(professionalInsights.benchmark.excessVsIfixPercent)}
+                  </span>
+                </p>
+                <p
+                  className={`rounded-md border border-slate-700 px-2 py-1 ${
+                    (professionalInsights.benchmark.excessVsIbovPercent ?? 0) >= 0
+                      ? "text-emerald-300"
+                      : "text-rose-300"
+                  }`}
+                >
+                  Excesso vs Ibov:{" "}
+                  <span className="font-semibold">
+                    {signedPercentage(professionalInsights.benchmark.excessVsIbovPercent)}
+                  </span>
+                </p>
+              </div>
+              {professionalInsights.benchmark.warnings.length > 0 ? (
+                <ul className="mt-3 space-y-1 text-xs text-amber-300">
+                  {professionalInsights.benchmark.warnings.map((warning, idx) => (
+                    <li key={`${warning}-${idx}`}>• {warning}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </article>
+
+            <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
+              <h4 className="text-sm font-semibold text-slate-100">Radar de risco (renda passiva)</h4>
+              <div className="mt-3 space-y-2 text-xs">
+                <p>
+                  Regime:{" "}
+                  <span className={`font-semibold ${riskRegimeTone(professionalInsights.riskRadar.regime)}`}>
+                    {professionalInsights.riskRadar.regime}
+                  </span>
+                </p>
+                <p>
+                  Score risco:{" "}
+                  <span className="font-semibold text-cyan-300">
+                    {professionalInsights.riskRadar.score.toFixed(1)}/100
+                  </span>
+                </p>
+                <p>
+                  Volatilidade 3M:{" "}
+                  <span className="font-semibold text-slate-100">
+                    {formatPercentage(professionalInsights.riskRadar.volatility3mPercent)}
+                  </span>
+                </p>
+                <p>
+                  Volatilidade 6M:{" "}
+                  <span className="font-semibold text-slate-100">
+                    {formatPercentage(professionalInsights.riskRadar.volatility6mPercent)}
+                  </span>
+                </p>
+                <p>
+                  Drawdown máx:{" "}
+                  <span className="font-semibold text-rose-300">
+                    {formatPercentage(professionalInsights.riskRadar.maxDrawdownPercent)}
+                  </span>
+                </p>
+                <p>
+                  Tendência/mês:{" "}
+                  <span
+                    className={`font-semibold ${
+                      professionalInsights.riskRadar.trendPerMonthPercent >= 0
+                        ? "text-emerald-300"
+                        : "text-rose-300"
+                    }`}
+                  >
+                    {signedPercentage(professionalInsights.riskRadar.trendPerMonthPercent)}
+                  </span>
+                </p>
+              </div>
+            </article>
+          </div>
+
+          <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
+            <h4 className="text-sm font-semibold text-slate-100">Motor de recomendação de aporte</h4>
+            <p className="mt-1 text-xs text-cyan-300">{professionalInsights.recommendation.action}</p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-3 text-xs">
+              <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
+                Janela avaliada:{" "}
+                <span className="font-semibold text-slate-100">
+                  {professionalInsights.recommendation.backtest.sampleSize} meses
+                </span>
+              </p>
+              <p
+                className={`rounded-md border border-slate-700 px-2 py-1 ${
+                  (professionalInsights.recommendation.backtest.hitRatePercent ?? 0) >= 50
+                    ? "text-emerald-300"
+                    : "text-amber-300"
+                }`}
+              >
+                Taxa de acerto:{" "}
+                <span className="font-semibold">
+                  {professionalInsights.recommendation.backtest.hitRatePercent === null
+                    ? "—"
+                    : formatPercentage(professionalInsights.recommendation.backtest.hitRatePercent)}
+                </span>
+              </p>
+              <p
+                className={`rounded-md border border-slate-700 px-2 py-1 ${
+                  professionalInsights.recommendation.backtest.cumulativeEdgeValue >= 0
+                    ? "text-emerald-300"
+                    : "text-rose-300"
+                }`}
+              >
+                Edge acumulado:{" "}
+                <span className="font-semibold">
+                  {signedCurrency(professionalInsights.recommendation.backtest.cumulativeEdgeValue)}
+                </span>
+              </p>
+            </div>
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[620px] text-left text-xs">
+                <thead className="text-slate-400">
+                  <tr>
+                    <th className="py-2">Ativo</th>
+                    <th className="py-2">Score</th>
+                    <th className="py-2">Momentum</th>
+                    <th className="py-2">Yield mensal</th>
+                    <th className="py-2">Estabilidade</th>
+                    <th className="py-2">Racional</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {professionalInsights.recommendation.items.map((item) => (
+                    <tr key={item.key} className="border-t border-slate-700/70 text-slate-200">
+                      <td className="py-2">
+                        {item.label}
+                        {item.key === professionalInsights.recommendation.bestAssetKey ? (
+                          <span className="ml-2 rounded-full border border-emerald-600/70 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                            Top
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className="py-2 font-semibold text-cyan-300">{item.score.toFixed(1)}</td>
+                      <td className="py-2">{signedPercentage(item.momentumPercent)}</td>
+                      <td className="py-2">
+                        {item.monthlyYieldPercent === null
+                          ? "—"
+                          : formatPercentage(item.monthlyYieldPercent)}
+                      </td>
+                      <td className="py-2 text-amber-300">{formatPercentage(item.stabilityPercent)}</td>
+                      <td className="py-2 text-slate-400">{item.rationale}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {professionalInsights.recommendation.backtest.evaluations.length > 0 ? (
+              <div className="mt-4 overflow-x-auto">
+                <p className="mb-2 text-xs font-semibold text-slate-300">
+                  Backtest do motor (sinal M-1 → resultado em M)
+                </p>
+                <table className="w-full min-w-[720px] text-left text-xs">
+                  <thead className="text-slate-400">
+                    <tr>
+                      <th className="py-2">Sinal</th>
+                      <th className="py-2">Mês resultado</th>
+                      <th className="py-2">Escolha</th>
+                      <th className="py-2">Melhor real</th>
+                      <th className="py-2">Acerto</th>
+                      <th className="py-2">Edge R$</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {professionalInsights.recommendation.backtest.evaluations
+                      .slice(0, 6)
+                      .map((row) => (
+                        <tr
+                          key={`${row.fromMonthLabel}-${row.toMonthLabel}-${row.predictedKey}`}
+                          className="border-t border-slate-700/70 text-slate-200"
+                        >
+                          <td className="py-2">{row.fromMonthLabel}</td>
+                          <td className="py-2">{row.toMonthLabel}</td>
+                          <td className="py-2">{row.predictedLabel}</td>
+                          <td className="py-2">{row.actualBestLabel}</td>
+                          <td className={`py-2 font-semibold ${row.hit ? "text-emerald-300" : "text-rose-300"}`}>
+                            {row.hit ? "Sim" : "Não"}
+                          </td>
+                          <td className={`py-2 font-semibold ${row.edgeValue >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                            {signedCurrency(row.edgeValue)}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+            <div className="mt-4 rounded-md border border-slate-700 bg-slate-900/40 p-3 text-xs">
+              <p className="font-semibold text-slate-100">
+                Leitura analítica do backtest: {professionalInsights.recommendation.backtest.diagnosis.headline}
+              </p>
+              <div className="mt-2 grid gap-2 xl:grid-cols-2">
+                <div>
+                  <p className="font-semibold text-emerald-300">Forças</p>
+                  <ul className="mt-1 space-y-1 text-slate-300">
+                    {professionalInsights.recommendation.backtest.diagnosis.strengths.map((item, idx) => (
+                      <li key={`strength-${idx}`}>• {item}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <p className="font-semibold text-rose-300">Falhas recorrentes</p>
+                  <ul className="mt-1 space-y-1 text-slate-300">
+                    {professionalInsights.recommendation.backtest.diagnosis.weaknesses.map((item, idx) => (
+                      <li key={`weak-${idx}`}>• {item}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+              <p className="mt-2 text-cyan-300">
+                Próximo ajuste recomendado:{" "}
+                <span className="font-semibold">
+                  {professionalInsights.recommendation.backtest.diagnosis.nextAdjustment}
+                </span>
+              </p>
+            </div>
+          </article>
+
+          <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
+            <h4 className="text-sm font-semibold text-slate-100">
+              Evolução diária do diagnóstico (mês atual)
+            </h4>
+            {diagnosisHistorySeries.length === 0 ? (
+              <p className="mt-3 text-xs text-slate-400">
+                Sem histórico diário disponível para este mês.
+              </p>
+            ) : (
+              <>
+                <div className="mt-3 h-56 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={diagnosisHistorySeries}
+                      margin={{ top: 8, right: 18, left: 8, bottom: 8 }}
+                    >
+                      <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" />
+                      <XAxis dataKey="date" stroke="#94a3b8" />
+                      <YAxis
+                        yAxisId="left"
+                        stroke="#94a3b8"
+                        width={64}
+                        tickFormatter={(value) => `${Number(value).toFixed(0)}%`}
+                      />
+                      <YAxis
+                        yAxisId="right"
+                        orientation="right"
+                        stroke="#94a3b8"
+                        width={56}
+                        tickFormatter={(value) => `${Number(value).toFixed(0)}`}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "#020617",
+                          borderColor: "#1f2937",
+                          borderRadius: 8,
+                        }}
+                        labelStyle={{ color: "#e2e8f0", fontWeight: 600 }}
+                        formatter={(value: number | string, key: string) => {
+                          const numeric = Number(value ?? 0);
+                          if (key === "hitRate") return [`${numeric.toFixed(1)}%`, "Hit rate"];
+                          if (key === "risk") return [numeric.toFixed(1), "Risk score"];
+                          return [signedCurrency(numeric), "Edge acumulado"];
+                        }}
+                      />
+                      <Legend />
+                      <Line
+                        yAxisId="left"
+                        type="monotone"
+                        dataKey="hitRate"
+                        name="Hit rate"
+                        stroke="#22d3ee"
+                        strokeWidth={2}
+                        dot={{ r: 2 }}
+                      />
+                      <Line
+                        yAxisId="left"
+                        type="monotone"
+                        dataKey="edge"
+                        name="Edge acumulado"
+                        stroke="#f59e0b"
+                        strokeWidth={2}
+                        dot={{ r: 2 }}
+                      />
+                      <Line
+                        yAxisId="right"
+                        type="monotone"
+                        dataKey="risk"
+                        name="Risk score"
+                        stroke="#f43f5e"
+                        strokeWidth={2}
+                        dot={{ r: 2 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full min-w-[680px] text-left text-xs">
+                    <thead className="text-slate-400">
+                      <tr>
+                        <th className="py-2">Data</th>
+                        <th className="py-2">Hit rate</th>
+                        <th className="py-2">Edge</th>
+                        <th className="py-2">Risco</th>
+                        <th className="py-2">Headline</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {professionalInsights.diagnosisHistory.slice(0, 7).map((item) => (
+                        <tr
+                          key={`${item.runDate}-${item.month}-${item.year}`}
+                          className="border-t border-slate-700/70 text-slate-200"
+                        >
+                          <td className="py-2">{shortDate(item.runDate)}</td>
+                          <td className="py-2 text-cyan-300">
+                            {item.hitRatePercent === null ? "—" : formatPercentage(item.hitRatePercent)}
+                          </td>
+                          <td
+                            className={`py-2 font-semibold ${
+                              item.cumulativeEdgeValue >= 0 ? "text-emerald-300" : "text-rose-300"
+                            }`}
+                          >
+                            {signedCurrency(item.cumulativeEdgeValue)}
+                          </td>
+                          <td className={`py-2 ${riskRegimeTone(item.riskRegime)}`}>
+                            {item.riskScore.toFixed(1)} ({item.riskRegime})
+                          </td>
+                          <td className="py-2 text-slate-400">{item.headline}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </article>
+
+          <div className="grid gap-4 xl:grid-cols-2">
+            <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
+              <h4 className="text-sm font-semibold text-slate-100">Atribuição do resultado M/M</h4>
+              <p className="mt-1 text-[11px] text-slate-400">
+                {professionalInsights.attribution.monthLabel}
+                {professionalInsights.attribution.previousMonthLabel
+                  ? ` vs ${professionalInsights.attribution.previousMonthLabel}`
+                  : ""}
+              </p>
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full min-w-[620px] text-left text-xs">
+                  <thead className="text-slate-400">
+                    <tr>
+                      <th className="py-2">Tema</th>
+                      <th className="py-2">Atual</th>
+                      <th className="py-2">Anterior</th>
+                      <th className="py-2">Δ R$</th>
+                      <th className="py-2">Peso atual</th>
+                      <th className="py-2">Contrib. Δ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {professionalInsights.attribution.items.map((item) => (
+                      <tr key={item.key} className="border-t border-slate-700/70 text-slate-200">
+                        <td className="py-2">{item.label}</td>
+                        <td className="py-2">{formatCurrencyBRL(item.currentValue)}</td>
+                        <td className="py-2">{formatCurrencyBRL(item.previousValue)}</td>
+                        <td
+                          className={`py-2 font-semibold ${
+                            item.deltaValue > 0
+                              ? "text-emerald-300"
+                              : item.deltaValue < 0
+                                ? "text-rose-300"
+                                : "text-slate-300"
+                          }`}
+                        >
+                          {signedCurrency(item.deltaValue)}
+                        </td>
+                        <td className="py-2 text-cyan-300">{formatPercentage(item.shareCurrentPercent)}</td>
+                        <td className="py-2 text-amber-300">
+                          {item.contributionToDeltaPercent === null
+                            ? "—"
+                            : formatPercentage(item.contributionToDeltaPercent)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-3 text-xs">
+                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
+                  Total atual:{" "}
+                  <span className="font-semibold text-slate-100">
+                    {formatCurrencyBRL(professionalInsights.attribution.totalCurrent)}
+                  </span>
+                </p>
+                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
+                  Total anterior:{" "}
+                  <span className="font-semibold text-slate-100">
+                    {formatCurrencyBRL(professionalInsights.attribution.totalPrevious)}
+                  </span>
+                </p>
+                <p
+                  className={`rounded-md border border-slate-700 px-2 py-1 ${
+                    professionalInsights.attribution.totalDelta >= 0
+                      ? "text-emerald-300"
+                      : "text-rose-300"
+                  }`}
+                >
+                  Δ total:{" "}
+                  <span className="font-semibold">
+                    {signedCurrency(professionalInsights.attribution.totalDelta)}
+                  </span>
+                </p>
+              </div>
+            </article>
+
+            <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
+              <h4 className="text-sm font-semibold text-slate-100">Qualidade dos dados</h4>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 text-xs">
+                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
+                  Nota:{" "}
+                  <span className={`font-semibold ${qualityGradeTone(professionalInsights.dataQuality.grade)}`}>
+                    {professionalInsights.dataQuality.grade}
+                  </span>
+                </p>
+                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
+                  Cobertura:{" "}
+                  <span className="font-semibold text-cyan-300">
+                    {formatPercentage(professionalInsights.dataQuality.completenessPercent)}
+                  </span>
+                </p>
+                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
+                  Meses com dado:{" "}
+                  <span className="font-semibold text-slate-100">
+                    {professionalInsights.dataQuality.monthsWithData}/
+                    {professionalInsights.dataQuality.expectedMonths}
+                  </span>
+                </p>
+                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
+                  Último lançamento:{" "}
+                  <span className="font-semibold text-slate-100">
+                    {professionalInsights.dataQuality.latestEntryAt
+                      ? new Date(professionalInsights.dataQuality.latestEntryAt).toLocaleDateString("pt-BR")
+                      : "—"}
+                  </span>
+                </p>
+                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
+                  Outliers:{" "}
+                  <span className="font-semibold text-amber-300">
+                    {professionalInsights.dataQuality.outlierCount}
+                  </span>
+                </p>
+                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
+                  Duplicidades:{" "}
+                  <span className="font-semibold text-rose-300">
+                    {professionalInsights.dataQuality.duplicateRows}
+                  </span>
+                </p>
+              </div>
+              {professionalInsights.dataQuality.warnings.length > 0 ? (
+                <ul className="mt-3 space-y-1 text-xs text-amber-300">
+                  {professionalInsights.dataQuality.warnings.map((warning, idx) => (
+                    <li key={`${warning}-${idx}`}>• {warning}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-3 text-xs text-emerald-300">Sem alertas de qualidade no período.</p>
+              )}
+            </article>
+          </div>
         </section>
       ) : null}
 

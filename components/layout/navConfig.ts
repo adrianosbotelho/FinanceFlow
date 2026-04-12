@@ -9,6 +9,7 @@ export const NAV_ORDER_STORAGE_KEY = "financeflow.nav.order.v1";
 export const DEFAULT_NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Dashboard", shortLabel: "Dash" },
   { href: "/insights", label: "Insights Financeiros", shortLabel: "Insig" },
+  { href: "/history-performance", label: "Histórico de Performance", shortLabel: "Hist" },
   { href: "/health", label: "Health Check", shortLabel: "Health" },
   { href: "/performance", label: "Performance", shortLabel: "Perf" },
   { href: "/goals", label: "Metas", shortLabel: "Metas" },

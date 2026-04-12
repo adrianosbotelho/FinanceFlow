@@ -15,9 +15,10 @@ export const revalidate = 0;
 
 async function fetchDashboard(
   year: number,
+  month: number,
   baseUrl: string
 ): Promise<DashboardPayload | null> {
-  const res = await fetch(`${baseUrl}/api/dashboard?year=${year}`, {
+  const res = await fetch(`${baseUrl}/api/dashboard?year=${year}&month=${month}`, {
     cache: "no-store",
     next: { revalidate: 0 },
   });
@@ -28,21 +29,36 @@ async function fetchDashboard(
 }
 
 interface PageProps {
-  searchParams?: { year?: string };
+  searchParams?: { year?: string; month?: string };
+}
+
+function clampYear(value: number, fallback: number): number {
+  if (!Number.isInteger(value) || value < 2000 || value > fallback) {
+    return fallback;
+  }
+  return value;
 }
 
 export default async function DashboardPage({ searchParams }: PageProps) {
-  const year =
-    searchParams?.year !== undefined
-      ? Number(searchParams.year)
-      : new Date().getFullYear();
+  const now = new Date();
+  const yearRaw =
+    searchParams?.year !== undefined ? Number(searchParams.year) : now.getFullYear();
+  const year = clampYear(yearRaw, now.getFullYear());
+  const monthRaw =
+    searchParams?.month !== undefined
+      ? Number(searchParams.month)
+      : now.getMonth() + 1;
+  const month =
+    Number.isInteger(monthRaw) && monthRaw >= 1 && monthRaw <= 12
+      ? monthRaw
+      : now.getMonth() + 1;
 
   const requestHeaders = headers();
   const host = requestHeaders.get("host");
   const protocol = requestHeaders.get("x-forwarded-proto") ?? "http";
   const fallbackBase = process.env.NEXT_PUBLIC_BASE_URL ?? "http://127.0.0.1:3000";
   const baseUrl = host ? `${protocol}://${host}` : fallbackBase;
-  const data = await fetchDashboard(year, baseUrl);
+  const data = await fetchDashboard(year, month, baseUrl);
 
   if (!data) {
     return (

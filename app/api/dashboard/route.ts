@@ -71,9 +71,30 @@ function countBusinessDaysElapsedInMonth(year: number, month: number, dayLimit: 
   return count;
 }
 
+function clampMonth(input: number | null, fallback: number): number {
+  const value = Number(input);
+  if (!Number.isInteger(value)) return fallback;
+  return Math.min(12, Math.max(1, value));
+}
+
+function clampYear(input: number | null, fallback: number): number {
+  const value = Number(input);
+  if (!Number.isInteger(value)) return fallback;
+  if (value < 2000 || value > fallback) return fallback;
+  return value;
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const year = Number(searchParams.get("year") ?? new Date().getFullYear());
+  const now = new Date();
+  const year = clampYear(
+    searchParams.get("year") ? Number(searchParams.get("year")) : null,
+    now.getFullYear(),
+  );
+  const analysisMonth = clampMonth(
+    searchParams.get("month") ? Number(searchParams.get("month")) : null,
+    now.getMonth() + 1,
+  );
   const cdiAnnualPromise = resolveCdiAnnualReference();
   const fiiTrendSignalsPromise = resolveFiiMarketTrendSignals();
 
@@ -156,14 +177,18 @@ export async function GET(req: NextRequest) {
     (a, b) => a.year - b.year || a.month - b.month,
   );
 
+  const referenceSeries = monthlySeries.filter(
+    (m) => m.year < year || (m.year === year && m.month <= analysisMonth),
+  );
+
   const byYearMonth = new Map<string, PassiveIncomeByMonth>();
-  for (const m of monthlySeries) {
+  for (const m of referenceSeries) {
     byYearMonth.set(`${m.year}-${m.month}`, m);
   }
 
   const yearPrev = year - 1;
   const comparisonByMonth: MonthComparisonPoint[] = Array.from(
-    { length: 12 },
+    { length: analysisMonth },
     (_, i) => {
       const month = i + 1;
       const prev = byYearMonth.get(`${yearPrev}-${month}`);
@@ -185,17 +210,18 @@ export async function GET(req: NextRequest) {
     },
   );
 
-  const yoySeries = monthlySeries.filter((m) => m.year === year);
+  const yoySeries = referenceSeries.filter((m) => m.year === year);
 
   const totalInvested = investments.reduce(
     (acc, inv) => acc + Number(inv.amount_invested),
     0,
   );
 
-  const kpisBase = buildKpis(monthlySeries, year, totalInvested);
+  const kpisBase = buildKpis(referenceSeries, year, totalInvested);
   const monthlyPositions = Array.isArray(positions) ? positions : [];
   const latestPositionMonth = monthlyPositions.reduce((acc, pos) => {
     const month = Number(pos.month ?? 0);
+    if (month > analysisMonth) return acc;
     return month > acc ? month : acc;
   }, 0);
   const currentMarketValue =
@@ -218,8 +244,8 @@ export async function GET(req: NextRequest) {
     totalProfitPct,
   };
 
-  const distribution: IncomeDistribution = monthlySeries
-    .filter((m) => m.year === year)
+  const distribution: IncomeDistribution = referenceSeries
+    .filter((m) => m.year === year && m.month <= analysisMonth)
     .reduce(
       (acc, m) => {
         acc.itauCdb += m.cdb_itau;
@@ -247,10 +273,11 @@ export async function GET(req: NextRequest) {
     { cdb_itau: 0, cdb_santander: 0, fiis: 0 },
   );
 
-  const currentYearSeries = monthlySeries.filter((m) => m.year === year);
+  const currentYearSeries = referenceSeries.filter(
+    (m) => m.year === year && m.month <= analysisMonth,
+  );
   const latestMonthEntry =
     currentYearSeries.length > 0 ? currentYearSeries[currentYearSeries.length - 1] : null;
-  const now = new Date();
   const isCurrentContextMonth =
     latestMonthEntry !== null &&
     year === now.getFullYear() &&
@@ -347,7 +374,7 @@ export async function GET(req: NextRequest) {
   const insights: FinancialInsights = buildInsights(
     kpis,
     distribution,
-    monthlySeries,
+    referenceSeries,
     year,
     cdiAnnualReference,
     fiiTrendSignals,
@@ -355,13 +382,14 @@ export async function GET(req: NextRequest) {
   const goalProgress = buildGoalProgress(kpis);
   const alerts = buildConsistencyAlerts({
     year,
-    monthlySeries,
+    monthlySeries: referenceSeries,
+    analysisMonth,
     kpis,
   });
 
   const payload: DashboardPayload = {
     kpis,
-    monthlySeries: monthlySeries.filter((m) => m.year === year),
+    monthlySeries: referenceSeries.filter((m) => m.year === year && m.month <= analysisMonth),
     yoySeries,
     comparisonByMonth,
     distribution,
@@ -403,10 +431,12 @@ function buildGoalProgress(kpis: DashboardPayload["kpis"]): GoalProgress {
 function buildConsistencyAlerts({
   year,
   monthlySeries,
+  analysisMonth,
   kpis,
 }: {
   year: number;
   monthlySeries: PassiveIncomeByMonth[];
+  analysisMonth: number;
   kpis: DashboardPayload["kpis"];
 }): ConsistencyAlert[] {
   const alerts: ConsistencyAlert[] = [];
@@ -422,7 +452,8 @@ function buildConsistencyAlerts({
   }
 
   const now = new Date();
-  const maxMonth = year === now.getFullYear() ? now.getMonth() + 1 : 12;
+  const currentContextMonth = year === now.getFullYear() ? now.getMonth() + 1 : 12;
+  const maxMonth = Math.min(currentContextMonth, analysisMonth);
   const monthsWithData = new Set(yearSeries.map((m) => m.month));
   const missingMonths: number[] = [];
   for (let month = 1; month <= maxMonth; month++) {

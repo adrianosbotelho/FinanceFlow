@@ -247,12 +247,26 @@ export interface DailyInsightEvidence {
   context: string;
 }
 
+export interface DailyInsightGoalContext {
+  month: number;
+  monthlyIncomeTarget: number | null;
+  monthlyIncomeRealized: number;
+  monthlyIncomeGap: number | null;
+  monthlyIncomeProgressPercent: number | null;
+  annualCapitalTarget: number | null;
+  annualCapitalCurrent: number;
+  annualCapitalGap: number | null;
+  annualCapitalProgressPercent: number | null;
+}
+
 export interface DailyInsightReport {
   runDate: string;
   year: number;
   generatedAt: string;
   generatedBy: DailyInsightSource;
   model: string | null;
+  dataSignature?: string;
+  goalContext?: DailyInsightGoalContext;
   radarStatus: DailyInsightRadarStatus;
   confidencePercent: number;
   headline: string;
@@ -297,6 +311,163 @@ export interface MarketSnapshotPayload {
     updatedAt: string | null;
   }>;
   warnings: string[];
+}
+
+export interface ProfessionalForecastMetric {
+  key: "cdb_itau" | "cdb_santander" | "fiis" | "total";
+  label: string;
+  sampleSize: number;
+  mapePercent: number | null;
+  maeValue: number | null;
+  biasValue: number | null;
+  directionAccuracyPercent: number | null;
+}
+
+export interface ProfessionalGoalProbability {
+  label: string;
+  targetValue: number | null;
+  realizedValue: number;
+  projectedValue: number;
+  probabilityPercent: number | null;
+  confidenceBand: {
+    pessimistic: number;
+    base: number;
+    optimistic: number;
+  } | null;
+}
+
+export interface ProfessionalAttributionItem {
+  key: "cdb_itau" | "cdb_santander" | "fiis";
+  label: string;
+  currentValue: number;
+  previousValue: number;
+  deltaValue: number;
+  shareCurrentPercent: number;
+  contributionToDeltaPercent: number | null;
+}
+
+export interface ProfessionalDataQuality {
+  grade: "A" | "B" | "C";
+  completenessPercent: number;
+  expectedMonths: number;
+  monthsWithData: number;
+  missingMonths: number[];
+  duplicateRows: number;
+  outlierCount: number;
+  stalenessDays: number | null;
+  latestEntryAt: string | null;
+  warnings: string[];
+}
+
+export interface ProfessionalBenchmark {
+  referenceMonthLabel: string;
+  portfolioMomPercent: number | null;
+  cdiMomPercent: number | null;
+  ifixMomPercent: number | null;
+  ibovMomPercent: number | null;
+  excessVsCdiPercent: number | null;
+  excessVsIfixPercent: number | null;
+  excessVsIbovPercent: number | null;
+  warnings: string[];
+}
+
+export interface ProfessionalRiskRadar {
+  regime: "ESTAVEL" | "ATENCAO" | "ESTRESSADO";
+  score: number;
+  volatility3mPercent: number;
+  volatility6mPercent: number;
+  maxDrawdownPercent: number;
+  trendPerMonthPercent: number;
+}
+
+export interface ProfessionalRecommendationItem {
+  key: "cdb_itau" | "cdb_santander" | "fiis";
+  label: string;
+  score: number;
+  momentumPercent: number | null;
+  monthlyYieldPercent: number | null;
+  stabilityPercent: number;
+  rationale: string;
+}
+
+export interface ProfessionalRecommendationBacktestItem {
+  fromMonthLabel: string;
+  toMonthLabel: string;
+  predictedKey: "cdb_itau" | "cdb_santander" | "fiis";
+  predictedLabel: string;
+  actualBestKey: "cdb_itau" | "cdb_santander" | "fiis";
+  actualBestLabel: string;
+  hit: boolean;
+  chosenValue: number;
+  bestValue: number;
+  edgeValue: number;
+}
+
+export interface ProfessionalRecommendation {
+  bestAssetKey: "cdb_itau" | "cdb_santander" | "fiis";
+  bestAssetLabel: string;
+  action: string;
+  items: ProfessionalRecommendationItem[];
+  backtest: {
+    sampleSize: number;
+    hitRatePercent: number | null;
+    cumulativeEdgeValue: number;
+    averageEdgeValue: number | null;
+    evaluations: ProfessionalRecommendationBacktestItem[];
+    diagnosis: {
+      headline: string;
+      strengths: string[];
+      weaknesses: string[];
+      nextAdjustment: string;
+    };
+  };
+}
+
+export interface ProfessionalDiagnosisHistoryItem {
+  runDate: string;
+  year: number;
+  month: number;
+  hitRatePercent: number | null;
+  cumulativeEdgeValue: number;
+  riskScore: number;
+  riskRegime: "ESTAVEL" | "ATENCAO" | "ESTRESSADO";
+  headline: string;
+}
+
+export interface ProfessionalDiagnosticAlert {
+  id: string;
+  severity: "low" | "medium" | "high";
+  title: string;
+  message: string;
+  trigger: string;
+}
+
+export interface ProfessionalInsightsPayload {
+  year: number;
+  month: number;
+  generatedAt: string;
+  warnings: string[];
+  forecastQuality: {
+    metrics: ProfessionalForecastMetric[];
+  };
+  goalProbabilities: {
+    monthlyIncome: ProfessionalGoalProbability;
+    annualCapital: ProfessionalGoalProbability;
+  };
+  attribution: {
+    monthLabel: string;
+    previousMonthLabel: string | null;
+    totalCurrent: number;
+    totalPrevious: number;
+    totalDelta: number;
+    items: ProfessionalAttributionItem[];
+  };
+  benchmark: ProfessionalBenchmark;
+  riskRadar: ProfessionalRiskRadar;
+  recommendation: ProfessionalRecommendation;
+  diagnosisHistory: ProfessionalDiagnosisHistoryItem[];
+  diagnosticAlerts: ProfessionalDiagnosticAlert[];
+  dataQuality: ProfessionalDataQuality;
 }
 
 export interface HealthTableCheck {
