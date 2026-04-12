@@ -31,9 +31,11 @@ function trendSymbol(value: number | null | undefined): string {
 
 function trendCardClass(value: number | null | undefined): string {
   const tone = trendTone(value);
-  if (tone === "positive") return "border-emerald-500/60 bg-emerald-950/10";
-  if (tone === "negative") return "border-rose-500/60 bg-rose-950/10";
-  return "border-slate-700";
+  if (tone === "positive")
+    return "border-emerald-500/60 bg-gradient-to-br from-slate-800 via-slate-900 to-emerald-950/25";
+  if (tone === "negative")
+    return "border-rose-500/60 bg-gradient-to-br from-slate-800 via-slate-900 to-rose-950/25";
+  return "border-slate-700 bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950";
 }
 
 function trendValueClass(value: number | null | undefined): string {
@@ -105,8 +107,8 @@ export default async function DashboardPage({
         <p className="text-sm text-slate-400">Visão mobile/web da renda passiva ({year})</p>
       </header>
 
-      <section className="mx-auto grid w-full max-w-[19.75rem] gap-4 sm:max-w-none sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        <article className={`card min-h-[140px] ${trendCardClass(data.kpis.momTotalPct)}`}>
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+        <article className={`card min-h-[168px] rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.momTotalPct)}`}>
           <p className="card-title">Renda passiva mensal</p>
           <p className={`card-value ${trendValueClass(data.kpis.momTotalPct)}`}>{formatCurrency(data.kpis.totalMonth)}</p>
           <p className="text-xs text-slate-500">
@@ -116,7 +118,7 @@ export default async function DashboardPage({
             vs mês anterior
           </p>
         </article>
-        <article className={`card min-h-[140px] ${trendCardClass(data.kpis.momCdbPct)}`}>
+        <article className={`card min-h-[168px] rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.momCdbPct)}`}>
           <p className="card-title">Rendimento CDBs</p>
           <p className={`card-value ${trendValueClass(data.kpis.momCdbPct)}`}>{formatCurrency(data.kpis.cdbMonth)}</p>
           <p className="text-xs text-slate-500">
@@ -126,7 +128,7 @@ export default async function DashboardPage({
             vs mês anterior
           </p>
         </article>
-        <article className={`card min-h-[140px] ${trendCardClass(data.kpis.momFiisPct)}`}>
+        <article className={`card min-h-[168px] rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.momFiisPct)}`}>
           <p className="card-title">Dividendos FIIs</p>
           <p className={`card-value ${trendValueClass(data.kpis.momFiisPct)}`}>{formatCurrency(data.kpis.fiisMonth)}</p>
           <p className="text-xs text-slate-500">
@@ -136,15 +138,15 @@ export default async function DashboardPage({
             vs mês anterior
           </p>
         </article>
-        <article className="card min-h-[140px]">
+        <article className="card min-h-[168px] rounded-[1.5rem] bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 p-3.5 shadow-lg">
           <p className="card-title">Renda acumulada no ano</p>
           <p className="card-value">{formatCurrency(data.kpis.ytd)}</p>
           <p className="text-xs text-slate-500">YTD</p>
         </article>
       </section>
 
-      <section className="mx-auto grid w-full max-w-[19.75rem] gap-4 sm:max-w-none sm:grid-cols-2">
-        <article className={`card min-h-[162px] ${trendCardClass(data.kpis.momCdbItauPct)}`}>
+      <section className="grid grid-cols-2 gap-3">
+        <article className={`card min-h-[176px] rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.momCdbItauPct)}`}>
           <p className="card-title">CDB Itaú (M/M)</p>
           <p className={`card-value ${trendValueClass(data.kpis.momCdbItauPct)}`}>
             {formatPct(data.kpis.momCdbItauPct)}
@@ -157,7 +159,7 @@ export default async function DashboardPage({
           </p>
         </article>
 
-        <article className={`card min-h-[162px] ${trendCardClass(data.kpis.momCdbSantanderPct)}`}>
+        <article className={`card min-h-[176px] rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.momCdbSantanderPct)}`}>
           <p className="card-title">CDB Santander (M/M)</p>
           <p className={`card-value ${trendValueClass(data.kpis.momCdbSantanderPct)}`}>
             {formatPct(data.kpis.momCdbSantanderPct)}
