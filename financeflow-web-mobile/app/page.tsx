@@ -32,9 +32,9 @@ function trendSymbol(value: number | null | undefined): string {
 function trendCardClass(value: number | null | undefined): string {
   const tone = trendTone(value);
   if (tone === "positive")
-    return "border-emerald-500/60 bg-gradient-to-br from-slate-800 via-slate-900 to-emerald-950/25";
+    return "border-emerald-400/80 bg-gradient-to-br from-slate-800 via-slate-900 to-emerald-950/30 shadow-[0_0_0_1px_rgba(52,211,153,0.18)]";
   if (tone === "negative")
-    return "border-rose-500/60 bg-gradient-to-br from-slate-800 via-slate-900 to-rose-950/25";
+    return "border-rose-400/80 bg-gradient-to-br from-slate-800 via-slate-900 to-rose-950/30 shadow-[0_0_0_1px_rgba(251,113,133,0.18)]";
   return "border-slate-700 bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950";
 }
 
@@ -50,6 +50,20 @@ function trendPctClass(value: number | null | undefined): string {
   if (tone === "positive") return "text-emerald-300";
   if (tone === "negative") return "text-rose-300";
   return "text-slate-300";
+}
+
+function trendTitleClass(value: number | null | undefined): string {
+  const tone = trendTone(value);
+  if (tone === "positive") return "text-emerald-200";
+  if (tone === "negative") return "text-rose-200";
+  return "text-slate-300";
+}
+
+function trendMetaClass(value: number | null | undefined): string {
+  const tone = trendTone(value);
+  if (tone === "positive") return "text-emerald-300/90";
+  if (tone === "negative") return "text-rose-300/90";
+  return "text-slate-500";
 }
 
 function formatSignedCurrency(value: number | null | undefined): string {
@@ -109,9 +123,9 @@ export default async function DashboardPage({
 
       <section className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
         <article className={`card min-h-[168px] rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.momTotalPct)}`}>
-          <p className="card-title">Renda passiva mensal</p>
+          <p className={`card-title ${trendTitleClass(data.kpis.momTotalPct)}`}>Renda passiva mensal</p>
           <p className={`card-value ${trendValueClass(data.kpis.momTotalPct)}`}>{formatCurrency(data.kpis.totalMonth)}</p>
-          <p className="text-xs text-slate-500">
+          <p className={`text-xs ${trendMetaClass(data.kpis.momTotalPct)}`}>
             <span className={`mr-1 font-semibold ${trendPctClass(data.kpis.momTotalPct)}`}>
               {trendSymbol(data.kpis.momTotalPct)} {formatPct(data.kpis.momTotalPct)}
             </span>
@@ -119,9 +133,9 @@ export default async function DashboardPage({
           </p>
         </article>
         <article className={`card min-h-[168px] rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.momCdbPct)}`}>
-          <p className="card-title">Rendimento CDBs</p>
+          <p className={`card-title ${trendTitleClass(data.kpis.momCdbPct)}`}>Rendimento CDBs</p>
           <p className={`card-value ${trendValueClass(data.kpis.momCdbPct)}`}>{formatCurrency(data.kpis.cdbMonth)}</p>
-          <p className="text-xs text-slate-500">
+          <p className={`text-xs ${trendMetaClass(data.kpis.momCdbPct)}`}>
             <span className={`mr-1 font-semibold ${trendPctClass(data.kpis.momCdbPct)}`}>
               {trendSymbol(data.kpis.momCdbPct)} {formatPct(data.kpis.momCdbPct)}
             </span>
@@ -129,9 +143,9 @@ export default async function DashboardPage({
           </p>
         </article>
         <article className={`card min-h-[168px] rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.momFiisPct)}`}>
-          <p className="card-title">Dividendos FIIs</p>
+          <p className={`card-title ${trendTitleClass(data.kpis.momFiisPct)}`}>Dividendos FIIs</p>
           <p className={`card-value ${trendValueClass(data.kpis.momFiisPct)}`}>{formatCurrency(data.kpis.fiisMonth)}</p>
-          <p className="text-xs text-slate-500">
+          <p className={`text-xs ${trendMetaClass(data.kpis.momFiisPct)}`}>
             <span className={`mr-1 font-semibold ${trendPctClass(data.kpis.momFiisPct)}`}>
               {trendSymbol(data.kpis.momFiisPct)} {formatPct(data.kpis.momFiisPct)}
             </span>
@@ -147,11 +161,11 @@ export default async function DashboardPage({
 
       <section className="grid grid-cols-2 gap-3">
         <article className={`card min-h-[176px] rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.momCdbItauPct)}`}>
-          <p className="card-title">CDB Itaú (M/M)</p>
+          <p className={`card-title ${trendTitleClass(data.kpis.momCdbItauPct)}`}>CDB Itaú (M/M)</p>
           <p className={`card-value ${trendValueClass(data.kpis.momCdbItauPct)}`}>
             {formatPct(data.kpis.momCdbItauPct)}
           </p>
-          <p className="text-xs leading-snug text-slate-500">
+          <p className={`text-xs leading-snug ${trendMetaClass(data.kpis.momCdbItauPct)}`}>
             <span className={`block font-semibold ${trendPctClass(data.kpis.momCdbItauPct)}`}>
               {trendSymbol(data.kpis.momCdbItauPct)} Δ {formatSignedCurrency(data.kpis.momCdbItauValue)}
             </span>
@@ -160,11 +174,11 @@ export default async function DashboardPage({
         </article>
 
         <article className={`card min-h-[176px] rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.momCdbSantanderPct)}`}>
-          <p className="card-title">CDB Santander (M/M)</p>
+          <p className={`card-title ${trendTitleClass(data.kpis.momCdbSantanderPct)}`}>CDB Santander (M/M)</p>
           <p className={`card-value ${trendValueClass(data.kpis.momCdbSantanderPct)}`}>
             {formatPct(data.kpis.momCdbSantanderPct)}
           </p>
-          <p className="text-xs leading-snug text-slate-500">
+          <p className={`text-xs leading-snug ${trendMetaClass(data.kpis.momCdbSantanderPct)}`}>
             <span className={`block font-semibold ${trendPctClass(data.kpis.momCdbSantanderPct)}`}>
               {trendSymbol(data.kpis.momCdbSantanderPct)} Δ {formatSignedCurrency(data.kpis.momCdbSantanderValue)}
             </span>
