@@ -105,8 +105,8 @@ export default async function DashboardPage({
         <p className="text-sm text-slate-400">Visão mobile/web da renda passiva ({year})</p>
       </header>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        <article className={`card ${trendCardClass(data.kpis.momTotalPct)}`}>
+      <section className="mx-auto grid w-full max-w-[22.5rem] gap-4 sm:max-w-none sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <article className={`card min-h-[132px] ${trendCardClass(data.kpis.momTotalPct)}`}>
           <p className="card-title">Renda passiva mensal</p>
           <p className={`card-value ${trendValueClass(data.kpis.momTotalPct)}`}>{formatCurrency(data.kpis.totalMonth)}</p>
           <p className="text-xs text-slate-500">
@@ -116,7 +116,7 @@ export default async function DashboardPage({
             vs mês anterior
           </p>
         </article>
-        <article className={`card ${trendCardClass(data.kpis.momCdbPct)}`}>
+        <article className={`card min-h-[132px] ${trendCardClass(data.kpis.momCdbPct)}`}>
           <p className="card-title">Rendimento CDBs</p>
           <p className={`card-value ${trendValueClass(data.kpis.momCdbPct)}`}>{formatCurrency(data.kpis.cdbMonth)}</p>
           <p className="text-xs text-slate-500">
@@ -126,7 +126,7 @@ export default async function DashboardPage({
             vs mês anterior
           </p>
         </article>
-        <article className={`card ${trendCardClass(data.kpis.momFiisPct)}`}>
+        <article className={`card min-h-[132px] ${trendCardClass(data.kpis.momFiisPct)}`}>
           <p className="card-title">Dividendos FIIs</p>
           <p className={`card-value ${trendValueClass(data.kpis.momFiisPct)}`}>{formatCurrency(data.kpis.fiisMonth)}</p>
           <p className="text-xs text-slate-500">
@@ -136,37 +136,37 @@ export default async function DashboardPage({
             vs mês anterior
           </p>
         </article>
-        <article className="card">
+        <article className="card min-h-[132px]">
           <p className="card-title">Renda acumulada no ano</p>
           <p className="card-value">{formatCurrency(data.kpis.ytd)}</p>
           <p className="text-xs text-slate-500">YTD</p>
         </article>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2">
-        <article className={`card ${trendCardClass(data.kpis.momCdbItauPct)}`}>
+      <section className="mx-auto grid w-full max-w-[22.5rem] gap-4 sm:max-w-none sm:grid-cols-2">
+        <article className={`card min-h-[152px] ${trendCardClass(data.kpis.momCdbItauPct)}`}>
           <p className="card-title">CDB Itaú (M/M)</p>
           <p className={`card-value ${trendValueClass(data.kpis.momCdbItauPct)}`}>
             {formatPct(data.kpis.momCdbItauPct)}
           </p>
-          <p className="text-xs text-slate-500">
-            <span className={`mr-1 font-semibold ${trendPctClass(data.kpis.momCdbItauPct)}`}>
+          <p className="text-xs leading-snug text-slate-500">
+            <span className={`block font-semibold ${trendPctClass(data.kpis.momCdbItauPct)}`}>
               {trendSymbol(data.kpis.momCdbItauPct)} Δ {formatSignedCurrency(data.kpis.momCdbItauValue)}
             </span>
-            mês atual: {formatCurrency(data.kpis.cdbItauMonth)}
+            <span className="mt-0.5 block">mês atual: {formatCurrency(data.kpis.cdbItauMonth)}</span>
           </p>
         </article>
 
-        <article className={`card ${trendCardClass(data.kpis.momCdbSantanderPct)}`}>
+        <article className={`card min-h-[152px] ${trendCardClass(data.kpis.momCdbSantanderPct)}`}>
           <p className="card-title">CDB Santander (M/M)</p>
           <p className={`card-value ${trendValueClass(data.kpis.momCdbSantanderPct)}`}>
             {formatPct(data.kpis.momCdbSantanderPct)}
           </p>
-          <p className="text-xs text-slate-500">
-            <span className={`mr-1 font-semibold ${trendPctClass(data.kpis.momCdbSantanderPct)}`}>
+          <p className="text-xs leading-snug text-slate-500">
+            <span className={`block font-semibold ${trendPctClass(data.kpis.momCdbSantanderPct)}`}>
               {trendSymbol(data.kpis.momCdbSantanderPct)} Δ {formatSignedCurrency(data.kpis.momCdbSantanderValue)}
             </span>
-            mês atual: {formatCurrency(data.kpis.cdbSantanderMonth)}
+            <span className="mt-0.5 block">mês atual: {formatCurrency(data.kpis.cdbSantanderMonth)}</span>
           </p>
         </article>
       </section>
