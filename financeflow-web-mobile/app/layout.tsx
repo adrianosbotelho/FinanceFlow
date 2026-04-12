@@ -3,6 +3,7 @@ import "./globals.css";
 import { AppNav } from "@/components/AppNav";
 import { PwaRegister } from "@/components/PwaRegister";
 import { RealtimeRefreshBanner } from "@/components/RealtimeRefreshBanner";
+import { VersionBadge } from "@/components/VersionBadge";
 
 export const metadata: Metadata = {
   title: "FinanceFlow Web Mobile",
@@ -28,6 +29,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <AppNav />
           <main className="w-full p-4 pb-[calc(9.5rem+env(safe-area-inset-bottom))] md:p-6 md:pb-6">
             <div className="mx-auto w-full max-w-6xl space-y-6">
+              <div className="flex justify-end">
+                <VersionBadge />
+              </div>
               <RealtimeRefreshBanner />
               {children}
             </div>

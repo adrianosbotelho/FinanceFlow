@@ -1,4 +1,4 @@
-const CACHE_VERSION = "financeflow-mobile-v3";
+const CACHE_VERSION = "financeflow-mobile-v4";
 const APP_SHELL = ["/login", "/offline", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
