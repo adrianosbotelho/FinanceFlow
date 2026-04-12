@@ -1,12 +1,30 @@
 import {
   DailyInsightAction,
   DailyInsightApiPayload,
+  DailyInsightGoalContext,
   DailyInsightHistoryItem,
   DailyInsightRadarStatus,
   DailyInsightReport,
   DashboardPayload,
 } from "../types";
 import { formatCurrencyBRL, formatPercentage, monthLabel } from "./formatters";
+
+type MonthlyPaceContext = {
+  analysisMonth: number;
+  analysisYear: number;
+  isCurrentContextMonth: boolean;
+  elapsedBusinessDays: number | null;
+  totalBusinessDays: number | null;
+  elapsedRatio: number | null;
+  previousMonthTotal: number | null;
+  expectedSoFarFromPrevious: number | null;
+  projectedFullMonth: number | null;
+  projectedVsPreviousPercent: number | null;
+  paceDeltaPercent: number | null;
+  isEarlyMonth: boolean;
+};
+
+const DAILY_INSIGHTS_ENGINE_VERSION = "2026-04-12-v2";
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -16,10 +34,111 @@ function toFixedNumber(value: number, digits = 2): number {
   return Number(value.toFixed(digits));
 }
 
-function monthIndexNow(year: number): number {
-  const now = new Date();
-  if (year === now.getFullYear()) return now.getMonth() + 1;
-  return 12;
+function countBusinessDaysInMonth(year: number, month: number): number {
+  const daysInMonth = new Date(year, month, 0).getDate();
+  let count = 0;
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const weekday = new Date(year, month - 1, day).getDay();
+    if (weekday >= 1 && weekday <= 5) count += 1;
+  }
+  return count;
+}
+
+function countBusinessDaysElapsedInMonth(year: number, month: number, dayLimit: number): number {
+  let count = 0;
+  for (let day = 1; day <= dayLimit; day += 1) {
+    const weekday = new Date(year, month - 1, day).getDay();
+    if (weekday >= 1 && weekday <= 5) count += 1;
+  }
+  return count;
+}
+
+function parseIsoDateParts(isoDate: string): { year: number; month: number; day: number } | null {
+  const parts = isoDate.split("-");
+  if (parts.length !== 3) return null;
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  const day = Number(parts[2]);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
+  return { year, month, day };
+}
+
+function findMonthTotal(series: DashboardPayload["monthlySeries"], year: number, month: number): number | null {
+  const point = series.find((item) => item.year === year && item.month === month);
+  if (!point) return null;
+  return Number(point.total ?? 0);
+}
+
+function resolveMonthlyPaceContext(
+  data: DashboardPayload,
+  year: number,
+  analysisMonth: number,
+  runDate: string,
+): MonthlyPaceContext {
+  const todayParts = parseIsoDateParts(runDate);
+  const isCurrentContextMonth =
+    todayParts !== null &&
+    year === todayParts.year &&
+    analysisMonth === todayParts.month;
+
+  const elapsedBusinessDays =
+    isCurrentContextMonth && todayParts !== null
+      ? countBusinessDaysElapsedInMonth(year, analysisMonth, todayParts.day)
+      : null;
+  const totalBusinessDays =
+    isCurrentContextMonth ? countBusinessDaysInMonth(year, analysisMonth) : null;
+  const elapsedRatio =
+    elapsedBusinessDays !== null &&
+    totalBusinessDays !== null &&
+    totalBusinessDays > 0
+      ? elapsedBusinessDays / totalBusinessDays
+      : null;
+
+  const previousMonth = analysisMonth > 1 ? analysisMonth - 1 : 12;
+  const previousYear = analysisMonth > 1 ? year : year - 1;
+  const previousMonthTotal = findMonthTotal(data.monthlySeries, previousYear, previousMonth);
+  const currentIncome = Number(data.kpis.totalPassiveIncomeCurrentMonth ?? 0);
+
+  const expectedSoFarFromPrevious =
+    isCurrentContextMonth &&
+    previousMonthTotal !== null &&
+    previousMonthTotal > 0 &&
+    elapsedRatio !== null
+      ? previousMonthTotal * elapsedRatio
+      : null;
+
+  const projectedFullMonth =
+    isCurrentContextMonth && elapsedRatio !== null && elapsedRatio > 0
+      ? currentIncome / elapsedRatio
+      : currentIncome;
+
+  const projectedVsPreviousPercent =
+    previousMonthTotal !== null && previousMonthTotal > 0
+      ? ((projectedFullMonth - previousMonthTotal) / previousMonthTotal) * 100
+      : null;
+
+  const paceDeltaPercent =
+    expectedSoFarFromPrevious !== null && expectedSoFarFromPrevious > 0
+      ? ((currentIncome - expectedSoFarFromPrevious) / expectedSoFarFromPrevious) * 100
+      : null;
+
+  const isEarlyMonth =
+    isCurrentContextMonth && elapsedRatio !== null ? elapsedRatio <= 0.45 : false;
+
+  return {
+    analysisMonth,
+    analysisYear: year,
+    isCurrentContextMonth,
+    elapsedBusinessDays,
+    totalBusinessDays,
+    elapsedRatio,
+    previousMonthTotal,
+    expectedSoFarFromPrevious,
+    projectedFullMonth,
+    projectedVsPreviousPercent,
+    paceDeltaPercent,
+    isEarlyMonth,
+  };
 }
 
 export function getSaoPauloDateISO(reference = new Date()): string {
@@ -37,22 +156,146 @@ function mapBestSourceToLabel(bestSource: DashboardPayload["insights"]["bestSour
   return "FIIs";
 }
 
-function computeRiskScore(data: DashboardPayload): number {
+export function buildDailyInsightDataSignature(
+  data: DashboardPayload,
+  goalContext?: DailyInsightGoalContext | null,
+): string {
+  const latestMonth = data.monthlySeries[data.monthlySeries.length - 1]?.month ?? null;
+  return JSON.stringify({
+    engineVersion: DAILY_INSIGHTS_ENGINE_VERSION,
+    latestMonth,
+    monthIncome: toFixedNumber(data.kpis.totalPassiveIncomeCurrentMonth, 2),
+    monthCdb: toFixedNumber(data.kpis.cdbTotalYieldCurrentMonth, 2),
+    monthFii: toFixedNumber(data.kpis.fiiDividendsCurrentMonth, 2),
+    mom: toFixedNumber(data.kpis.momGrowth ?? 0, 2),
+    yoy: toFixedNumber(data.kpis.yoyGrowth ?? 0, 2),
+    ytd: toFixedNumber(data.kpis.ytdPassiveIncome, 2),
+    annualProjection: toFixedNumber(data.kpis.annualProjection, 2),
+    annualTarget: toFixedNumber(data.goalProgress.annualIncomeTarget, 2),
+    gap: toFixedNumber(data.goalProgress.gapToTarget, 2),
+    goalMonthlyTarget:
+      goalContext?.monthlyIncomeTarget === null || goalContext?.monthlyIncomeTarget === undefined
+        ? null
+        : toFixedNumber(goalContext.monthlyIncomeTarget, 2),
+    goalMonth: goalContext?.month ?? null,
+    goalMonthlyRealized:
+      goalContext?.monthlyIncomeRealized === null || goalContext?.monthlyIncomeRealized === undefined
+        ? null
+        : toFixedNumber(goalContext.monthlyIncomeRealized, 2),
+    goalAnnualTarget:
+      goalContext?.annualCapitalTarget === null || goalContext?.annualCapitalTarget === undefined
+        ? null
+        : toFixedNumber(goalContext.annualCapitalTarget, 2),
+    goalAnnualCurrent:
+      goalContext?.annualCapitalCurrent === null || goalContext?.annualCapitalCurrent === undefined
+        ? null
+        : toFixedNumber(goalContext.annualCapitalCurrent, 2),
+  });
+}
+
+function buildGoalContextSummary(
+  data: DashboardPayload,
+  goalContext?: DailyInsightGoalContext | null,
+): string {
+  if (goalContext) {
+    const monthlyPart =
+      goalContext.monthlyIncomeTarget !== null && goalContext.monthlyIncomeTarget > 0
+        ? goalContext.monthlyIncomeGap !== null && goalContext.monthlyIncomeGap > 0
+          ? `meta mensal CDB: ${formatCurrencyBRL(
+              goalContext.monthlyIncomeRealized,
+            )} de ${formatCurrencyBRL(goalContext.monthlyIncomeTarget)} (faltam ${formatCurrencyBRL(
+              goalContext.monthlyIncomeGap,
+            )})`
+          : `meta mensal CDB atingida (${formatCurrencyBRL(
+              goalContext.monthlyIncomeRealized,
+            )} de ${formatCurrencyBRL(goalContext.monthlyIncomeTarget)})`
+        : "meta mensal CDB não configurada";
+
+    const annualPart =
+      goalContext.annualCapitalTarget !== null && goalContext.annualCapitalTarget > 0
+        ? goalContext.annualCapitalGap !== null && goalContext.annualCapitalGap > 0
+          ? `meta anual de patrimônio: ${formatCurrencyBRL(
+              goalContext.annualCapitalCurrent,
+            )} de ${formatCurrencyBRL(goalContext.annualCapitalTarget)} (faltam ${formatCurrencyBRL(
+              goalContext.annualCapitalGap,
+            )})`
+          : `meta anual de patrimônio atingida (${formatCurrencyBRL(
+              goalContext.annualCapitalCurrent,
+            )} de ${formatCurrencyBRL(goalContext.annualCapitalTarget)})`
+        : "meta anual de patrimônio não configurada";
+
+    return `${monthlyPart}; ${annualPart}`;
+  }
+
+  const annualTarget = data.goalProgress.annualIncomeTarget;
+  const annualProjection = data.kpis.annualProjection;
+  const gap = data.goalProgress.gapToTarget;
+
+  if (annualTarget <= 0) {
+    return "meta anual não configurada";
+  }
+
+  if (gap <= 0) {
+    const surplus = Math.max(annualProjection - annualTarget, 0);
+    if (surplus > 0) {
+      return `meta anual superada em ${formatCurrencyBRL(surplus)}`;
+    }
+    return "meta anual no limite projetado";
+  }
+
+  return `faltam ${formatCurrencyBRL(gap)} para a meta anual`;
+}
+
+function normalizedMomDropPercent(data: DashboardPayload, pace: MonthlyPaceContext): number | null {
+  if (pace.projectedVsPreviousPercent !== null) return pace.projectedVsPreviousPercent;
+  return data.kpis.momGrowth;
+}
+
+function computeRiskScore(
+  data: DashboardPayload,
+  pace: MonthlyPaceContext,
+  goalContext?: DailyInsightGoalContext | null,
+): number {
   let score = 0;
+  const enforceMonthDropSignals = !pace.isCurrentContextMonth || !pace.isEarlyMonth;
 
-  const criticalAlerts = data.alerts.filter((alert) => alert.severity === "critical").length;
-  const warningAlerts = data.alerts.filter((alert) => alert.severity === "warning").length;
+  const alertsScore = data.alerts.reduce((acc, alert) => {
+    if (alert.code === "MOM_SHARP_DROP" && pace.isCurrentContextMonth) {
+      if (!enforceMonthDropSignals) return acc;
+      if (pace.paceDeltaPercent !== null && pace.paceDeltaPercent >= -12) return acc;
+    }
+    if (alert.severity === "critical") return acc + 2;
+    if (alert.severity === "warning") return acc + 1;
+    return acc;
+  }, 0);
 
-  score += criticalAlerts * 2;
-  score += warningAlerts;
+  score += alertsScore;
 
   if (data.insights.anomalyDetected) score += 2;
-  if ((data.kpis.momGrowth ?? 0) <= -20) score += 2;
-  if ((data.kpis.momGrowth ?? 0) < 0) score += 1;
-  if ((data.kpis.yoyGrowth ?? 0) < 0) score += 1;
+  const momReference = normalizedMomDropPercent(data, pace);
+  if (enforceMonthDropSignals) {
+    if ((momReference ?? 0) <= -20) score += 2;
+    if ((momReference ?? 0) < 0) score += 1;
+  }
+  if ((data.kpis.yoyGrowth ?? 0) < 0 && (!pace.isCurrentContextMonth || !pace.isEarlyMonth)) score += 1;
   if (data.insights.volatilityPercent >= 35) score += 2;
   if (data.insights.forecastConfidence < 55) score += 1;
-  if (!data.goalProgress.onTrack) score += 1;
+  if (!data.goalProgress.onTrack) {
+    if (pace.isCurrentContextMonth && pace.isEarlyMonth && (momReference ?? 0) > -8) {
+      score += 0.5;
+    } else {
+      score += 1;
+    }
+  }
+  if (
+    enforceMonthDropSignals &&
+    pace.isCurrentContextMonth &&
+    pace.paceDeltaPercent !== null &&
+    pace.paceDeltaPercent <= -20 &&
+    goalContext?.monthlyIncomeTarget !== null
+  ) {
+    score += 1.5;
+  }
 
   return score;
 }
@@ -63,23 +306,57 @@ function radarFromRiskScore(score: number): DailyInsightRadarStatus {
   return "VERDE";
 }
 
-function buildActionList(data: DashboardPayload, year: number): DailyInsightAction[] {
+function buildActionList(
+  data: DashboardPayload,
+  analysisMonth: number,
+  pace: MonthlyPaceContext,
+): DailyInsightAction[] {
   const actions: DailyInsightAction[] = [];
   const plannedAporte = Number(process.env.FINANCEFLOW_DAILY_PLANNED_APORTE ?? 1000);
   const safeAporte = Number.isFinite(plannedAporte) && plannedAporte > 0 ? plannedAporte : 1000;
-  const monthNow = monthIndexNow(year);
-  const monthsRemaining = Math.max(1, 12 - monthNow + 1);
+  const monthsRemaining = Math.max(1, 12 - analysisMonth + 1);
   const requiredPerMonth = data.goalProgress.gapToTarget / monthsRemaining;
+  const momReference = normalizedMomDropPercent(data, pace);
 
   if (!data.goalProgress.onTrack && data.goalProgress.gapToTarget > 0) {
+    const relaxedEarlyMonth = pace.isCurrentContextMonth && pace.isEarlyMonth && (momReference ?? 0) > -10;
     actions.push({
       id: "run-rate-recovery",
-      title: "Recuperar run-rate mensal",
-      rationale:
-        "A projeção anual está abaixo da meta, então o ajuste de ritmo precisa acontecer já no mês atual.",
-      expectedImpact: `Elevar média mensal para ~${formatCurrencyBRL(requiredPerMonth)} até dezembro.`,
-      priority: "high",
+      title: relaxedEarlyMonth ? "Consolidar ritmo diário para fechar o mês no alvo" : "Recuperar run-rate mensal",
+      rationale: relaxedEarlyMonth
+        ? "Início de mês tende a distorcer MoM. O foco deve ser manter cadência diária acima do ritmo de referência."
+        : "A projeção anual está abaixo da meta, então o ajuste de ritmo precisa acontecer já no mês atual.",
+      expectedImpact: relaxedEarlyMonth
+        ? `Sustentar ritmo para convergir a ~${formatCurrencyBRL(requiredPerMonth)} por mês até dezembro.`
+        : `Elevar média mensal para ~${formatCurrencyBRL(requiredPerMonth)} até dezembro.`,
+      priority: relaxedEarlyMonth ? "medium" : "high",
     });
+  }
+
+  if (pace.isCurrentContextMonth && pace.paceDeltaPercent !== null && !pace.isEarlyMonth) {
+    if (pace.paceDeltaPercent <= -12) {
+      actions.push({
+        id: "recover-daily-pace",
+        title: "Acelerar ritmo diário para reduzir desvio do mês",
+        rationale:
+          "No ponto atual do mês, o realizado está abaixo do ritmo necessário para igualar o fechamento anterior.",
+        expectedImpact: `Desvio atual de ritmo: ${formatPercentage(
+          pace.paceDeltaPercent,
+        )} vs referência de ${monthLabel(analysisMonth > 1 ? analysisMonth - 1 : 12)}.`,
+        priority: "high",
+      });
+    } else if (pace.paceDeltaPercent >= 8) {
+      actions.push({
+        id: "lock-pace-gain",
+        title: "Preservar ritmo acima da referência mensal",
+        rationale:
+          "A carteira está rodando acima do mês anterior no mesmo ponto do calendário útil.",
+        expectedImpact: `Ritmo atual ${formatPercentage(
+          pace.paceDeltaPercent,
+        )} acima do esperado no mesmo ponto do mês.`,
+        priority: "low",
+      });
+    }
   }
 
   const bestSource = mapBestSourceToLabel(data.insights.bestSource);
@@ -106,22 +383,28 @@ function buildActionList(data: DashboardPayload, year: number): DailyInsightActi
     });
   }
 
-  if ((data.kpis.momGrowth ?? 0) < 0 || data.insights.anomalyDetected) {
+  const shouldInvestigateDrop =
+    data.insights.anomalyDetected ||
+    ((momReference ?? 0) < -12 && (!pace.isCurrentContextMonth || !pace.isEarlyMonth));
+
+  if (shouldInvestigateDrop) {
     actions.push({
       id: "investigate-drop",
       title: "Investigar queda mensal antes de novo risco",
       rationale:
         "Houve deterioração recente e é melhor atacar causa (fluxo, sazonalidade ou erro de lançamento) antes de escalar exposição.",
       expectedImpact: "Redução de ruído e melhor assertividade dos próximos aportes.",
-      priority: "high",
+      priority: (momReference ?? 0) <= -20 ? "high" : "medium",
     });
   }
 
   return actions.slice(0, 4);
 }
 
-function buildRisks(data: DashboardPayload): DailyInsightReport["risks"] {
+function buildRisks(data: DashboardPayload, pace: MonthlyPaceContext): DailyInsightReport["risks"] {
   const risks: DailyInsightReport["risks"] = [];
+  const momReference = normalizedMomDropPercent(data, pace);
+  const enforceMonthDropSignals = !pace.isCurrentContextMonth || !pace.isEarlyMonth;
 
   if (data.insights.anomalyDetected) {
     risks.push({
@@ -144,14 +427,30 @@ function buildRisks(data: DashboardPayload): DailyInsightReport["risks"] {
     });
   }
 
-  if ((data.kpis.momGrowth ?? 0) < -15) {
+  if ((momReference ?? 0) < -15 && enforceMonthDropSignals) {
     risks.push({
       id: "mom-drop",
       title: "Queda forte mês contra mês",
       level: "high",
       description:
-        "O ritmo de renda passiva caiu de forma relevante versus o período imediatamente anterior.",
-      trigger: `MoM ${formatPercentage(data.kpis.momGrowth ?? 0)}`,
+        "A projeção de fechamento do mês está abaixo do mês anterior de forma relevante.",
+      trigger: `Queda estimada ${formatPercentage(momReference ?? 0)} vs mês anterior`,
+    });
+  }
+
+  if (
+    pace.isCurrentContextMonth &&
+    pace.paceDeltaPercent !== null &&
+    pace.paceDeltaPercent <= -12 &&
+    !pace.isEarlyMonth
+  ) {
+    risks.push({
+      id: "pace-below-reference",
+      title: "Ritmo diário abaixo da referência",
+      level: pace.paceDeltaPercent <= -20 ? "high" : "medium",
+      description:
+        "No mesmo ponto de dias úteis, o realizado está abaixo da referência do mês anterior.",
+      trigger: `Ritmo ${formatPercentage(pace.paceDeltaPercent)} vs referência diária`,
     });
   }
 
@@ -163,6 +462,17 @@ function buildRisks(data: DashboardPayload): DailyInsightReport["risks"] {
       description:
         "Com o ritmo atual, a meta anual exige aceleração dos próximos meses.",
       trigger: `Gap atual ${formatCurrencyBRL(data.goalProgress.gapToTarget)}`,
+    });
+  }
+
+  if (pace.isCurrentContextMonth && pace.isEarlyMonth && (momReference ?? 0) > -12) {
+    risks.push({
+      id: "early-month-noise",
+      title: "Leitura parcial de início de mês",
+      level: "low",
+      description:
+        "No começo do mês a comparação MoM tende a ficar distorcida; o foco deve ser ritmo por dia útil.",
+      trigger: `Parcial de ${pace.elapsedBusinessDays ?? 0} de ${pace.totalBusinessDays ?? 0} dias úteis`,
     });
   }
 
@@ -179,20 +489,47 @@ function buildRisks(data: DashboardPayload): DailyInsightReport["risks"] {
   return risks.slice(0, 4);
 }
 
-function buildEvidence(data: DashboardPayload, year: number): DailyInsightReport["evidence"] {
-  const monthNow = monthIndexNow(year);
+function buildEvidence(
+  data: DashboardPayload,
+  analysisMonth: number,
+  pace: MonthlyPaceContext,
+): DailyInsightReport["evidence"] {
+  const momReference = normalizedMomDropPercent(data, pace);
+  const projectedValue =
+    pace.projectedFullMonth !== null ? pace.projectedFullMonth : data.kpis.totalPassiveIncomeCurrentMonth;
+  const vsPreviousLabel = monthLabel(analysisMonth > 1 ? analysisMonth - 1 : 12);
   return [
     {
       id: "ev-current-month-income",
-      label: `Renda de ${monthLabel(monthNow)}`,
+      label: `Renda de ${monthLabel(analysisMonth)}`,
       value: formatCurrencyBRL(data.kpis.totalPassiveIncomeCurrentMonth),
       context: "Renda passiva mensal atual",
     },
     {
       id: "ev-mom",
-      label: "Crescimento MoM",
-      value: formatPercentage(data.kpis.momGrowth ?? 0),
-      context: "Variação versus mês anterior",
+      label: "Projeção vs mês anterior",
+      value: formatPercentage(momReference ?? 0),
+      context: pace.isCurrentContextMonth
+        ? `Com base no ritmo atual (${monthLabel(analysisMonth)} projetado vs ${vsPreviousLabel})`
+        : "Variação versus mês anterior",
+    },
+    {
+      id: "ev-month-pace",
+      label: "Ritmo por dia útil",
+      value:
+        pace.paceDeltaPercent !== null
+          ? formatPercentage(pace.paceDeltaPercent)
+          : "Sem base comparável",
+      context:
+        pace.elapsedBusinessDays !== null && pace.totalBusinessDays !== null
+          ? `${pace.elapsedBusinessDays}/${pace.totalBusinessDays} dias úteis corridos no mês`
+          : "Comparativo de ritmo disponível somente no mês corrente",
+    },
+    {
+      id: "ev-projected-close",
+      label: "Fechamento estimado do mês",
+      value: formatCurrencyBRL(projectedValue),
+      context: "Estimado pelo ritmo atual de lançamentos",
     },
     {
       id: "ev-yoy",
@@ -218,15 +555,18 @@ function buildEvidence(data: DashboardPayload, year: number): DailyInsightReport
       value: mapBestSourceToLabel(data.insights.bestSource),
       context: "Fonte líder no período recente",
     },
-  ];
+  ].slice(0, 6);
 }
 
 export function buildDailyInsightReport(
   data: DashboardPayload,
   year: number,
+  analysisMonth: number,
   runDate: string,
+  goalContext?: DailyInsightGoalContext | null,
 ): DailyInsightReport {
-  const riskScore = computeRiskScore(data);
+  const pace = resolveMonthlyPaceContext(data, year, analysisMonth, runDate);
+  const riskScore = computeRiskScore(data, pace, goalContext);
   const radarStatus = radarFromRiskScore(riskScore);
   const alertPenalty = data.alerts.length * 3;
   const riskPenalty = riskScore * 4;
@@ -238,20 +578,36 @@ export function buildDailyInsightReport(
 
   const headline =
     radarStatus === "VERDE"
-      ? "Carteira com direção estável e espaço para otimização fina"
+      ? pace.isCurrentContextMonth && pace.isEarlyMonth
+        ? "Carteira em ritmo saudável para o estágio atual do mês"
+        : "Carteira com direção estável e espaço para otimização fina"
       : radarStatus === "AMARELO"
-        ? "Carteira em atenção: ajustes táticos podem evitar perda de ritmo"
+        ? pace.isCurrentContextMonth
+          ? "Carteira em atenção: ritmo do mês pede ajuste tático"
+          : "Carteira em atenção: ajustes táticos podem evitar perda de ritmo"
         : "Carteira em alerta: ação corretiva imediata recomendada";
 
-  const summary =
-    `Resumo diário ${runDate}: renda mensal em ${formatCurrencyBRL(
-      data.kpis.totalPassiveIncomeCurrentMonth,
-    )}, projeção anual em ${formatCurrencyBRL(data.kpis.annualProjection)} e gap de ${formatCurrencyBRL(
-      data.goalProgress.gapToTarget,
-    )} para a meta. Melhor fonte atual: ${mapBestSourceToLabel(data.insights.bestSource)}.`;
+  const vsPrevReference =
+    pace.projectedVsPreviousPercent !== null ? pace.projectedVsPreviousPercent : data.kpis.momGrowth ?? 0;
+  const paceSnippet =
+    pace.isCurrentContextMonth && pace.elapsedBusinessDays !== null && pace.totalBusinessDays !== null
+      ? `ritmo de ${pace.elapsedBusinessDays}/${pace.totalBusinessDays} dias úteis, projeção mensal em ${formatCurrencyBRL(
+          pace.projectedFullMonth ?? data.kpis.totalPassiveIncomeCurrentMonth,
+        )} (${formatPercentage(vsPrevReference)} vs mês anterior)`
+      : `renda do mês em ${formatCurrencyBRL(data.kpis.totalPassiveIncomeCurrentMonth)} (${formatPercentage(
+          data.kpis.momGrowth ?? 0,
+        )} vs mês anterior)`;
 
+  const summary =
+    `Resumo diário ${runDate}: ${paceSnippet}, projeção anual em ${formatCurrencyBRL(
+      data.kpis.annualProjection,
+    )} e ${buildGoalContextSummary(data, goalContext)}. Melhor fonte atual: ${mapBestSourceToLabel(
+      data.insights.bestSource,
+    )}.`;
+
+  const actions = buildActionList(data, analysisMonth, pace);
   const priorityAction =
-    buildActionList(data, year)[0]?.title ??
+    actions[0]?.title ??
     "Manter disciplina de lançamento e revisar tendência no próximo fechamento.";
 
   return {
@@ -260,14 +616,16 @@ export function buildDailyInsightReport(
     generatedAt: new Date().toISOString(),
     generatedBy: "rule",
     model: null,
+    goalContext: goalContext ?? undefined,
     radarStatus,
     confidencePercent,
     headline,
     summary,
     priorityAction,
-    actions: buildActionList(data, year),
-    risks: buildRisks(data),
-    evidence: buildEvidence(data, year),
+    actions,
+    risks: buildRisks(data, pace),
+    evidence: buildEvidence(data, analysisMonth, pace),
+    dataSignature: buildDailyInsightDataSignature(data, goalContext),
   };
 }
 

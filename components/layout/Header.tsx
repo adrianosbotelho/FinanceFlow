@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { YearFilter } from "../ui/YearFilter";
+import { ProfessionalAlertsBadge } from "./ProfessionalAlertsBadge";
 
 export function Header() {
   return (
@@ -16,10 +17,10 @@ export function Header() {
         </div>
       </div>
       <div className="flex items-center gap-3">
-        <button className="hidden h-9 w-9 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-xs text-slate-400 hover:bg-slate-800 md:inline-flex">
-          •
-        </button>
         <Suspense fallback={<div className="h-8 w-24 rounded bg-slate-800" />}>
+          <ProfessionalAlertsBadge />
+        </Suspense>
+        <Suspense fallback={<div className="h-8 w-44 rounded bg-slate-800" />}>
           <YearFilter />
         </Suspense>
         <div className="flex h-8 w-8 items-center justify-center rounded-full border border-accent/40 bg-accent/10 text-xs font-semibold text-accent">
