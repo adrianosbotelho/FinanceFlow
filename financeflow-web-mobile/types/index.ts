@@ -54,5 +54,8 @@ export interface GoalRow {
   year: number;
   month: number | null;
   target: number;
+  current_value: number;
+  progress_pct: number | null;
+  gap_value: number | null;
   type: "monthly" | "annual";
 }

@@ -15,6 +15,19 @@ async function loadGoals(year: number, month: number, base: string, cookieHeader
   return res.json();
 }
 
+function formatProgress(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return "-";
+  return `${value.toFixed(1)}%`;
+}
+
+function progressTone(progress: number | null): string {
+  if (progress === null || Number.isNaN(progress)) return "text-slate-300";
+  if (progress >= 100) return "text-emerald-300";
+  if (progress >= 70) return "text-cyan-300";
+  if (progress >= 40) return "text-amber-300";
+  return "text-rose-300";
+}
+
 export default async function GoalsPage({ searchParams }: { searchParams?: { year?: string } }) {
   const envReady = hasSupabaseServerEnv();
   if (!envReady) {
@@ -55,8 +68,20 @@ export default async function GoalsPage({ searchParams }: { searchParams?: { yea
           ) : (
             monthly.map((g) => (
               <div key={`m-${g.investment_id}`} className="rounded-lg border border-slate-700 p-3">
-                <p className="font-semibold text-slate-100">{g.investment_label}</p>
-                <p className="text-cyan-300">Meta: {formatCurrency(g.target)}</p>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-100">{g.investment_label}</p>
+                    <p className="text-cyan-300">Meta: {formatCurrency(g.target)}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-xs text-slate-400">Atual</p>
+                    <p className="font-semibold text-slate-100">{formatCurrency(g.current_value)}</p>
+                    <p className={`text-xs font-semibold ${progressTone(g.progress_pct)}`}>
+                      {formatProgress(g.progress_pct)} atingido
+                    </p>
+                    <p className="text-[11px] text-slate-500">Gap: {formatCurrency(g.gap_value)}</p>
+                  </div>
+                </div>
               </div>
             ))
           )}
@@ -71,8 +96,20 @@ export default async function GoalsPage({ searchParams }: { searchParams?: { yea
           ) : (
             annual.map((g) => (
               <div key={`a-${g.investment_id}`} className="rounded-lg border border-slate-700 p-3">
-                <p className="font-semibold text-slate-100">{g.investment_label}</p>
-                <p className="text-cyan-300">Meta anual: {formatCurrency(g.target)}</p>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-100">{g.investment_label}</p>
+                    <p className="text-cyan-300">Meta anual: {formatCurrency(g.target)}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-xs text-slate-400">Atual</p>
+                    <p className="font-semibold text-slate-100">{formatCurrency(g.current_value)}</p>
+                    <p className={`text-xs font-semibold ${progressTone(g.progress_pct)}`}>
+                      {formatProgress(g.progress_pct)} atingido
+                    </p>
+                    <p className="text-[11px] text-slate-500">Gap: {formatCurrency(g.gap_value)}</p>
+                  </div>
+                </div>
               </div>
             ))
           )}
