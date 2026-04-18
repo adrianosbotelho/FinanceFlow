@@ -26,12 +26,29 @@ function formatSignedCurrency(value: number | null | undefined): string {
   return `${value > 0 ? "+" : "-"}${abs}`;
 }
 
+function deriveMomDelta(
+  currentValue: number,
+  momPercent: number | null | undefined,
+): number | null {
+  if (momPercent === null || momPercent === undefined || Number.isNaN(momPercent)) return null;
+  if (momPercent <= -100) return null;
+  const previousValue = currentValue / (1 + momPercent / 100);
+  if (!Number.isFinite(previousValue)) return null;
+  return currentValue - previousValue;
+}
+
 export function KPIAdvancedGrid({ kpis }: KPIAdvancedGridProps) {
   const marketTone = toneClass(kpis.capitalGainPct);
   const profitTone = toneClass(kpis.totalProfit);
-  const returnTone = toneClass(kpis.totalProfitPct);
+  const incomeVariationTone = toneClass(kpis.momGrowth);
+  const returnTone = toneClass(kpis.portfolioYield);
   const itauTone = toneClass(kpis.cdbItauMomGrowth);
   const santanderTone = toneClass(kpis.cdbSantanderMomGrowth);
+  const monthlyIncomeDelta = deriveMomDelta(
+    kpis.totalPassiveIncomeCurrentMonth,
+    kpis.momGrowth,
+  );
+  const rolling12MonthlyAverage = kpis.rolling12Months / 12;
 
   return (
     <section className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-6">
@@ -107,28 +124,37 @@ export function KPIAdvancedGrid({ kpis }: KPIAdvancedGridProps) {
         <p className="mt-2 text-3xl font-extrabold text-slate-50">
           {formatCurrencyBRL(kpis.rolling12Months)}
         </p>
-        <p className="mt-2 text-xs text-slate-400">Total</p>
+        <p className="mt-2 text-xs text-slate-400">No ano (YTD)</p>
         <p className="text-lg font-semibold text-slate-200">
           {formatCurrencyBRL(kpis.ytdPassiveIncome)}
+        </p>
+        <p className="mt-1 text-xs text-slate-400">Média mensal (12M)</p>
+        <p className="text-sm font-semibold text-slate-300">
+          {formatCurrencyBRL(rolling12MonthlyAverage)}
         </p>
       </article>
 
       <article className="rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm xl:col-span-3">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <p className="text-sm font-semibold text-slate-200">Variação</p>
-            <p className={`mt-2 text-3xl font-extrabold ${marketTone}`}>
-              {formatPercentage(kpis.capitalGainPct)} {arrow(kpis.capitalGainPct)}
+            <p className="text-sm font-semibold text-slate-200">Variação da renda (M/M)</p>
+            <p className={`mt-2 text-3xl font-extrabold ${incomeVariationTone}`}>
+              {formatPercentage(kpis.momGrowth)} {arrow(kpis.momGrowth)}
             </p>
-            <p className={`text-lg font-semibold ${toneClass(kpis.capitalGain)}`}>
-              {formatCurrencyBRL(kpis.capitalGain)}
+            <p className={`text-lg font-semibold ${toneClass(monthlyIncomeDelta)}`}>
+              Δ R$: {formatSignedCurrency(monthlyIncomeDelta)}
             </p>
+            <p className="mt-1 text-xs text-slate-400">Comparação com mês anterior</p>
           </div>
           <div>
-            <p className="text-sm font-semibold text-slate-200">Rentabilidade</p>
+            <p className="text-sm font-semibold text-slate-200">Rentabilidade (12M)</p>
             <p className={`mt-2 text-3xl font-extrabold ${returnTone}`}>
-              {formatPercentage(kpis.totalProfitPct)} {arrow(kpis.totalProfitPct)}
+              {formatPercentage(kpis.portfolioYield)} {arrow(kpis.portfolioYield)}
             </p>
+            <p className="text-lg font-semibold text-slate-200">
+              Base: {formatCurrencyBRL(kpis.investedCapital)}
+            </p>
+            <p className="mt-1 text-xs text-slate-400">Proventos 12M / capital investido</p>
           </div>
         </div>
       </article>
