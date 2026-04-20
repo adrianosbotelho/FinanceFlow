@@ -1128,12 +1128,37 @@ export function InsightsPageClient({
             <h4 className="text-sm font-semibold text-slate-100">
               Evolução diária do diagnóstico (mês atual)
             </h4>
+            <div className="mt-2 rounded-md border border-slate-700/70 bg-slate-900/40 p-3 text-[11px] text-slate-300">
+              <p className="font-semibold text-slate-100">Como ler este painel</p>
+              <div className="mt-2 grid gap-2 xl:grid-cols-2">
+                <p>
+                  <span className="font-semibold text-cyan-300">Hit rate (%):</span> taxa de acerto
+                  dos diagnósticos recentes. Quanto maior, melhor.
+                </p>
+                <p>
+                  <span className="font-semibold text-amber-300">Edge acumulado (R$):</span> saldo
+                  financeiro acumulado das recomendações. Positivo = gerou valor.
+                </p>
+                <p>
+                  <span className="font-semibold text-rose-300">Risk score (0-100):</span> nível de
+                  estresse da carteira. 0-39 controlado, 40-69 atenção, 70-100 estressado.
+                </p>
+                <p>
+                  <span className="font-semibold text-slate-200">Headline:</span> frase-resumo do dia
+                  para orientar ação rápida.
+                </p>
+              </div>
+            </div>
             {diagnosisHistorySeries.length === 0 ? (
               <p className="mt-3 text-xs text-slate-400">
                 Sem histórico diário disponível para este mês.
               </p>
             ) : (
               <>
+                <p className="mt-3 text-[11px] text-slate-400">
+                  Eixo esquerdo: Hit rate (%). Eixo direito: Risk score (0-100). O Edge acumulado (R$)
+                  aparece no tooltip e na tabela abaixo.
+                </p>
                 <div className="mt-3 h-56 w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
@@ -1164,9 +1189,9 @@ export function InsightsPageClient({
                         labelStyle={{ color: "#e2e8f0", fontWeight: 600 }}
                         formatter={(value: number | string, key: string) => {
                           const numeric = Number(value ?? 0);
-                          if (key === "hitRate") return [`${numeric.toFixed(1)}%`, "Hit rate"];
-                          if (key === "risk") return [numeric.toFixed(1), "Risk score"];
-                          return [signedCurrency(numeric), "Edge acumulado"];
+                          if (key === "hitRate") return [`${numeric.toFixed(1)}%`, "Hit rate (%)"];
+                          if (key === "risk") return [numeric.toFixed(1), "Risk score (0-100)"];
+                          return [signedCurrency(numeric), "Edge acumulado (R$)"];
                         }}
                       />
                       <Legend />
@@ -1174,7 +1199,7 @@ export function InsightsPageClient({
                         yAxisId="left"
                         type="monotone"
                         dataKey="hitRate"
-                        name="Hit rate"
+                        name="Hit rate (%)"
                         stroke="#22d3ee"
                         strokeWidth={2}
                         dot={{ r: 2 }}
@@ -1183,7 +1208,7 @@ export function InsightsPageClient({
                         yAxisId="left"
                         type="monotone"
                         dataKey="edge"
-                        name="Edge acumulado"
+                        name="Edge acumulado (R$)"
                         stroke="#f59e0b"
                         strokeWidth={2}
                         dot={{ r: 2 }}
@@ -1192,7 +1217,7 @@ export function InsightsPageClient({
                         yAxisId="right"
                         type="monotone"
                         dataKey="risk"
-                        name="Risk score"
+                        name="Risk score (0-100)"
                         stroke="#f43f5e"
                         strokeWidth={2}
                         dot={{ r: 2 }}
@@ -1205,9 +1230,9 @@ export function InsightsPageClient({
                     <thead className="text-slate-400">
                       <tr>
                         <th className="py-2">Data</th>
-                        <th className="py-2">Hit rate</th>
-                        <th className="py-2">Edge</th>
-                        <th className="py-2">Risco</th>
+                        <th className="py-2">Hit rate (%)</th>
+                        <th className="py-2">Edge (R$)</th>
+                        <th className="py-2">Risco (0-100)</th>
                         <th className="py-2">Headline</th>
                       </tr>
                     </thead>
