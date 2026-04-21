@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AnnualInvestmentGoal,
   Investment,
+  InvestmentCashEvent,
   MonthlyInvestmentGoal,
   MonthlyPosition,
   MonthlyReturn,
@@ -52,8 +53,18 @@ type AnnualGoalChartPoint = {
   month: number;
   label: string;
   realized: number | null;
-  target: number;
-  gap: number | null;
+  annualGap: number | null;
+};
+
+type AnnualGoalEtaRow = {
+  row: AnnualGoalRow;
+  avgMonthlyAporte: number;
+  avgMonthlyIncome: number;
+  projectedMonthlyGrowth: number;
+  monthsToTarget: number | null;
+  projectedMonth: number | null;
+  projectedYear: number | null;
+  status: "Atingida" | "No ritmo" | "Após o ano" | "Sem ritmo";
 };
 
 function countBusinessDaysRemainingInMonth(referenceDate: Date): number {
@@ -74,6 +85,7 @@ export function GoalsPageClient() {
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [returns, setReturns] = useState<MonthlyReturn[]>([]);
   const [positions, setPositions] = useState<MonthlyPosition[]>([]);
+  const [cashEvents, setCashEvents] = useState<InvestmentCashEvent[]>([]);
   const [goals, setGoals] = useState<MonthlyInvestmentGoal[]>([]);
   const [annualGoals, setAnnualGoals] = useState<AnnualInvestmentGoal[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -96,10 +108,11 @@ export function GoalsPageClient() {
       try {
         setLoading(true);
         setError(null);
-        const [invRes, retRes, posRes, goalRes, annualGoalRes] = await Promise.all([
+        const [invRes, retRes, posRes, cashRes, goalRes, annualGoalRes] = await Promise.all([
           fetch("/api/investments", { cache: "no-store" }),
           fetch(`/api/returns?year=${currentYear}`, { cache: "no-store" }),
           fetch(`/api/monthly-positions?year=${currentYear}`, { cache: "no-store" }),
+          fetch(`/api/investment-cash-events?year=${currentYear}`, { cache: "no-store" }),
           fetch(
             `/api/investment-goals-monthly?year=${currentYear}&month=${currentMonth}`,
             { cache: "no-store" },
@@ -108,15 +121,16 @@ export function GoalsPageClient() {
             cache: "no-store",
           }),
         ]);
-        if (!invRes.ok || !retRes.ok || !posRes.ok || !goalRes.ok || !annualGoalRes.ok) {
-          const failed = [invRes, retRes, posRes, goalRes, annualGoalRes].find((r) => !r.ok);
+        if (!invRes.ok || !retRes.ok || !posRes.ok || !cashRes.ok || !goalRes.ok || !annualGoalRes.ok) {
+          const failed = [invRes, retRes, posRes, cashRes, goalRes, annualGoalRes].find((r) => !r.ok);
           const msg = failed ? await failed.json().catch(() => null) : null;
           throw new Error(msg?.error ?? "Erro ao carregar metas.");
         }
-        const [invData, retData, posData, goalData, annualGoalData] = await Promise.all([
+        const [invData, retData, posData, eventsData, goalData, annualGoalData] = await Promise.all([
           invRes.json(),
           retRes.json(),
           posRes.json(),
+          cashRes.json(),
           goalRes.json(),
           annualGoalRes.json(),
         ]);
@@ -124,6 +138,7 @@ export function GoalsPageClient() {
         setInvestments(invList);
         setReturns(Array.isArray(retData) ? retData : []);
         setPositions(Array.isArray(posData) ? posData : []);
+        setCashEvents(Array.isArray(eventsData) ? eventsData : []);
         setGoals(Array.isArray(goalData) ? goalData : []);
         setAnnualGoals(Array.isArray(annualGoalData) ? annualGoalData : []);
         const cdbList = invList.filter((i) => i.type === "CDB");
@@ -219,15 +234,13 @@ export function GoalsPageClient() {
           month <= currentMonth
             ? monthlyPositionValue ?? Math.max(0, estimatedMonthValue)
             : null;
-        const monthlyTarget = row.target > 0 ? (row.target * month) / 12 : 0;
-        const gapValue =
-          realizedValue === null ? null : Number((realizedValue - monthlyTarget).toFixed(2));
+        const annualGapValue =
+          realizedValue === null ? null : Number(Math.max(row.target - realizedValue, 0).toFixed(2));
         return {
           month,
           label: monthLabel(month),
           realized: realizedValue,
-          target: monthlyTarget,
-          gap: gapValue,
+          annualGap: annualGapValue,
         };
       });
       const ratio = row.target > 0 ? row.realized / row.target : 0;
@@ -246,6 +259,99 @@ export function GoalsPageClient() {
       };
     });
   }, [annualGoalRows, currentMonth, currentYear, positions, returns]);
+
+  const annualEtaRows = useMemo<AnnualGoalEtaRow[]>(() => {
+    const monthWindowStart = Math.max(1, currentMonth - 2);
+    const monthsWindow = Array.from(
+      { length: currentMonth - monthWindowStart + 1 },
+      (_, idx) => monthWindowStart + idx,
+    );
+
+    function addMonths(baseYear: number, baseMonth: number, monthsToAdd: number) {
+      const date = new Date(baseYear, baseMonth - 1 + monthsToAdd, 1);
+      return {
+        year: date.getFullYear(),
+        month: date.getMonth() + 1,
+      };
+    }
+
+    return annualGoalRows.map((row) => {
+      const avgMonthlyAporte =
+        monthsWindow.length > 0
+          ? monthsWindow.reduce((acc, month) => {
+              const totalAporte = cashEvents
+                .filter(
+                  (event) =>
+                    event.investment_id === row.investment.id &&
+                    Number(event.year) === currentYear &&
+                    Number(event.month) === month &&
+                    event.type === "APORTE",
+                )
+                .reduce((sum, event) => sum + Number(event.amount ?? 0), 0);
+              return acc + totalAporte;
+            }, 0) / monthsWindow.length
+          : 0;
+
+      const avgMonthlyIncome =
+        monthsWindow.length > 0
+          ? monthsWindow.reduce((acc, month) => {
+              const monthIncome = returns
+                .filter(
+                  (ret) =>
+                    ret.investment_id === row.investment.id &&
+                    Number(ret.year) === currentYear &&
+                    Number(ret.month) === month,
+                )
+                .reduce((sum, ret) => sum + Number(ret.income_value ?? 0), 0);
+              return acc + monthIncome;
+            }, 0) / monthsWindow.length
+          : 0;
+
+      const projectedMonthlyGrowth = avgMonthlyAporte + avgMonthlyIncome;
+      const gap = Math.max(row.target - row.realized, 0);
+
+      if (gap <= 0) {
+        return {
+          row,
+          avgMonthlyAporte,
+          avgMonthlyIncome,
+          projectedMonthlyGrowth,
+          monthsToTarget: 0,
+          projectedMonth: currentMonth,
+          projectedYear: currentYear,
+          status: "Atingida",
+        };
+      }
+
+      if (projectedMonthlyGrowth <= 0) {
+        return {
+          row,
+          avgMonthlyAporte,
+          avgMonthlyIncome,
+          projectedMonthlyGrowth,
+          monthsToTarget: null,
+          projectedMonth: null,
+          projectedYear: null,
+          status: "Sem ritmo",
+        };
+      }
+
+      const monthsToTarget = Math.ceil(gap / projectedMonthlyGrowth);
+      const projected = addMonths(currentYear, currentMonth, monthsToTarget);
+      const status = projected.year > currentYear ? "Após o ano" : "No ritmo";
+
+      return {
+        row,
+        avgMonthlyAporte,
+        avgMonthlyIncome,
+        projectedMonthlyGrowth,
+        monthsToTarget,
+        projectedMonth: projected.month,
+        projectedYear: projected.year,
+        status,
+      };
+    });
+  }, [annualGoalRows, cashEvents, currentMonth, currentYear, returns]);
 
   const cdbInvestments = useMemo(
     () => investments.filter((investment) => investment.type === "CDB"),
@@ -642,10 +748,10 @@ export function GoalsPageClient() {
 
       <section className="space-y-2">
         <h3 className="text-sm font-semibold text-slate-200">
-          Gap da meta anual por mês
+          Faltante para meta anual por mês
         </h3>
         <p className="text-xs text-slate-400">
-          Gap mensal = realizado acumulado - meta acumulada do mês (sem previsão futura).
+          Quanto ainda falta (R$) para atingir a meta anual em cada mês. Objetivo: chegar em R$ 0,00.
         </p>
         <div className="grid gap-4 xl:grid-cols-2">
           {loading ? (
@@ -715,8 +821,8 @@ export function GoalsPageClient() {
                         tickFormatter={formatCurrencyBRL}
                         width={110}
                         domain={[
-                          (dataMin: number) => Math.min(dataMin * 1.1, 0),
-                          (dataMax: number) => Math.max(dataMax * 1.1, 0),
+                          0,
+                          (dataMax: number) => Math.max(dataMax * 1.1, 1),
                         ]}
                       />
                       <ReferenceLine y={0} stroke="#64748b" strokeOpacity={0.8} />
@@ -742,22 +848,119 @@ export function GoalsPageClient() {
                           <span style={{ color: "#e2e8f0" }}>{String(value)}</span>
                         )}
                       />
-                      <Bar dataKey="gap" name="Gap" fill="#22c55e" legendType="circle">
+                      <Bar dataKey="annualGap" name="Faltante para meta anual" fill="#22c55e" legendType="circle">
                         {series.map((point) => (
                           <Cell
                             key={`gap-${row.investment.id}-${point.month}`}
                             fill={
-                              point.gap === null
+                              point.annualGap === null
                                 ? "#334155"
-                                : point.gap >= 0
+                                : point.annualGap === 0
                                   ? "#22c55e"
-                                  : "#f43f5e"
+                                  : point.annualGap <= row.target * 0.2
+                                    ? "#22d3ee"
+                                    : point.annualGap <= row.target * 0.5
+                                      ? "#f59e0b"
+                                      : "#f43f5e"
                             }
                           />
                         ))}
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
+                </div>
+              </article>
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold text-slate-200">
+          Prazo estimado para atingir meta anual (aporte + rendimento)
+        </h3>
+        <p className="text-xs text-slate-400">
+          Estimativa usando média dos últimos até 3 meses (até {monthNameFull(currentMonth)}): aporte mensal + rendimento mensal.
+        </p>
+        <div className="grid gap-4 xl:grid-cols-2">
+          {loading ? (
+            <div className="rounded-xl border border-slate-800 bg-surface/80 p-4 text-sm text-slate-400">
+              Carregando estimativas...
+            </div>
+          ) : annualEtaRows.length === 0 ? (
+            <div className="rounded-xl border border-slate-800 bg-surface/80 p-4 text-sm text-slate-400">
+              Sem metas anuais para estimar prazo.
+            </div>
+          ) : (
+            annualEtaRows.map((eta) => (
+              <article
+                key={`annual-eta-${eta.row.investment.id}`}
+                className="rounded-xl border border-slate-800 bg-surface/80 p-4"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs text-slate-400">{eta.row.investment.institution}</p>
+                    <h4 className="text-sm font-semibold text-slate-100">
+                      {eta.row.investment.name}
+                    </h4>
+                  </div>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                      eta.status === "Atingida"
+                        ? "bg-emerald-900/40 text-emerald-300"
+                        : eta.status === "No ritmo"
+                          ? "bg-cyan-900/40 text-cyan-300"
+                          : eta.status === "Após o ano"
+                            ? "bg-amber-900/40 text-amber-300"
+                            : "bg-rose-900/40 text-rose-300"
+                    }`}
+                  >
+                    {eta.status}
+                  </span>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <p className="text-slate-400">Gap atual</p>
+                    <p className="font-semibold text-amber-300">
+                      {formatCurrencyBRL(Math.max(eta.row.gap, 0))}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-slate-400">Crescimento mensal projetado</p>
+                    <p className="font-semibold text-emerald-300">
+                      {formatCurrencyBRL(eta.projectedMonthlyGrowth)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-slate-400">Aporte médio/mês</p>
+                    <p className="font-semibold text-cyan-300">
+                      {formatCurrencyBRL(eta.avgMonthlyAporte)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-slate-400">Rendimento médio/mês</p>
+                    <p className="font-semibold text-slate-100">
+                      {formatCurrencyBRL(eta.avgMonthlyIncome)}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 rounded-md border border-slate-700/70 bg-slate-900/30 p-2 text-xs">
+                  {eta.monthsToTarget === 0 ? (
+                    <p className="font-semibold text-emerald-300">Meta já atingida.</p>
+                  ) : eta.monthsToTarget === null ? (
+                    <p className="font-semibold text-rose-300">
+                      Sem projeção de alcance (aporte + rendimento médio ≤ 0).
+                    </p>
+                  ) : (
+                    <p className="font-semibold text-slate-100">
+                      Prazo estimado:{" "}
+                      <span className="text-cyan-300">{eta.monthsToTarget} mês(es)</span>{" "}
+                      • previsão em{" "}
+                      <span className="text-cyan-300">
+                        {monthLabel(eta.projectedMonth ?? currentMonth)}/{eta.projectedYear ?? currentYear}
+                      </span>
+                    </p>
+                  )}
                 </div>
               </article>
             ))
