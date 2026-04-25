@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "guard:boundary": "node scripts/boundary-guard.mjs",
     "smoke:api": "bash scripts/smoke-api.sh",
     "smoke:macos": "bash scripts/smoke-macos.sh",
     "release:check": "bash scripts/release-check.sh"

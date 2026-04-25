@@ -1,0 +1,65 @@
+name: Boundary Guard
+
+on:
+  pull_request:
+    paths:
+      - "app/**"
+      - "components/**"
+      - "lib/**"
+      - "macos-app/**"
+      - "supabase/**"
+      - "types/**"
+      - "scripts/**"
+      - "financeflow-web-mobile/**"
+      - ".github/workflows/boundary-guard.yml"
+      - ".github/workflows/web-mobile-*.yml"
+  push:
+    branches:
+      - main
+      - "codex/**"
+    paths:
+      - "app/**"
+      - "components/**"
+      - "lib/**"
+      - "macos-app/**"
+      - "supabase/**"
+      - "types/**"
+      - "scripts/**"
+      - "financeflow-web-mobile/**"
+      - ".github/workflows/boundary-guard.yml"
+      - ".github/workflows/web-mobile-*.yml"
+  workflow_dispatch:
+
+jobs:
+  scope-guard:
+    name: Scope Guard (desktop vs mobile)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Resolve git range
+        id: range
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "value=${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            echo "value=${{ github.event.before }}...${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run boundary guard
+        run: |
+          if [ -n "${{ steps.range.outputs.value }}" ]; then
+            node scripts/boundary-guard.mjs --scope auto --range "${{ steps.range.outputs.value }}"
+          else
+            node scripts/boundary-guard.mjs --scope auto
+          fi
