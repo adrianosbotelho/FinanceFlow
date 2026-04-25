@@ -16,11 +16,17 @@ jobs:
     env:
       REPO_ADMIN_TOKEN: ${{ secrets.REPO_ADMIN_TOKEN }}
     steps:
-      - name: Validate admin token
-        if: ${{ env.REPO_ADMIN_TOKEN == '' }}
+      - name: Validate admin token (manual run)
+        if: ${{ github.event_name == 'workflow_dispatch' && env.REPO_ADMIN_TOKEN == '' }}
         run: |
           echo "::error::Configure o secret REPO_ADMIN_TOKEN (PAT com permissão Administration: Read and write)."
           exit 1
+
+      - name: Skip on push when token is missing
+        if: ${{ github.event_name == 'push' && env.REPO_ADMIN_TOKEN == '' }}
+        run: |
+          echo "::warning::REPO_ADMIN_TOKEN ausente. Pulando aplicação automática da branch protection no push."
+          echo "::notice::Para aplicar as regras automaticamente, configure o secret REPO_ADMIN_TOKEN e rode workflow_dispatch."
 
       - name: Apply protection rules
         if: ${{ env.REPO_ADMIN_TOKEN != '' }}
