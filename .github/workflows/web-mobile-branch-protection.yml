@@ -1,6 +1,12 @@
 name: Web Mobile Branch Protection
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/web-mobile-branch-protection.yml"
+      - ".github/workflows/boundary-guard.yml"
   workflow_dispatch:
 
 jobs:
