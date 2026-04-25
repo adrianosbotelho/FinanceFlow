@@ -104,7 +104,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
   );
   const [investmentFilter, setInvestmentFilter] = useState<string>("all");
   const [sortField, setSortField] = useState<ReturnSortField>("year");
-  const [sortDirection, setSortDirection] = useState<ReturnSortDirection>("asc");
+  const [sortDirection, setSortDirection] = useState<ReturnSortDirection>("desc");
 
   const [page, setPage] = useState(1);
   const pageSize = 10;
