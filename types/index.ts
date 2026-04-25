@@ -17,6 +17,19 @@ export interface MonthlyReturn {
   income_value: number;
 }
 
+export interface MonthlyReturnRevision {
+  id: string;
+  monthly_return_id?: string | null;
+  investment_id: string;
+  year: number;
+  month: number;
+  previous_income_value?: number | null;
+  new_income_value: number;
+  delta_income_value: number;
+  action: "CREATE" | "UPDATE";
+  created_at?: string;
+}
+
 export interface InvestmentGoal {
   investment_id: string;
   monthly_target: number;

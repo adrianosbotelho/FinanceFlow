@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { supabase } from "../../../lib/supabase";
 import { isMonthClosed } from "../../../lib/monthly-closures";
+import { logMonthlyReturnRevision } from "../../../lib/monthly-return-revisions";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -30,9 +31,23 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const year = Number(body?.year);
   const month = Number(body?.month);
+  const investmentId = String(body?.investment_id ?? "");
+  const incomeValue = Number(body?.income_value);
   if (!Number.isFinite(year) || !Number.isFinite(month)) {
     return NextResponse.json(
       { error: "Ano e mês são obrigatórios." },
+      { status: 400 },
+    );
+  }
+  if (!investmentId) {
+    return NextResponse.json(
+      { error: "investment_id é obrigatório." },
+      { status: 400 },
+    );
+  }
+  if (!Number.isFinite(incomeValue) || incomeValue < 0) {
+    return NextResponse.json(
+      { error: "income_value inválido." },
       { status: 400 },
     );
   }
@@ -50,6 +65,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 
+  const { data: previousRow } = await supabase
+    .from("monthly_returns")
+    .select("id,income_value")
+    .eq("investment_id", investmentId)
+    .eq("year", year)
+    .eq("month", month)
+    .maybeSingle();
+
+  const previousValue = previousRow ? Number(previousRow.income_value ?? 0) : null;
+
   const { data, error } = await supabase
     .from("monthly_returns")
     .upsert(body, { onConflict: "investment_id,month,year" })
@@ -59,6 +84,21 @@ export async function POST(req: NextRequest) {
   if (error) {
     console.error(error);
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  const nextValue = Number(data.income_value ?? 0);
+  const action = previousRow ? "UPDATE" : "CREATE";
+  const valueChanged = previousValue === null || Math.abs(nextValue - previousValue) > 0.0001;
+  if (valueChanged) {
+    await logMonthlyReturnRevision({
+      monthlyReturnId: String(data.id),
+      investmentId: String(data.investment_id),
+      year: Number(data.year),
+      month: Number(data.month),
+      previousIncomeValue: previousValue,
+      newIncomeValue: nextValue,
+      action,
+    });
   }
 
   revalidatePath("/");

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { supabase } from "../../../../lib/supabase";
 import { isMonthClosed } from "../../../../lib/monthly-closures";
+import { logMonthlyReturnRevision } from "../../../../lib/monthly-return-revisions";
 
 interface Params {
   params: { id: string };
@@ -11,7 +12,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
   const body = await req.json();
   const { data: current, error: fetchError } = await supabase
     .from("monthly_returns")
-    .select("year,month")
+    .select("id,investment_id,year,month,income_value")
     .eq("id", params.id)
     .single();
 
@@ -51,6 +52,20 @@ export async function PUT(req: NextRequest, { params }: Params) {
   if (error) {
     console.error(error);
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  const previousValue = Number(current.income_value ?? 0);
+  const nextValue = Number(data.income_value ?? 0);
+  if (Math.abs(nextValue - previousValue) > 0.0001) {
+    await logMonthlyReturnRevision({
+      monthlyReturnId: String(data.id),
+      investmentId: String(data.investment_id),
+      year: Number(data.year),
+      month: Number(data.month),
+      previousIncomeValue: previousValue,
+      newIncomeValue: nextValue,
+      action: "UPDATE",
+    });
   }
 
   revalidatePath("/");

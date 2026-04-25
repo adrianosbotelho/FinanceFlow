@@ -7,10 +7,24 @@ import {
   InvestmentCashEvent,
   MonthlyClosure,
   MonthlyReturn,
+  MonthlyReturnRevision,
 } from "../../types";
 import { formatCurrencyBRL, monthNameFull } from "../../lib/formatters";
 import { publishDataSyncUpdate } from "../../lib/client-data-sync";
 import { ReturnForm } from "../forms/ReturnForm";
+import {
+  Bar,
+  CartesianGrid,
+  Cell,
+  ComposedChart,
+  Legend,
+  Line,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 type ReturnRow = {
   year: number;
@@ -46,6 +60,32 @@ function parseBrDate(raw: string): string {
   return parsed.toLocaleDateString("pt-BR");
 }
 
+function parseBrDateTime(raw: string | undefined): string {
+  if (!raw) return "—";
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  return parsed.toLocaleString("pt-BR");
+}
+
+function countBusinessDaysInMonth(year: number, month: number): number {
+  const daysInMonth = new Date(year, month, 0).getDate();
+  let count = 0;
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const weekDay = new Date(year, month - 1, day).getDay();
+    if (weekDay >= 1 && weekDay <= 5) count += 1;
+  }
+  return count;
+}
+
+function countBusinessDaysElapsedInMonth(year: number, month: number, maxDay: number): number {
+  let count = 0;
+  for (let day = 1; day <= maxDay; day += 1) {
+    const weekDay = new Date(year, month - 1, day).getDay();
+    if (weekDay >= 1 && weekDay <= 5) count += 1;
+  }
+  return count;
+}
+
 interface ReturnsPageClientProps {}
 
 export function ReturnsPageClient(_props: ReturnsPageClientProps) {
@@ -78,6 +118,10 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
   const [eventType, setEventType] = useState<CashEventType>("APORTE");
   const [eventAmount, setEventAmount] = useState("");
   const [eventNotes, setEventNotes] = useState("");
+  const [revisionYear, setRevisionYear] = useState(() => new Date().getFullYear());
+  const [revisionInvestmentFilter, setRevisionInvestmentFilter] = useState<string>("all");
+  const [returnRevisions, setReturnRevisions] = useState<MonthlyReturnRevision[]>([]);
+  const [revisionsLoading, setRevisionsLoading] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -137,9 +181,40 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
     }
   }, []);
 
+  const loadReturnRevisions = useCallback(
+    async (year: number, investmentId: string) => {
+      try {
+        setRevisionsLoading(true);
+        const params = new URLSearchParams({ year: String(year) });
+        if (investmentId !== "all") {
+          params.set("investment_id", investmentId);
+        }
+        const res = await fetch(`/api/return-revisions?${params.toString()}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          setReturnRevisions([]);
+          return;
+        }
+        const data: MonthlyReturnRevision[] = await res.json();
+        setReturnRevisions(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error(err);
+        setReturnRevisions([]);
+      } finally {
+        setRevisionsLoading(false);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     void loadCashEvents(eventYear);
   }, [eventYear, loadCashEvents]);
+
+  useEffect(() => {
+    void loadReturnRevisions(revisionYear, revisionInvestmentFilter);
+  }, [loadReturnRevisions, revisionYear, revisionInvestmentFilter]);
 
   const rows: ReturnRow[] = useMemo(() => {
     type MutableRow = ReturnRow & { sourceIds: Set<string> };
@@ -235,6 +310,115 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
     }
     return map;
   }, [uiInvestments]);
+
+  const revisionYearOptions = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    const set = new Set<number>([currentYear, ...years]);
+    return Array.from(set).sort((a, b) => a - b);
+  }, [years]);
+
+  const revisionRows = useMemo(() => {
+    return returnRevisions.map((revision) => {
+      const inv = investmentById.get(revision.investment_id);
+      const label = inv
+        ? inv.type === "CDB" && inv.institution === "Itaú"
+          ? "CDB Itaú"
+          : inv.type === "CDB"
+            ? "CDB Santander"
+            : inv.name
+        : revision.investment_id;
+      return {
+        ...revision,
+        investmentLabel: label,
+        investmentInstitution: inv?.institution ?? "-",
+      };
+    });
+  }, [investmentById, returnRevisions]);
+
+  const selectedRevisionMonth = useMemo(() => {
+    if (revisionRows.length === 0) return null;
+    const latest = revisionRows[0];
+    return {
+      year: Number(latest.year),
+      month: Number(latest.month),
+    };
+  }, [revisionRows]);
+
+  const revisionChartData = useMemo(() => {
+    if (!selectedRevisionMonth) return [];
+    return [...revisionRows]
+      .filter(
+        (row) =>
+          Number(row.year) === selectedRevisionMonth.year &&
+          Number(row.month) === selectedRevisionMonth.month,
+      )
+      .sort((a, b) => {
+        const aTime = new Date(a.created_at ?? "").getTime();
+        const bTime = new Date(b.created_at ?? "").getTime();
+        return aTime - bTime;
+      })
+      .map((row, idx) => ({
+        seq: idx + 1,
+        timestamp: parseBrDateTime(row.created_at),
+        investmentLabel: row.investmentLabel,
+        delta: Number(row.delta_income_value ?? 0),
+        newValue: Number(row.new_income_value ?? 0),
+      }));
+  }, [revisionRows, selectedRevisionMonth]);
+
+  const monthlyForecast = useMemo(() => {
+    if (!selectedRevisionMonth) return null;
+    const { year, month } = selectedRevisionMonth;
+    const now = new Date();
+    const isCurrentContext =
+      year === now.getFullYear() && month === now.getMonth() + 1;
+    const monthRows = revisionRows
+      .filter((row) => Number(row.year) === year && Number(row.month) === month)
+      .sort((a, b) => {
+        const aTime = new Date(a.created_at ?? "").getTime();
+        const bTime = new Date(b.created_at ?? "").getTime();
+        return aTime - bTime;
+      });
+    if (monthRows.length === 0) return null;
+
+    const oldest = monthRows[0];
+    const latest = monthRows[monthRows.length - 1];
+    const latestValue = Number(latest.new_income_value ?? 0);
+    const startValue = Number(
+      oldest.previous_income_value ?? (oldest.new_income_value - oldest.delta_income_value),
+    );
+    const growthSoFar = latestValue - startValue;
+    const daysElapsed = isCurrentContext
+      ? countBusinessDaysElapsedInMonth(year, month, now.getDate())
+      : countBusinessDaysInMonth(year, month);
+    const totalDays = countBusinessDaysInMonth(year, month);
+    const daysRemaining = isCurrentContext ? Math.max(totalDays - daysElapsed, 0) : 0;
+    const dailyPace = daysElapsed > 0 ? growthSoFar / daysElapsed : 0;
+    const projectedClose = latestValue + dailyPace * daysRemaining;
+
+    const confidence =
+      !isCurrentContext
+        ? "Fechado"
+        : monthRows.length >= 6
+          ? "Alta"
+          : monthRows.length >= 3
+            ? "Média"
+            : "Baixa";
+
+    return {
+      year,
+      month,
+      latestValue,
+      startValue,
+      growthSoFar,
+      dailyPace,
+      projectedClose,
+      updatesCount: monthRows.length,
+      daysElapsed,
+      daysRemaining,
+      confidence,
+    };
+  }, [revisionRows, selectedRevisionMonth]);
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
@@ -367,6 +551,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
       if (!res.ok) return;
       const data: MonthlyReturn[] = await res.json();
       setRawReturns(data);
+      await loadReturnRevisions(revisionYear, revisionInvestmentFilter);
       publishDataSyncUpdate("returns");
     } catch (e) {
       console.error(e);
@@ -740,6 +925,252 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
               : undefined
           }
         />
+      </div>
+
+      <div className="rounded-xl border border-slate-800 bg-surface/80 p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-200">
+              Revisões de retorno (auditoria + previsão)
+            </h3>
+            <p className="text-xs text-slate-400">
+              Cada alteração de retorno grava o delta (atualizado - anterior) para melhorar o acompanhamento intra-mês.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <select
+              className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+              value={revisionYear}
+              onChange={(e) => setRevisionYear(Number(e.target.value))}
+            >
+              {revisionYearOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <select
+              className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+              value={revisionInvestmentFilter}
+              onChange={(e) => setRevisionInvestmentFilter(e.target.value)}
+            >
+              <option value="all">Todos os investimentos</option>
+              {uiInvestments.map((inv) => (
+                <option key={inv.id} value={inv.id}>
+                  {inv.name} ({inv.institution})
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+          <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-3">
+            <h4 className="text-xs font-semibold text-slate-200">
+              Evolução por revisão
+              {selectedRevisionMonth
+                ? ` (${monthNameFull(selectedRevisionMonth.month)}/${selectedRevisionMonth.year})`
+                : ""}
+            </h4>
+            {revisionsLoading ? (
+              <p className="mt-3 text-xs text-slate-400">Carregando revisões...</p>
+            ) : revisionChartData.length === 0 ? (
+              <p className="mt-3 text-xs text-slate-400">Sem revisões para os filtros selecionados.</p>
+            ) : (
+              <div className="mt-3 h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={revisionChartData} margin={{ top: 8, right: 12, left: 4, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                    <XAxis dataKey="seq" stroke="#94a3b8" tickFormatter={(value) => `#${value}`} />
+                    <YAxis
+                      yAxisId="delta"
+                      stroke="#94a3b8"
+                      width={72}
+                      tickFormatter={formatCurrencyBRL}
+                    />
+                    <YAxis
+                      yAxisId="updated"
+                      orientation="right"
+                      stroke="#94a3b8"
+                      width={72}
+                      tickFormatter={formatCurrencyBRL}
+                    />
+                    <Tooltip
+                      formatter={(value: number | string, key) => {
+                        const numeric = Number(value ?? 0);
+                        if (key === "delta") return [formatCurrencyBRL(numeric), "Δ atualização"];
+                        return [formatCurrencyBRL(numeric), "Valor atualizado"];
+                      }}
+                      labelFormatter={(value) => {
+                        const point = revisionChartData[Number(value) - 1];
+                        if (!point) return `Revisão #${value}`;
+                        return `Revisão #${value} • ${point.timestamp} • ${point.investmentLabel}`;
+                      }}
+                      contentStyle={{
+                        backgroundColor: "#020617",
+                        borderColor: "#1f2937",
+                      }}
+                      labelStyle={{ color: "#e2e8f0", fontWeight: 600 }}
+                    />
+                    <Legend />
+                    <ReferenceLine yAxisId="delta" y={0} stroke="#64748b" />
+                    <Bar yAxisId="delta" dataKey="delta" name="Δ atualização">
+                      {revisionChartData.map((point) => (
+                        <Cell
+                          key={`delta-${point.seq}`}
+                          fill={point.delta >= 0 ? "#22c55e" : "#f43f5e"}
+                        />
+                      ))}
+                    </Bar>
+                    <Line
+                      yAxisId="updated"
+                      type="monotone"
+                      dataKey="newValue"
+                      name="Valor atualizado"
+                      stroke="#22d3ee"
+                      strokeWidth={2}
+                      dot={{ r: 2 }}
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-3">
+            <h4 className="text-xs font-semibold text-slate-200">Previsão de fechamento do mês</h4>
+            {!monthlyForecast ? (
+              <p className="mt-3 text-xs text-slate-400">Sem dados suficientes para projeção.</p>
+            ) : (
+              <div className="mt-3 grid gap-2 text-xs">
+                <p className="text-slate-300">
+                  Base:{" "}
+                  <span className="font-semibold text-cyan-300">
+                    {monthNameFull(monthlyForecast.month)}/{monthlyForecast.year}
+                  </span>
+                </p>
+                <p className="text-slate-300">
+                  Valor atual:{" "}
+                  <span className="font-semibold text-slate-100">
+                    {formatCurrencyBRL(monthlyForecast.latestValue)}
+                  </span>
+                </p>
+                <p className="text-slate-300">
+                  Crescimento no mês (revisões):{" "}
+                  <span
+                    className={`font-semibold ${
+                      monthlyForecast.growthSoFar >= 0 ? "text-emerald-300" : "text-rose-300"
+                    }`}
+                  >
+                    {formatCurrencyBRL(monthlyForecast.growthSoFar)}
+                  </span>
+                </p>
+                <p className="text-slate-300">
+                  Ritmo por dia útil:{" "}
+                  <span
+                    className={`font-semibold ${
+                      monthlyForecast.dailyPace >= 0 ? "text-emerald-300" : "text-rose-300"
+                    }`}
+                  >
+                    {formatCurrencyBRL(monthlyForecast.dailyPace)}
+                  </span>
+                </p>
+                <p className="text-slate-300">
+                  Dias úteis restantes:{" "}
+                  <span className="font-semibold text-slate-100">
+                    {monthlyForecast.daysRemaining}
+                  </span>
+                </p>
+                <p className="text-slate-300">
+                  Fechamento projetado:{" "}
+                  <span className="font-semibold text-cyan-300">
+                    {formatCurrencyBRL(monthlyForecast.projectedClose)}
+                  </span>
+                </p>
+                <p className="text-slate-300">
+                  Confiança:{" "}
+                  <span
+                    className={`font-semibold ${
+                      monthlyForecast.confidence === "Alta"
+                        ? "text-emerald-300"
+                        : monthlyForecast.confidence === "Média"
+                          ? "text-cyan-300"
+                          : monthlyForecast.confidence === "Fechado"
+                            ? "text-slate-200"
+                            : "text-amber-300"
+                    }`}
+                  >
+                    {monthlyForecast.confidence}
+                  </span>{" "}
+                  <span className="text-slate-500">({monthlyForecast.updatesCount} revisão(ões))</span>
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full text-left text-xs md:text-sm">
+            <thead className="border-b border-slate-800 text-slate-400">
+              <tr>
+                <th className="px-2 py-2">Data/Hora</th>
+                <th className="px-2 py-2">Ano</th>
+                <th className="px-2 py-2">Mês</th>
+                <th className="px-2 py-2">Investimento</th>
+                <th className="px-2 py-2">Anterior</th>
+                <th className="px-2 py-2">Atualizado</th>
+                <th className="px-2 py-2">Diferença</th>
+              </tr>
+            </thead>
+            <tbody>
+              {revisionsLoading ? (
+                <tr>
+                  <td colSpan={7} className="px-2 py-4 text-center text-slate-400">
+                    Carregando revisões...
+                  </td>
+                </tr>
+              ) : revisionRows.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-2 py-4 text-center text-slate-400">
+                    Nenhuma revisão encontrada para os filtros selecionados.
+                  </td>
+                </tr>
+              ) : (
+                revisionRows.map((row) => (
+                  <tr key={row.id} className="border-b border-slate-800/60 last:border-0">
+                    <td className="px-2 py-2 text-slate-300">{parseBrDateTime(row.created_at)}</td>
+                    <td className="px-2 py-2 text-slate-300">{row.year}</td>
+                    <td className="px-2 py-2 text-slate-300">{monthNameFull(Number(row.month))}</td>
+                    <td className="px-2 py-2 text-slate-300">
+                      {row.investmentLabel}
+                      <span className="ml-1 text-[11px] text-slate-500">({row.investmentInstitution})</span>
+                    </td>
+                    <td className="px-2 py-2 text-slate-300">
+                      {row.previous_income_value === null || row.previous_income_value === undefined
+                        ? "—"
+                        : formatCurrencyBRL(Number(row.previous_income_value))}
+                    </td>
+                    <td className="px-2 py-2 font-medium text-cyan-300">
+                      {formatCurrencyBRL(Number(row.new_income_value ?? 0))}
+                    </td>
+                    <td
+                      className={`px-2 py-2 font-semibold ${
+                        Number(row.delta_income_value ?? 0) > 0
+                          ? "text-emerald-300"
+                          : Number(row.delta_income_value ?? 0) < 0
+                            ? "text-rose-300"
+                            : "text-slate-300"
+                      }`}
+                    >
+                      {Number(row.delta_income_value ?? 0) > 0 ? "+" : ""}
+                      {formatCurrencyBRL(Number(row.delta_income_value ?? 0))}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">

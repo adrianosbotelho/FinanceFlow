@@ -158,6 +158,13 @@ const INTERNAL_API_CHECKS: ApiCheckConfig[] = [
     validate: isArray,
   },
   {
+    name: "Revisões de Retorno",
+    panel: "Retornos Mensais",
+    source: "internal",
+    endpoint: "/api/return-revisions",
+    validate: isArray,
+  },
+  {
     name: "Fechamentos Mensais",
     panel: "Retornos Mensais",
     source: "internal",
@@ -269,6 +276,7 @@ function endpointWithDefaultParams(endpoint: string): string {
     endpoint === "/api/monthly-macro" ||
     endpoint === "/api/investment-cash-events" ||
     endpoint === "/api/returns" ||
+    endpoint === "/api/return-revisions" ||
     endpoint === "/api/investments/forecast" ||
     endpoint === "/api/insights/daily" ||
     endpoint === "/api/investment-goals-annual"
@@ -493,6 +501,7 @@ export async function GET(req: Request) {
   const tableChecks = await Promise.all([
     runTableCheck("investments"),
     runTableCheck("monthly_returns"),
+    runTableCheck("monthly_return_revisions"),
     runTableCheck("investment_goals_monthly"),
     runTableCheck("investment_goals_annual"),
     runTableCheck("monthly_positions"),
