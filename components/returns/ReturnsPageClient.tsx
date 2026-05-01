@@ -335,6 +335,10 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
     });
   }, [investmentById, returnRevisions]);
 
+  const hasOnlySyntheticRevisions = useMemo(() => {
+    return revisionRows.length > 0 && revisionRows.every((row) => row.is_synthetic);
+  }, [revisionRows]);
+
   const selectedRevisionMonth = useMemo(() => {
     if (revisionRows.length === 0) return null;
     const latest = revisionRows[0];
@@ -368,6 +372,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
 
   const monthlyForecast = useMemo(() => {
     if (!selectedRevisionMonth) return null;
+    if (hasOnlySyntheticRevisions) return null;
     const { year, month } = selectedRevisionMonth;
     const now = new Date();
     const isCurrentContext =
@@ -418,7 +423,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
       daysRemaining,
       confidence,
     };
-  }, [revisionRows, selectedRevisionMonth]);
+  }, [hasOnlySyntheticRevisions, revisionRows, selectedRevisionMonth]);
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
@@ -936,6 +941,11 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
             <p className="text-xs text-slate-400">
               Cada alteração de retorno grava o delta (atualizado - anterior) para melhorar o acompanhamento intra-mês.
             </p>
+            {hasOnlySyntheticRevisions && (
+              <p className="mt-1 text-xs text-amber-300">
+                Exibindo snapshot inicial dos retornos do período. As revisões detalhadas aparecem após editar/atualizar os lançamentos.
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap gap-2 text-xs">
             <select

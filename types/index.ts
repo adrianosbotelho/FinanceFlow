@@ -15,6 +15,7 @@ export interface MonthlyReturn {
   month: number;
   year: number;
   income_value: number;
+  created_at?: string;
 }
 
 export interface MonthlyReturnRevision {
@@ -28,6 +29,7 @@ export interface MonthlyReturnRevision {
   delta_income_value: number;
   action: "CREATE" | "UPDATE";
   created_at?: string;
+  is_synthetic?: boolean;
 }
 
 export interface InvestmentGoal {
