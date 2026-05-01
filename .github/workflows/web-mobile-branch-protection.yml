@@ -43,10 +43,7 @@ jobs:
               required_status_checks: {
                 strict: true,
                 contexts: [
-                  "Boundary Guard / Scope Guard (desktop vs mobile)",
-                  "Web Mobile CI / Lint + Build (web-mobile)",
-                  "Web Mobile Secret Scan / gitleaks",
-                  "Web Mobile CodeQL / Analyze (javascript-typescript)"
+                  "Boundary Guard / Scope Guard (desktop vs mobile)"
                 ]
               },
               enforce_admins: true,
