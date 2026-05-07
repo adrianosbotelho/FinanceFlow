@@ -84,6 +84,7 @@ async function loadSnapshotRevisions(
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const year = searchParams.get("year");
+  const month = searchParams.get("month");
   const investmentId = searchParams.get("investment_id");
 
   let query = supabase
@@ -92,6 +93,7 @@ export async function GET(req: NextRequest) {
     .order("created_at", { ascending: false });
 
   if (year) query = query.eq("year", Number(year));
+  if (month) query = query.eq("month", Number(month));
   if (investmentId && investmentId !== "all") query = query.eq("investment_id", investmentId);
 
   const { data, error } = await query.limit(500);

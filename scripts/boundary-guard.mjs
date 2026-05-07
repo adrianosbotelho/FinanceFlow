@@ -42,6 +42,10 @@ function normalizePath(path) {
 function classifyPath(filePath) {
   if (!filePath) return "unknown";
 
+  if (filePath === "scripts/boundary-guard.mjs") {
+    return "shared";
+  }
+
   if (
     filePath.startsWith("financeflow-web-mobile/") ||
     filePath.startsWith(".github/workflows/web-mobile-") ||

@@ -88,7 +88,24 @@ function countBusinessDaysElapsedInMonth(year: number, month: number, maxDay: nu
 
 interface ReturnsPageClientProps {}
 
-export function ReturnsPageClient(_props: ReturnsPageClientProps) {
+interface ReturnsPageClientProps {
+  initialYear?: number;
+  initialMonth?: number;
+}
+
+export function ReturnsPageClient({ initialYear, initialMonth }: ReturnsPageClientProps) {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  const normalizedInitialYear =
+    Number.isInteger(initialYear) && Number(initialYear) >= 2000 && Number(initialYear) <= currentYear
+      ? Number(initialYear)
+      : currentYear;
+  const normalizedInitialMonth =
+    Number.isInteger(initialMonth) && Number(initialMonth) >= 1 && Number(initialMonth) <= 12
+      ? Number(initialMonth)
+      : currentMonth;
+
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [rawReturns, setRawReturns] = useState<MonthlyReturn[]>([]);
   const [closures, setClosures] = useState<MonthlyClosure[]>([]);
@@ -99,9 +116,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
     null,
   );
 
-  const [yearFilter, setYearFilter] = useState<number | "all">(
-    () => new Date().getFullYear(),
-  );
+  const [yearFilter, setYearFilter] = useState<number | "all">(normalizedInitialYear);
   const [investmentFilter, setInvestmentFilter] = useState<string>("all");
   const [sortField, setSortField] = useState<ReturnSortField>("year");
   const [sortDirection, setSortDirection] = useState<ReturnSortDirection>("desc");
@@ -118,7 +133,8 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
   const [eventType, setEventType] = useState<CashEventType>("APORTE");
   const [eventAmount, setEventAmount] = useState("");
   const [eventNotes, setEventNotes] = useState("");
-  const [revisionYear, setRevisionYear] = useState(() => new Date().getFullYear());
+  const [revisionYear, setRevisionYear] = useState(normalizedInitialYear);
+  const [revisionMonth, setRevisionMonth] = useState(normalizedInitialMonth);
   const [revisionInvestmentFilter, setRevisionInvestmentFilter] = useState<string>("all");
   const [returnRevisions, setReturnRevisions] = useState<MonthlyReturnRevision[]>([]);
   const [revisionsLoading, setRevisionsLoading] = useState(false);
@@ -182,10 +198,10 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
   }, []);
 
   const loadReturnRevisions = useCallback(
-    async (year: number, investmentId: string) => {
+    async (year: number, month: number, investmentId: string) => {
       try {
         setRevisionsLoading(true);
-        const params = new URLSearchParams({ year: String(year) });
+        const params = new URLSearchParams({ year: String(year), month: String(month) });
         if (investmentId !== "all") {
           params.set("investment_id", investmentId);
         }
@@ -213,8 +229,16 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
   }, [eventYear, loadCashEvents]);
 
   useEffect(() => {
-    void loadReturnRevisions(revisionYear, revisionInvestmentFilter);
-  }, [loadReturnRevisions, revisionYear, revisionInvestmentFilter]);
+    void loadReturnRevisions(revisionYear, revisionMonth, revisionInvestmentFilter);
+  }, [loadReturnRevisions, revisionYear, revisionMonth, revisionInvestmentFilter]);
+
+  useEffect(() => {
+    if (normalizedInitialYear !== revisionYear) setRevisionYear(normalizedInitialYear);
+    if (normalizedInitialMonth !== revisionMonth) setRevisionMonth(normalizedInitialMonth);
+    if (yearFilter !== "all" && normalizedInitialYear !== yearFilter) {
+      setYearFilter(normalizedInitialYear);
+    }
+  }, [normalizedInitialMonth, normalizedInitialYear, revisionMonth, revisionYear, yearFilter]);
 
   const rows: ReturnRow[] = useMemo(() => {
     type MutableRow = ReturnRow & { sourceIds: Set<string> };
@@ -339,17 +363,15 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
     return revisionRows.length > 0 && revisionRows.every((row) => row.is_synthetic);
   }, [revisionRows]);
 
-  const selectedRevisionMonth = useMemo(() => {
-    if (revisionRows.length === 0) return null;
-    const latest = revisionRows[0];
-    return {
-      year: Number(latest.year),
-      month: Number(latest.month),
-    };
-  }, [revisionRows]);
+  const selectedRevisionMonth = useMemo(
+    () => ({
+      year: Number(revisionYear),
+      month: Number(revisionMonth),
+    }),
+    [revisionMonth, revisionYear],
+  );
 
   const revisionChartData = useMemo(() => {
-    if (!selectedRevisionMonth) return [];
     return [...revisionRows]
       .filter(
         (row) =>
@@ -371,7 +393,6 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
   }, [revisionRows, selectedRevisionMonth]);
 
   const monthlyForecast = useMemo(() => {
-    if (!selectedRevisionMonth) return null;
     if (hasOnlySyntheticRevisions) return null;
     const { year, month } = selectedRevisionMonth;
     const now = new Date();
@@ -549,14 +570,22 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
   const isPeriodClosed = (year: number, month: number) =>
     closedPeriods.has(`${year}-${month}`);
 
-  const handleSaved = async () => {
+  const handleSaved = async (saved?: MonthlyReturn) => {
+    const editedSnapshot = editing;
     setEditing(null);
     try {
       const res = await fetch("/api/returns");
       if (!res.ok) return;
       const data: MonthlyReturn[] = await res.json();
       setRawReturns(data);
-      await loadReturnRevisions(revisionYear, revisionInvestmentFilter);
+
+      const nextYear =
+        saved?.year ?? editedSnapshot?.year ?? revisionYear;
+      const nextMonth =
+        saved?.month ?? editedSnapshot?.month ?? revisionMonth;
+      setRevisionYear(nextYear);
+      setRevisionMonth(nextMonth);
+      await loadReturnRevisions(nextYear, nextMonth, revisionInvestmentFilter);
       publishDataSyncUpdate("returns");
     } catch (e) {
       console.error(e);
@@ -616,6 +645,8 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
       );
       return;
     }
+    setRevisionYear(row.year);
+    setRevisionMonth(row.month);
     setEditing(row);
   };
 
@@ -956,6 +987,17 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
               {revisionYearOptions.map((option) => (
                 <option key={option} value={option}>
                   {option}
+                </option>
+              ))}
+            </select>
+            <select
+              className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+              value={String(revisionMonth)}
+              onChange={(e) => setRevisionMonth(Number(e.target.value))}
+            >
+              {Array.from({ length: 12 }, (_, idx) => idx + 1).map((value) => (
+                <option key={value} value={String(value)}>
+                  {monthNameFull(value)}
                 </option>
               ))}
             </select>
