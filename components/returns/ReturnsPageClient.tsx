@@ -570,8 +570,7 @@ export function ReturnsPageClient({ initialYear, initialMonth }: ReturnsPageClie
   const isPeriodClosed = (year: number, month: number) =>
     closedPeriods.has(`${year}-${month}`);
 
-  const handleSaved = async (saved?: MonthlyReturn) => {
-    const editedSnapshot = editing;
+  const handleSaved = async () => {
     setEditing(null);
     try {
       const res = await fetch("/api/returns");
@@ -579,13 +578,7 @@ export function ReturnsPageClient({ initialYear, initialMonth }: ReturnsPageClie
       const data: MonthlyReturn[] = await res.json();
       setRawReturns(data);
 
-      const nextYear =
-        saved?.year ?? editedSnapshot?.year ?? revisionYear;
-      const nextMonth =
-        saved?.month ?? editedSnapshot?.month ?? revisionMonth;
-      setRevisionYear(nextYear);
-      setRevisionMonth(nextMonth);
-      await loadReturnRevisions(nextYear, nextMonth, revisionInvestmentFilter);
+      await loadReturnRevisions(revisionYear, revisionMonth, revisionInvestmentFilter);
       publishDataSyncUpdate("returns");
     } catch (e) {
       console.error(e);
@@ -645,8 +638,6 @@ export function ReturnsPageClient({ initialYear, initialMonth }: ReturnsPageClie
       );
       return;
     }
-    setRevisionYear(row.year);
-    setRevisionMonth(row.month);
     setEditing(row);
   };
 

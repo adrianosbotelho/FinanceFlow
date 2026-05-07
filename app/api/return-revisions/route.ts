@@ -50,6 +50,7 @@ function toSnapshotRevision(
 
 async function loadSnapshotRevisions(
   year: string | null,
+  month: string | null,
   investmentId: string | null,
 ): Promise<MonthlyReturnRevision[]> {
   let snapshotQuery = supabase
@@ -57,6 +58,7 @@ async function loadSnapshotRevisions(
     .select("id,investment_id,year,month,income_value,created_at");
 
   if (year) snapshotQuery = snapshotQuery.eq("year", Number(year));
+  if (month) snapshotQuery = snapshotQuery.eq("month", Number(month));
   if (investmentId && investmentId !== "all") snapshotQuery = snapshotQuery.eq("investment_id", investmentId);
 
   const { data: snapshotRows, error: snapshotError } = await snapshotQuery
@@ -102,7 +104,7 @@ export async function GET(req: NextRequest) {
       isMissingTableError(error.message, "monthly_return_revisions") ||
       isPermissionError(error.message, "monthly_return_revisions")
     ) {
-      const snapshots = await loadSnapshotRevisions(year, investmentId);
+      const snapshots = await loadSnapshotRevisions(year, month, investmentId);
       return NextResponse.json(snapshots);
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -112,6 +114,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(data);
   }
 
-  const snapshots = await loadSnapshotRevisions(year, investmentId);
+  const snapshots = await loadSnapshotRevisions(year, month, investmentId);
   return NextResponse.json(snapshots);
 }
