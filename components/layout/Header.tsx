@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { YearFilter } from "../ui/YearFilter";
 import { ProfessionalAlertsBadge } from "./ProfessionalAlertsBadge";
+import { DashboardBusinessDaysBadge } from "./DashboardBusinessDaysBadge";
 
 export function Header() {
   return (
@@ -17,6 +18,9 @@ export function Header() {
         </div>
       </div>
       <div className="flex items-center gap-3">
+        <Suspense fallback={<div className="hidden h-8 w-[350px] rounded bg-slate-800 lg:block" />}>
+          <DashboardBusinessDaysBadge />
+        </Suspense>
         <Suspense fallback={<div className="h-8 w-24 rounded bg-slate-800" />}>
           <ProfessionalAlertsBadge />
         </Suspense>

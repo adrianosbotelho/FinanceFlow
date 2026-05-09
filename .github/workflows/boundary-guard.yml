@@ -48,10 +48,27 @@ jobs:
       - name: Resolve git range
         id: range
         run: |
+          ZERO_SHA="0000000000000000000000000000000000000000"
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "value=${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+            if [ "${{ github.event.pull_request.base.sha }}" = "$ZERO_SHA" ]; then
+              if git rev-parse "${{ github.event.pull_request.head.sha }}^" >/dev/null 2>&1; then
+                echo "value=${{ github.event.pull_request.head.sha }}^...${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+              else
+                echo "value=" >> "$GITHUB_OUTPUT"
+              fi
+            else
+              echo "value=${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+            fi
           elif [ "${{ github.event_name }}" = "push" ]; then
-            echo "value=${{ github.event.before }}...${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            if [ "${{ github.event.before }}" = "$ZERO_SHA" ]; then
+              if git rev-parse "${{ github.sha }}^" >/dev/null 2>&1; then
+                echo "value=${{ github.sha }}^...${{ github.sha }}" >> "$GITHUB_OUTPUT"
+              else
+                echo "value=" >> "$GITHUB_OUTPUT"
+              fi
+            else
+              echo "value=${{ github.event.before }}...${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            fi
           else
             echo "value=" >> "$GITHUB_OUTPUT"
           fi
