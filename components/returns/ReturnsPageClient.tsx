@@ -1022,26 +1022,34 @@ export function ReturnsPageClient({ initialYear, initialMonth }: ReturnsPageClie
             ) : (
               <div className="mt-3 h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={revisionChartData} margin={{ top: 8, right: 12, left: 4, bottom: 0 }}>
+                  <ComposedChart data={revisionChartData} margin={{ top: 8, right: 18, left: 20, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                    <XAxis dataKey="seq" stroke="#94a3b8" tickFormatter={(value) => `#${value}`} />
+                    <XAxis
+                      dataKey="seq"
+                      stroke="#94a3b8"
+                      tick={{ fill: "#94a3b8", fontSize: 14 }}
+                      tickFormatter={(value) => `#${value}`}
+                    />
                     <YAxis
                       yAxisId="delta"
                       stroke="#94a3b8"
-                      width={72}
+                      tick={{ fill: "#94a3b8", fontSize: 14 }}
+                      width={96}
                       tickFormatter={formatCurrencyBRL}
                     />
                     <YAxis
                       yAxisId="updated"
                       orientation="right"
                       stroke="#94a3b8"
-                      width={72}
+                      tick={{ fill: "#94a3b8", fontSize: 14 }}
+                      width={96}
                       tickFormatter={formatCurrencyBRL}
                     />
                     <Tooltip
-                      formatter={(value: number | string, key) => {
+                      formatter={(value: number | string, _name: string, item: any) => {
                         const numeric = Number(value ?? 0);
-                        if (key === "delta") return [formatCurrencyBRL(numeric), "Δ atualização"];
+                        const dataKey = String(item?.dataKey ?? "");
+                        if (dataKey === "delta") return [formatCurrencyBRL(numeric), "Δ atualização"];
                         return [formatCurrencyBRL(numeric), "Valor atualizado"];
                       }}
                       labelFormatter={(value) => {
@@ -1054,10 +1062,18 @@ export function ReturnsPageClient({ initialYear, initialMonth }: ReturnsPageClie
                         borderColor: "#1f2937",
                       }}
                       labelStyle={{ color: "#e2e8f0", fontWeight: 600 }}
+                      itemStyle={{ color: "#cbd5e1" }}
                     />
-                    <Legend />
+                    <Legend
+                      wrapperStyle={{ color: "#cbd5e1" }}
+                      formatter={(value) => {
+                        const text = String(value);
+                        const color = text === "Valor atualizado" ? "#22d3ee" : "#cbd5e1";
+                        return <span style={{ color }}>{text}</span>;
+                      }}
+                    />
                     <ReferenceLine yAxisId="delta" y={0} stroke="#64748b" />
-                    <Bar yAxisId="delta" dataKey="delta" name="Δ atualização">
+                    <Bar yAxisId="delta" dataKey="delta" name="Δ atualização" fill="#22c55e">
                       {revisionChartData.map((point) => (
                         <Cell
                           key={`delta-${point.seq}`}
