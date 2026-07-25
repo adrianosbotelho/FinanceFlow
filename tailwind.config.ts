@@ -5,6 +5,15 @@ const config: Config = {
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
   ],
+  safelist: [
+    "grid-cols-1",
+    "grid-cols-2",
+    "grid-cols-3",
+    "grid-cols-4",
+    "sm:grid-cols-2",
+    "sm:grid-cols-3",
+    "xl:grid-cols-4",
+  ],
   theme: {
     extend: {
       colors: {
