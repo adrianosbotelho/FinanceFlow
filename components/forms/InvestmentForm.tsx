@@ -9,18 +9,23 @@ interface Props {
   onCancelEdit?: () => void;
 }
 
-const institutionsByType: Record<InvestmentType, string[]> = {
-  CDB: ["Itaú", "Santander"],
+const KNOWN_INSTITUTIONS: Record<InvestmentType, string[]> = {
+  CDB: ["Itaú", "Santander", "Banco do Brasil", "XP", "Nubank", "Inter", "BTG Pactual"],
   FII: ["B3"],
 };
 
 export function InvestmentForm({ onSaved, initial, onCancelEdit }: Props) {
   const [type, setType] = useState<InvestmentType>(initial?.type ?? "CDB");
   const [institution, setInstitution] = useState<string>(
-    initial?.institution ?? "Itaú",
+    initial?.institution ?? "",
   );
   const [name, setName] = useState("");
   const [amountInvested, setAmountInvested] = useState("");
+  const [cdiRate, setCdiRate] = useState("");
+  const [benchmark, setBenchmark] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [liquidity, setLiquidity] = useState("");
+  const [maturityDate, setMaturityDate] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const isEditing = Boolean(initial?.id);
 
@@ -30,28 +35,44 @@ export function InvestmentForm({ onSaved, initial, onCancelEdit }: Props) {
     setInstitution(initial.institution);
     setName(initial.name);
     setAmountInvested(String(initial.amount_invested ?? ""));
+    setCdiRate(initial.cdi_rate != null ? String(initial.cdi_rate) : "");
+    setBenchmark(initial.benchmark ?? "");
+    setStartDate(initial.start_date ?? "");
+    setLiquidity(initial.liquidity ?? "");
+    setMaturityDate(initial.maturity_date ?? "");
   }, [initial]);
 
   useEffect(() => {
     if (initial) return;
     setName("");
     setAmountInvested("");
+    setCdiRate("");
+    setBenchmark("");
+    setStartDate("");
+    setLiquidity("");
+    setMaturityDate("");
     setType("CDB");
-    setInstitution("Itaú");
+    setInstitution("");
   }, [initial]);
 
-  const institutions = useMemo(() => institutionsByType[type], [type]);
+  const institutions = useMemo(() => KNOWN_INSTITUTIONS[type], [type]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const payload = {
+      const payload: Record<string, unknown> = {
         type,
         institution: institution.trim(),
         name,
         amount_invested: Number(amountInvested),
       };
+      if (cdiRate) payload.cdi_rate = Number(cdiRate);
+      if (benchmark) payload.benchmark = benchmark.trim();
+      if (startDate) payload.start_date = startDate;
+      if (liquidity) payload.liquidity = liquidity.trim();
+      if (maturityDate) payload.maturity_date = maturityDate;
+
       const endpoint = isEditing ? `/api/investments/${initial!.id}` : "/api/investments";
       const method = isEditing ? "PUT" : "POST";
       const res = await fetch(endpoint, {
@@ -74,6 +95,11 @@ export function InvestmentForm({ onSaved, initial, onCancelEdit }: Props) {
       if (!isEditing) {
         setName("");
         setAmountInvested("");
+        setCdiRate("");
+        setBenchmark("");
+        setStartDate("");
+        setLiquidity("");
+        setMaturityDate("");
       }
     } catch (err) {
       console.error(err);
@@ -99,7 +125,7 @@ export function InvestmentForm({ onSaved, initial, onCancelEdit }: Props) {
           onChange={(e) => {
             const value = e.target.value as InvestmentType;
             setType(value);
-            setInstitution(institutionsByType[value][0]);
+            setInstitution("");
           }}
         >
           <option value="CDB">CDB</option>
@@ -113,6 +139,7 @@ export function InvestmentForm({ onSaved, initial, onCancelEdit }: Props) {
           className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
           value={institution}
           onChange={(e) => setInstitution(e.target.value)}
+          placeholder="Digite ou selecione"
           required
         />
         <datalist id={`institutions-${type}`}>
@@ -143,6 +170,61 @@ export function InvestmentForm({ onSaved, initial, onCancelEdit }: Props) {
           required
         />
       </div>
+
+      {type === "CDB" && (
+        <>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-slate-300">% CDI (ex: 110 para 110% CDI)</label>
+            <input
+              type="number"
+              step="0.01"
+              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+              value={cdiRate}
+              onChange={(e) => setCdiRate(e.target.value)}
+              placeholder="Opcional"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-slate-300">Benchmark (ex: &quot;110% CDI&quot;, &quot;IPCA+6%&quot;)</label>
+            <input
+              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+              value={benchmark}
+              onChange={(e) => setBenchmark(e.target.value)}
+              placeholder="Opcional"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-slate-300">Data início</label>
+              <input
+                type="date"
+                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-slate-300">Vencimento</label>
+              <input
+                type="date"
+                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+                value={maturityDate}
+                onChange={(e) => setMaturityDate(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-slate-300">Liquidez</label>
+            <input
+              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+              value={liquidity}
+              onChange={(e) => setLiquidity(e.target.value)}
+              placeholder="Ex: diária, no vencimento, D+30"
+            />
+          </div>
+        </>
+      )}
+
       <div className="flex items-center gap-2">
         <button
           type="submit"

@@ -37,13 +37,13 @@ function deriveMomDelta(
   return currentValue - previousValue;
 }
 
+const CDB_COLORS = ["text-orange-300", "text-rose-300", "text-sky-300", "text-violet-300", "text-amber-300"];
+
 export function KPIAdvancedGrid({ kpis }: KPIAdvancedGridProps) {
   const marketTone = toneClass(kpis.capitalGainPct);
   const profitTone = toneClass(kpis.totalProfit);
   const incomeVariationTone = toneClass(kpis.momGrowth);
   const returnTone = toneClass(kpis.portfolioYield);
-  const itauTone = toneClass(kpis.cdbItauMomGrowth);
-  const santanderTone = toneClass(kpis.cdbSantanderMomGrowth);
   const monthlyIncomeDelta = deriveMomDelta(
     kpis.totalPassiveIncomeCurrentMonth,
     kpis.momGrowth,
@@ -91,33 +91,25 @@ export function KPIAdvancedGrid({ kpis }: KPIAdvancedGridProps) {
         </div>
       </article>
 
-      <article className="rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm">
-        <p className="text-sm font-semibold text-slate-200">CDB Itaú (M/M)</p>
-        <p className={`mt-2 text-2xl font-extrabold ${itauTone}`}>
-          {formatPercentage(kpis.cdbItauMomGrowth)} {arrow(kpis.cdbItauMomGrowth)}
-        </p>
-        <p className="mt-2 text-xs text-slate-400">Mês atual</p>
-        <p className="text-base font-semibold text-slate-200">
-          {formatCurrencyBRL(kpis.cdbItauCurrentMonth)}
-        </p>
-        <p className={`mt-1 text-xs font-semibold ${toneClass(kpis.cdbItauMomDelta)}`}>
-          Δ M/M: {formatSignedCurrency(kpis.cdbItauMomDelta)}
-        </p>
-      </article>
-
-      <article className="rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm">
-        <p className="text-sm font-semibold text-slate-200">CDB Santander (M/M)</p>
-        <p className={`mt-2 text-2xl font-extrabold ${santanderTone}`}>
-          {formatPercentage(kpis.cdbSantanderMomGrowth)} {arrow(kpis.cdbSantanderMomGrowth)}
-        </p>
-        <p className="mt-2 text-xs text-slate-400">Mês atual</p>
-        <p className="text-base font-semibold text-slate-200">
-          {formatCurrencyBRL(kpis.cdbSantanderCurrentMonth)}
-        </p>
-        <p className={`mt-1 text-xs font-semibold ${toneClass(kpis.cdbSantanderMomDelta)}`}>
-          Δ M/M: {formatSignedCurrency(kpis.cdbSantanderMomDelta)}
-        </p>
-      </article>
+      {kpis.cdbItems.map((cdb, idx) => {
+        const colorClass = CDB_COLORS[idx % CDB_COLORS.length];
+        const tone = toneClass(cdb.momGrowth);
+        return (
+          <article key={cdb.investment_id} className="rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm">
+            <p className="text-sm font-semibold text-slate-200">{cdb.label} (M/M)</p>
+            <p className={`mt-2 text-2xl font-extrabold ${tone}`}>
+              {formatPercentage(cdb.momGrowth)} {arrow(cdb.momGrowth)}
+            </p>
+            <p className="mt-2 text-xs text-slate-400">Mês atual</p>
+            <p className={`text-base font-semibold ${colorClass}`}>
+              {formatCurrencyBRL(cdb.currentMonth)}
+            </p>
+            <p className={`mt-1 text-xs font-semibold ${toneClass(cdb.momDelta)}`}>
+              Δ M/M: {formatSignedCurrency(cdb.momDelta)}
+            </p>
+          </article>
+        );
+      })}
 
       <article className="rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm xl:col-span-3">
         <p className="text-sm font-semibold text-slate-200">Proventos Recebidos (12M)</p>

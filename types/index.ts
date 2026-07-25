@@ -6,6 +6,11 @@ export interface Investment {
   institution: string;
   name: string;
   amount_invested: number;
+  cdi_rate?: number | null;
+  benchmark?: string | null;
+  start_date?: string | null;
+  liquidity?: string | null;
+  maturity_date?: string | null;
   created_at?: string;
 }
 
@@ -97,15 +102,31 @@ export interface InvestmentCashEvent {
   updated_at?: string;
 }
 
+/** Per-CDB income entry inside a monthly bucket */
+export interface CdbMonthlyEntry {
+  investment_id: string;
+  label: string;
+  income: number;
+}
+
 export interface PassiveIncomeByMonth {
   month: number;
   year: number;
-  cdb_itau: number;
-  cdb_other: number;
+  /** Dynamic per-CDB breakdown */
+  cdb_items: CdbMonthlyEntry[];
   fii_dividends: number;
   total: number;
   mom_growth?: number | null;
   yoy_growth?: number | null;
+}
+
+/** Per-CDB KPI entry */
+export interface CdbKpiEntry {
+  investment_id: string;
+  label: string;
+  currentMonth: number;
+  momGrowth: number | null;
+  momDelta: number | null;
 }
 
 export interface DashboardKPIs {
@@ -115,12 +136,8 @@ export interface DashboardKPIs {
   momGrowth: number | null;
   cdbMomGrowth: number | null;
   fiiMomGrowth: number | null;
-  cdbItauCurrentMonth: number;
-  cdbItauMomGrowth: number | null;
-  cdbItauMomDelta: number | null;
-  cdbSantanderCurrentMonth: number;
-  cdbSantanderMomGrowth: number | null;
-  cdbSantanderMomDelta: number | null;
+  /** Dynamic per-CDB KPIs */
+  cdbItems: CdbKpiEntry[];
   yoyGrowth: number | null;
   ytdPassiveIncome: number;
   portfolioYield: number;
@@ -135,15 +152,22 @@ export interface DashboardKPIs {
   totalProfitPct: number;
 }
 
+/** Per-CDB distribution entry */
+export interface CdbDistributionEntry {
+  investment_id: string;
+  label: string;
+  value: number;
+}
+
 export interface IncomeDistribution {
-  itauCdb: number;
-  otherCdb: number;
+  /** Dynamic per-CDB distribution */
+  cdbItems: CdbDistributionEntry[];
   fii: number;
 }
 
 export interface FinancialInsights {
   growthTrend: string;
-  bestSource: "CDB_ITAU" | "CDB_OTHER" | "FII";
+  bestSource: string;
   fiiToCdbRatio: number;
   cdiAnnualReference: number;
   fiiReinvestment: {
@@ -188,16 +212,22 @@ export interface ConsistencyAlert {
   message: string;
 }
 
+/** Per-CDB comparison entry for a given month */
+export interface CdbComparisonEntry {
+  investment_id: string;
+  label: string;
+  prev: number;
+  curr: number;
+}
+
 /** Comparativo mês a mês entre ano anterior e ano atual, por tipo de lançamento */
 export interface MonthComparisonPoint {
   month: number;
   monthName: string;
   yearPrev: number;
   yearCurr: number;
-  itauPrev: number;
-  itauCurr: number;
-  otherCdbPrev: number;
-  otherCdbCurr: number;
+  /** Dynamic per-CDB comparison */
+  cdbItems: CdbComparisonEntry[];
   fiiPrev: number;
   fiiCurr: number;
   totalPrev: number;
@@ -218,7 +248,7 @@ export interface DashboardPayload {
     totalMonthlyIncome: number;
     portfolioMonthlyYieldPct: number | null;
     items: Array<{
-      key: "cdb_itau" | "cdb_santander" | "fiis";
+      key: string;
       label: string;
       investedAmount: number;
       monthlyIncome: number;
@@ -327,7 +357,7 @@ export interface MarketSnapshotPayload {
 }
 
 export interface ProfessionalForecastMetric {
-  key: "cdb_itau" | "cdb_santander" | "fiis" | "total";
+  key: string;
   label: string;
   sampleSize: number;
   mapePercent: number | null;
@@ -350,7 +380,7 @@ export interface ProfessionalGoalProbability {
 }
 
 export interface ProfessionalAttributionItem {
-  key: "cdb_itau" | "cdb_santander" | "fiis";
+  key: string;
   label: string;
   currentValue: number;
   previousValue: number;
@@ -394,7 +424,7 @@ export interface ProfessionalRiskRadar {
 }
 
 export interface ProfessionalRecommendationItem {
-  key: "cdb_itau" | "cdb_santander" | "fiis";
+  key: string;
   label: string;
   score: number;
   momentumPercent: number | null;
@@ -406,9 +436,9 @@ export interface ProfessionalRecommendationItem {
 export interface ProfessionalRecommendationBacktestItem {
   fromMonthLabel: string;
   toMonthLabel: string;
-  predictedKey: "cdb_itau" | "cdb_santander" | "fiis";
+  predictedKey: string;
   predictedLabel: string;
-  actualBestKey: "cdb_itau" | "cdb_santander" | "fiis";
+  actualBestKey: string;
   actualBestLabel: string;
   hit: boolean;
   chosenValue: number;
@@ -417,7 +447,7 @@ export interface ProfessionalRecommendationBacktestItem {
 }
 
 export interface ProfessionalRecommendation {
-  bestAssetKey: "cdb_itau" | "cdb_santander" | "fiis";
+  bestAssetKey: string;
   bestAssetLabel: string;
   action: string;
   items: ProfessionalRecommendationItem[];

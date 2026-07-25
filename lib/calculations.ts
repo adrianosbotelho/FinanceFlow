@@ -1,4 +1,4 @@
-import { DashboardKPIs, PassiveIncomeByMonth } from "../types";
+import { DashboardKPIs, PassiveIncomeByMonth, CdbKpiEntry } from "../types";
 
 export function computeMoM(series: PassiveIncomeByMonth[]): void {
   for (let i = 0; i < series.length; i++) {
@@ -78,12 +78,7 @@ export function buildKpis(
       momGrowth: null,
       cdbMomGrowth: null,
       fiiMomGrowth: null,
-      cdbItauCurrentMonth: 0,
-      cdbItauMomGrowth: null,
-      cdbItauMomDelta: null,
-      cdbSantanderCurrentMonth: 0,
-      cdbSantanderMomGrowth: null,
-      cdbSantanderMomDelta: null,
+      cdbItems: [],
       yoyGrowth: null,
       ytdPassiveIncome: 0,
       portfolioYield: 0,
@@ -104,23 +99,31 @@ export function buildKpis(
 
   const current = ordered[ordered.length - 1];
   const previous = ordered.length > 1 ? ordered[ordered.length - 2] : null;
-  const currentCdbTotal = current.cdb_itau + current.cdb_other;
-  const previousCdbTotal =
-    previous ? previous.cdb_itau + previous.cdb_other : null;
+  const currentCdbTotal = current.cdb_items.reduce((acc, c) => acc + c.income, 0);
+  const previousCdbTotal = previous
+    ? previous.cdb_items.reduce((acc, c) => acc + c.income, 0)
+    : null;
   const cdbMomGrowth =
     previousCdbTotal !== null && previousCdbTotal !== 0
       ? ((currentCdbTotal - previousCdbTotal) / previousCdbTotal) * 100
       : null;
-  const cdbItauMomGrowth =
-    previous && previous.cdb_itau !== 0
-      ? ((current.cdb_itau - previous.cdb_itau) / previous.cdb_itau) * 100
+
+  const cdbItems: CdbKpiEntry[] = current.cdb_items.map((cdbCurr) => {
+    const prevEntry = previous?.cdb_items.find((c) => c.investment_id === cdbCurr.investment_id);
+    const prevIncome = prevEntry?.income ?? 0;
+    const momGrowth = prevIncome > 0
+      ? ((cdbCurr.income - prevIncome) / prevIncome) * 100
       : null;
-  const cdbSantanderMomGrowth =
-    previous && previous.cdb_other !== 0
-      ? ((current.cdb_other - previous.cdb_other) / previous.cdb_other) * 100
-      : null;
-  const cdbItauMomDelta = previous ? current.cdb_itau - previous.cdb_itau : null;
-  const cdbSantanderMomDelta = previous ? current.cdb_other - previous.cdb_other : null;
+    const momDelta = previous ? cdbCurr.income - prevIncome : null;
+    return {
+      investment_id: cdbCurr.investment_id,
+      label: cdbCurr.label,
+      currentMonth: cdbCurr.income,
+      momGrowth,
+      momDelta,
+    };
+  });
+
   const fiiMomGrowth =
     previous && previous.fii_dividends !== 0
       ? ((current.fii_dividends - previous.fii_dividends) / previous.fii_dividends) * 100
@@ -156,12 +159,7 @@ export function buildKpis(
     momGrowth: current.mom_growth ?? null,
     cdbMomGrowth,
     fiiMomGrowth,
-    cdbItauCurrentMonth: current.cdb_itau,
-    cdbItauMomGrowth,
-    cdbItauMomDelta,
-    cdbSantanderCurrentMonth: current.cdb_other,
-    cdbSantanderMomGrowth,
-    cdbSantanderMomDelta,
+    cdbItems,
     yoyGrowth: current.yoy_growth ?? null,
     ytdPassiveIncome: ytd,
     portfolioYield,

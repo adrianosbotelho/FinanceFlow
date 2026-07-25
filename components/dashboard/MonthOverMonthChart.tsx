@@ -13,33 +13,8 @@ import {
 import { MonthComparisonPoint } from "../../types";
 import { formatCurrencyBRL } from "../../lib/formatters";
 
-// Ano anterior = tons quentes; ano atual = tons frios (fácil distinguir na análise)
-const TYPE_CONFIG = [
-  {
-    key: "itau",
-    label: "CDB Itaú",
-    prevKey: "itauPrev",
-    currKey: "itauCurr",
-    colorPrev: "#ea580c",
-    colorCurr: "#0ea5e9",
-  },
-  {
-    key: "other_cdb",
-    label: "CDB Santander",
-    prevKey: "otherCdbPrev",
-    currKey: "otherCdbCurr",
-    colorPrev: "#dc2626",
-    colorCurr: "#8b5cf6",
-  },
-  {
-    key: "fii",
-    label: "FIIs",
-    prevKey: "fiiPrev",
-    currKey: "fiiCurr",
-    colorPrev: "#16a34a",
-    colorCurr: "#06b6d4",
-  },
-] as const;
+const PREV_COLORS = ["#ea580c", "#dc2626", "#ca8a04", "#7c3aed", "#0d9488"];
+const CURR_COLORS = ["#0ea5e9", "#8b5cf6", "#facc15", "#f472b6", "#34d399"];
 
 interface Props {
   data: MonthComparisonPoint[];
@@ -51,12 +26,25 @@ function SingleTypeChart({
   data,
   yearPrev,
   yearCurr,
-  config,
-}: Props & { config: (typeof TYPE_CONFIG)[number] }) {
+  label,
+  prevKey,
+  currKey,
+  colorPrev,
+  colorCurr,
+}: {
+  data: Record<string, unknown>[];
+  yearPrev: number;
+  yearCurr: number;
+  label: string;
+  prevKey: string;
+  currKey: string;
+  colorPrev: string;
+  colorCurr: string;
+}) {
   return (
     <div className="flex flex-col rounded-lg border border-slate-700 bg-slate-800/80 p-4">
       <h3 className="mb-2 text-sm font-semibold text-slate-200">
-        {config.label}
+        {label}
       </h3>
       <p className="mb-3 text-xs text-slate-500">
         {yearPrev} vs {yearCurr} — evolução mensal
@@ -97,21 +85,21 @@ function SingleTypeChart({
             />
             <Line
               type="monotone"
-              dataKey={config.prevKey}
+              dataKey={prevKey}
               name={`${yearPrev}`}
-              stroke={config.colorPrev}
+              stroke={colorPrev}
               strokeWidth={2}
-              dot={{ r: 3, fill: config.colorPrev }}
+              dot={{ r: 3, fill: colorPrev }}
               activeDot={{ r: 4 }}
               connectNulls
             />
             <Line
               type="monotone"
-              dataKey={config.currKey}
+              dataKey={currKey}
               name={`${yearCurr}`}
-              stroke={config.colorCurr}
+              stroke={colorCurr}
               strokeWidth={2}
-              dot={{ r: 3, fill: config.colorCurr }}
+              dot={{ r: 3, fill: colorCurr }}
               activeDot={{ r: 4 }}
               connectNulls
             />
@@ -123,6 +111,38 @@ function SingleTypeChart({
 }
 
 export function MonthOverMonthChart({ data, yearPrev, yearCurr }: Props) {
+  if (!data.length) return null;
+
+  const cdbLabels = data[0].cdbItems.map((c) => c.label);
+
+  const flatData = data.map((point) => {
+    const row: Record<string, unknown> = { monthName: point.monthName };
+    for (const cdb of point.cdbItems) {
+      row[`${cdb.investment_id}_prev`] = cdb.prev;
+      row[`${cdb.investment_id}_curr`] = cdb.curr;
+    }
+    row["fii_prev"] = point.fiiPrev;
+    row["fii_curr"] = point.fiiCurr;
+    return row;
+  });
+
+  const charts = [
+    ...data[0].cdbItems.map((cdb, idx) => ({
+      label: cdb.label,
+      prevKey: `${cdb.investment_id}_prev`,
+      currKey: `${cdb.investment_id}_curr`,
+      colorPrev: PREV_COLORS[idx % PREV_COLORS.length],
+      colorCurr: CURR_COLORS[idx % CURR_COLORS.length],
+    })),
+    {
+      label: "FIIs",
+      prevKey: "fii_prev",
+      currKey: "fii_curr",
+      colorPrev: "#16a34a",
+      colorCurr: "#06b6d4",
+    },
+  ];
+
   return (
     <section className="flex flex-col gap-2 rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm transition-all hover:shadow-md">
       <div className="border-b border-slate-700 pb-4">
@@ -136,13 +156,17 @@ export function MonthOverMonthChart({ data, yearPrev, yearCurr }: Props) {
         </p>
       </div>
       <div className="grid gap-4 pt-4 sm:grid-cols-3">
-        {TYPE_CONFIG.map((config) => (
+        {charts.map((config) => (
           <SingleTypeChart
-            key={config.key}
-            data={data}
+            key={config.label}
+            data={flatData}
             yearPrev={yearPrev}
             yearCurr={yearCurr}
-            config={config}
+            label={config.label}
+            prevKey={config.prevKey}
+            currKey={config.currKey}
+            colorPrev={config.colorPrev}
+            colorCurr={config.colorCurr}
           />
         ))}
       </div>
