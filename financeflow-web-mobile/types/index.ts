@@ -6,6 +6,11 @@ export interface Investment {
   institution: string;
   name: string;
   amount_invested: number;
+  cdi_rate?: number | null;
+  benchmark?: string | null;
+  start_date?: string | null;
+  liquidity?: string | null;
+  maturity_date?: string | null;
 }
 
 export interface ReturnRow {
@@ -17,11 +22,24 @@ export interface ReturnRow {
   income_value: number;
 }
 
+export interface CdbMonthlyEntry {
+  investment_id: string;
+  label: string;
+  income: number;
+}
+
+export interface CdbKpiEntry {
+  investment_id: string;
+  label: string;
+  currentMonth: number;
+  momGrowth: number | null;
+  momDelta: number | null;
+}
+
 export interface DashboardMonth {
   month: number;
   year: number;
-  cdb_itau: number;
-  cdb_santander: number;
+  cdb_items: CdbMonthlyEntry[];
   fiis: number;
   total: number;
   mom_pct: number | null;
@@ -34,15 +52,10 @@ export interface DashboardPayload {
     totalMonth: number;
     cdbMonth: number;
     fiisMonth: number;
-    cdbItauMonth: number;
-    cdbSantanderMonth: number;
     momTotalPct: number | null;
     momCdbPct: number | null;
     momFiisPct: number | null;
-    momCdbItauPct: number | null;
-    momCdbSantanderPct: number | null;
-    momCdbItauValue: number | null;
-    momCdbSantanderValue: number | null;
+    cdbItems: CdbKpiEntry[];
     ytd: number;
   };
   monthlySeries: DashboardMonth[];
