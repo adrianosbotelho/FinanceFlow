@@ -51,11 +51,11 @@ export function KPIAdvancedGrid({ kpis }: KPIAdvancedGridProps) {
   const rolling12MonthlyAverage = kpis.rolling12Months / 12;
 
   const cdbCount = kpis.cdbItems.length;
-  const cdbGridCols =
-    cdbCount <= 2 ? "grid-cols-2" :
-    cdbCount === 3 ? "grid-cols-3" :
-    cdbCount === 4 ? "grid-cols-4" :
-    "grid-cols-3";
+  // Tailwind requires literal class strings for purge detection
+  const cdbGridClass =
+    cdbCount <= 2 ? "grid-cols-1 sm:grid-cols-2" :
+    cdbCount === 3 ? "grid-cols-1 sm:grid-cols-3" :
+    "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4";
 
   return (
     <section className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-6">
@@ -100,7 +100,7 @@ export function KPIAdvancedGrid({ kpis }: KPIAdvancedGridProps) {
       </article>
 
       {/* Row 2: CDB cards (linha própria, distribuídos igualmente) */}
-      <div className={`col-span-1 grid gap-4 lg:col-span-2 xl:col-span-6 ${cdbGridCols}`}>
+      <div className={`col-span-1 grid gap-4 lg:col-span-2 xl:col-span-6 ${cdbGridClass}`}>
         {kpis.cdbItems.map((cdb, idx) => {
           const colorClass = CDB_COLORS[idx % CDB_COLORS.length];
           const tone = toneClass(cdb.momGrowth);
