@@ -14,13 +14,15 @@ interface Props {
   distribution: IncomeDistribution;
 }
 
-const COLORS = ["#F97316", "#EF4444", "#22C55E"];
+const COLORS = ["#F97316", "#EF4444", "#3B82F6", "#8B5CF6", "#F59E0B", "#22C55E"];
 
 export function IncomeDistributionPie({ distribution }: Props) {
   const data = [
-    { name: "CDB Itaú", value: distribution.itauCdb },
-    { name: "CDB Santander", value: distribution.otherCdb },
-    { name: "FIIs", value: distribution.fii },
+    ...distribution.cdbItems.map((item) => ({
+      name: item.label,
+      value: item.value,
+    })),
+    { name: "Dividendos de FIIs", value: distribution.fii },
   ];
 
   return (
@@ -76,45 +78,24 @@ export function IncomeDistributionPie({ distribution }: Props) {
           </div>
         </div>
         <div className="w-full space-y-3 text-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="h-3 w-3 rounded-full bg-[#F97316]" />
-              <span>CDB Itaú</span>
-            </div>
-            <span className="font-bold">
-              {formatPercent(distribution.itauCdb, distribution)}
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="h-3 w-3 rounded-full bg-[#EF4444]" />
-              <span>CDB Santander</span>
-            </div>
-            <span className="font-bold">
-              {formatPercent(distribution.otherCdb, distribution)}
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="h-3 w-3 rounded-full bg-[#22C55E]" />
-              <span>Dividendos de FIIs</span>
-            </div>
-            <span className="font-bold">
-              {formatPercent(distribution.fii, distribution)}
-            </span>
-          </div>
+          {data.map((entry, index) => {
+            const total = data.reduce((acc, d) => acc + d.value, 0);
+            const pct = total > 0 ? ((entry.value / total) * 100).toFixed(0) : "0";
+            return (
+              <div key={entry.name} className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="h-3 w-3 rounded-full"
+                    style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                  />
+                  <span>{entry.name}</span>
+                </div>
+                <span className="font-bold">{pct}%</span>
+              </div>
+            );
+          })}
         </div>
       </div>
     </section>
   );
-}
-
-function formatPercent(
-  value: number,
-  distribution: IncomeDistribution,
-): string {
-  const total =
-    distribution.itauCdb + distribution.otherCdb + distribution.fii;
-  if (!total) return "0%";
-  return `${((value / total) * 100).toFixed(0)}%`;
 }

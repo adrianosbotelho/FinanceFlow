@@ -58,8 +58,10 @@ function buildForecastSeries(data: DashboardPayload) {
 
 function buildDistributionSeries(data: DashboardPayload) {
   return [
-    { source: "CDB Itaú", value: data.distribution.itauCdb },
-    { source: "CDB Santander", value: data.distribution.otherCdb },
+    ...data.distribution.cdbItems.map((item) => ({
+      source: item.label,
+      value: item.value,
+    })),
     { source: "FIIs", value: data.distribution.fii },
   ];
 }
@@ -271,12 +273,9 @@ function deriveOperationalInsights(data: DashboardPayload, year: number): Operat
   const current = byMonth.get(currentMonth);
   const previous = byMonth.get(previousMonth);
 
-  const currentItau = current?.cdb_itau ?? 0;
-  const currentSantander = current?.cdb_other ?? 0;
+  const currentCdbItems = current?.cdb_items ?? [];
+  const previousCdbItems = previous?.cdb_items ?? [];
   const currentFii = current?.fii_dividends ?? 0;
-
-  const previousItau = previous?.cdb_itau ?? 0;
-  const previousSantander = previous?.cdb_other ?? 0;
   const previousFii = previous?.fii_dividends ?? 0;
 
   const currentTotal = current?.total ?? 0;
@@ -321,8 +320,14 @@ function deriveOperationalInsights(data: DashboardPayload, year: number): Operat
     current: number;
     previous: number;
   }> = [
-    { label: "CDB Itaú", current: currentItau, previous: previousItau },
-    { label: "CDB Santander", current: currentSantander, previous: previousSantander },
+    ...currentCdbItems.map((cdb) => {
+      const prevEntry = previousCdbItems.find((p) => p.investment_id === cdb.investment_id);
+      return {
+        label: cdb.label,
+        current: cdb.income,
+        previous: prevEntry?.income ?? 0,
+      };
+    }),
     { label: "FIIs", current: currentFii, previous: previousFii },
   ];
 
@@ -336,7 +341,7 @@ function deriveOperationalInsights(data: DashboardPayload, year: number): Operat
 
   const cdiReference =
     data.insights.cdiAnnualReference > 0 ? data.insights.cdiAnnualReference : 10.65;
-  const cdbTotalCurrent = currentItau + currentSantander;
+  const cdbTotalCurrent = currentCdbItems.reduce((acc, c) => acc + c.income, 0);
   const cdbImpactPer1pp = cdiReference > 0 ? cdbTotalCurrent / cdiReference : 0;
 
   const stressScenarios = [

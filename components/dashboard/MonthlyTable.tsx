@@ -26,12 +26,20 @@ function toneClass(value: number | null): string {
   return "text-slate-200";
 }
 
+const CDB_COLORS = ["text-orange-300", "text-rose-300", "text-sky-300", "text-violet-300", "text-amber-300"];
+
 export function MonthlyTable({ data }: Props) {
+  const cdbLabels = data.length > 0
+    ? data[0].cdb_items.map((c) => c.label)
+    : [];
+
   const summary = data.reduce(
     (acc, m) => {
       const momValue = resolveMonthOverMonthValue(m.total, m.mom_growth);
-      acc.totalItau += m.cdb_itau;
-      acc.totalSantander += m.cdb_other;
+      for (let i = 0; i < m.cdb_items.length; i++) {
+        if (!acc.cdbTotals[i]) acc.cdbTotals[i] = 0;
+        acc.cdbTotals[i] += m.cdb_items[i].income;
+      }
       acc.totalFiis += m.fii_dividends;
       acc.totalMonthly += m.total;
       if (momValue !== null) {
@@ -48,8 +56,7 @@ export function MonthlyTable({ data }: Props) {
       return acc;
     },
     {
-      totalItau: 0,
-      totalSantander: 0,
+      cdbTotals: [] as number[],
       totalFiis: 0,
       totalMonthly: 0,
       totalMomValue: 0,
@@ -68,8 +75,7 @@ export function MonthlyTable({ data }: Props) {
     const header = [
       "mes",
       "ano",
-      "cdb_itau",
-      "cdb_outros",
+      ...cdbLabels.map((l) => l.toLowerCase().replace(/\s+/g, "_")),
       "fii_dividendos",
       "total_mensal",
       "var_mom_percent",
@@ -82,8 +88,7 @@ export function MonthlyTable({ data }: Props) {
       return [
         String(m.month),
         String(m.year),
-        m.cdb_itau.toFixed(2),
-        m.cdb_other.toFixed(2),
+        ...m.cdb_items.map((c) => c.income.toFixed(2)),
         m.fii_dividends.toFixed(2),
         m.total.toFixed(2),
         m.mom_growth === null || m.mom_growth === undefined
@@ -138,8 +143,11 @@ export function MonthlyTable({ data }: Props) {
           <thead>
             <tr className="bg-slate-900/80 text-xs uppercase tracking-wider text-slate-400">
               <th className="px-6 py-4 font-bold">Mês</th>
-              <th className="px-6 py-4 font-bold text-orange-300">CDB Itaú</th>
-              <th className="px-6 py-4 font-bold text-rose-300">CDB Santander</th>
+              {cdbLabels.map((label, idx) => (
+                <th key={label} className={`px-6 py-4 font-bold ${CDB_COLORS[idx % CDB_COLORS.length]}`}>
+                  {label}
+                </th>
+              ))}
               <th className="px-6 py-4 font-bold text-emerald-300">Dividendos FIIs</th>
               <th className="px-6 py-4 font-bold">Total mensal</th>
               <th className="px-6 py-4 font-bold">Var (M/M)</th>
@@ -158,12 +166,11 @@ export function MonthlyTable({ data }: Props) {
                   <td className="px-6 py-4 font-medium text-slate-100">
                     {monthLabel(m.month)} {m.year}
                   </td>
-                  <td className="px-6 py-4 font-medium text-orange-300">
-                    {formatCurrencyBRL(m.cdb_itau)}
-                  </td>
-                  <td className="px-6 py-4 font-medium text-rose-300">
-                    {formatCurrencyBRL(m.cdb_other)}
-                  </td>
+                  {m.cdb_items.map((cdb, idx) => (
+                    <td key={cdb.investment_id} className={`px-6 py-4 font-medium ${CDB_COLORS[idx % CDB_COLORS.length]}`}>
+                      {formatCurrencyBRL(cdb.income)}
+                    </td>
+                  ))}
                   <td className="px-6 py-4 font-medium text-emerald-300">
                     {formatCurrencyBRL(m.fii_dividends)}
                   </td>
@@ -188,12 +195,11 @@ export function MonthlyTable({ data }: Props) {
               <td className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-300">
                 Resumo
               </td>
-              <td className="px-6 py-4 font-bold text-orange-300">
-                {formatCurrencyBRL(summary.totalItau)}
-              </td>
-              <td className="px-6 py-4 font-bold text-rose-300">
-                {formatCurrencyBRL(summary.totalSantander)}
-              </td>
+              {summary.cdbTotals.map((total, idx) => (
+                <td key={idx} className={`px-6 py-4 font-bold ${CDB_COLORS[idx % CDB_COLORS.length]}`}>
+                  {formatCurrencyBRL(total)}
+                </td>
+              ))}
               <td className="px-6 py-4 font-bold text-emerald-300">
                 {formatCurrencyBRL(summary.totalFiis)}
               </td>

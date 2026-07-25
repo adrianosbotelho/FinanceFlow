@@ -52,6 +52,11 @@ function isItauInstitution(institution: string): boolean {
   return normalized.includes("itau");
 }
 
+function buildInvestmentLabel(inv: { type: string; institution: string; name: string }): string {
+  if (inv.type === "FII") return "Dividendos FIIs";
+  return `CDB ${inv.institution}`;
+}
+
 function countBusinessDaysInMonth(year: number, month: number): number {
   const daysInMonth = new Date(year, month, 0).getDate();
   let count = 0;
@@ -135,6 +140,9 @@ export async function GET(req: NextRequest) {
     byInvestment.set(inv.id, inv);
   }
 
+  const cdbInvestments = investments.filter((inv) => inv.type === "CDB");
+  const cdbInvestmentIds = cdbInvestments.map((inv) => inv.id);
+
   const seriesMap = new Map<string, PassiveIncomeByMonth>();
 
   function getKey(y: number, m: number) {
@@ -151,8 +159,11 @@ export async function GET(req: NextRequest) {
       bucket = {
         month: row.month,
         year: row.year,
-        cdb_itau: 0,
-        cdb_other: 0,
+        cdb_items: cdbInvestments.map((cdb) => ({
+          investment_id: cdb.id,
+          label: buildInvestmentLabel(cdb),
+          income: 0,
+        })),
         fii_dividends: 0,
         total: 0,
       };
@@ -160,17 +171,16 @@ export async function GET(req: NextRequest) {
     }
 
     if (inv.type === "CDB") {
-      if (isItauInstitution(inv.institution)) {
-        bucket.cdb_itau += Number(row.income_value);
-      } else {
-        bucket.cdb_other += Number(row.income_value);
+      const cdbEntry = bucket.cdb_items.find((c) => c.investment_id === inv.id);
+      if (cdbEntry) {
+        cdbEntry.income += Number(row.income_value);
       }
     } else if (inv.type === "FII") {
       bucket.fii_dividends += Number(row.income_value);
     }
 
-    bucket.total =
-      bucket.cdb_itau + bucket.cdb_other + bucket.fii_dividends;
+    const cdbTotal = bucket.cdb_items.reduce((acc, c) => acc + c.income, 0);
+    bucket.total = cdbTotal + bucket.fii_dividends;
   }
 
   const monthlySeries = Array.from(seriesMap.values()).sort(
@@ -198,10 +208,16 @@ export async function GET(req: NextRequest) {
         monthName: monthLabel(month),
         yearPrev,
         yearCurr: year,
-        itauPrev: prev?.cdb_itau ?? 0,
-        itauCurr: curr?.cdb_itau ?? 0,
-        otherCdbPrev: prev?.cdb_other ?? 0,
-        otherCdbCurr: curr?.cdb_other ?? 0,
+        cdbItems: cdbInvestments.map((cdb) => {
+          const prevEntry = prev?.cdb_items.find((c) => c.investment_id === cdb.id);
+          const currEntry = curr?.cdb_items.find((c) => c.investment_id === cdb.id);
+          return {
+            investment_id: cdb.id,
+            label: buildInvestmentLabel(cdb),
+            prev: prevEntry?.income ?? 0,
+            curr: currEntry?.income ?? 0,
+          };
+        }),
         fiiPrev: prev?.fii_dividends ?? 0,
         fiiCurr: curr?.fii_dividends ?? 0,
         totalPrev: prev?.total ?? 0,
@@ -244,34 +260,38 @@ export async function GET(req: NextRequest) {
     totalProfitPct,
   };
 
-  const distribution: IncomeDistribution = referenceSeries
-    .filter((m) => m.year === year && m.month <= analysisMonth)
-    .reduce(
-      (acc, m) => {
-        acc.itauCdb += m.cdb_itau;
-        acc.otherCdb += m.cdb_other;
-        acc.fii += m.fii_dividends;
-        return acc;
-      },
-      { itauCdb: 0, otherCdb: 0, fii: 0 },
-    );
-
-  const investedByTheme = investments.reduce(
-    (acc, inv) => {
-      const amount = Number(inv.amount_invested ?? 0);
-      if (inv.type === "CDB") {
-        if (isItauInstitution(inv.institution)) {
-          acc.cdb_itau += amount;
-        } else {
-          acc.cdb_santander += amount;
-        }
-      } else if (inv.type === "FII") {
-        acc.fiis += amount;
+  const distribution: IncomeDistribution = (() => {
+    const yearData = referenceSeries.filter((m) => m.year === year && m.month <= analysisMonth);
+    const cdbTotals = new Map<string, number>();
+    for (const cdb of cdbInvestments) {
+      cdbTotals.set(cdb.id, 0);
+    }
+    let fiiTotal = 0;
+    for (const m of yearData) {
+      for (const item of m.cdb_items) {
+        cdbTotals.set(item.investment_id, (cdbTotals.get(item.investment_id) ?? 0) + item.income);
       }
-      return acc;
-    },
-    { cdb_itau: 0, cdb_santander: 0, fiis: 0 },
-  );
+      fiiTotal += m.fii_dividends;
+    }
+    return {
+      cdbItems: cdbInvestments.map((cdb) => ({
+        investment_id: cdb.id,
+        label: buildInvestmentLabel(cdb),
+        value: cdbTotals.get(cdb.id) ?? 0,
+      })),
+      fii: fiiTotal,
+    };
+  })();
+
+  const investedByCdb = new Map<string, number>();
+  let investedFiis = 0;
+  for (const inv of investments) {
+    if (inv.type === "CDB") {
+      investedByCdb.set(inv.id, (investedByCdb.get(inv.id) ?? 0) + Number(inv.amount_invested ?? 0));
+    } else if (inv.type === "FII") {
+      investedFiis += Number(inv.amount_invested ?? 0);
+    }
+  }
 
   const currentYearSeries = referenceSeries.filter(
     (m) => m.year === year && m.month <= analysisMonth,
@@ -311,62 +331,37 @@ export async function GET(req: NextRequest) {
         ? (latestMonthEntry.total / totalInvested) * 100
         : null,
     items: [
-      (() => {
-        const realized = latestMonthEntry?.cdb_itau ?? 0;
+      ...cdbInvestments.map((cdb) => {
+        const cdbEntry = latestMonthEntry?.cdb_items.find((c) => c.investment_id === cdb.id);
+        const realized = cdbEntry?.income ?? 0;
         const forecast = latestMonthEntry !== null ? resolveForecastIncome(realized) : null;
+        const invested = investedByCdb.get(cdb.id) ?? 0;
         return {
-        key: "cdb_itau",
-        label: "CDB Itaú",
-        investedAmount: investedByTheme.cdb_itau,
-        monthlyIncome: realized,
-        monthlyYieldPct:
-          investedByTheme.cdb_itau > 0 && latestMonthEntry
-            ? (realized / investedByTheme.cdb_itau) * 100
-            : null,
-        forecastMonthlyIncome: forecast,
-        forecastMonthlyYieldPct:
-          investedByTheme.cdb_itau > 0 && forecast !== null
-            ? (forecast / investedByTheme.cdb_itau) * 100
-            : null,
-      };
-      })(),
-      (() => {
-        const realized = latestMonthEntry?.cdb_other ?? 0;
-        const forecast = latestMonthEntry !== null ? resolveForecastIncome(realized) : null;
-        return {
-        key: "cdb_santander",
-        label: "CDB Santander",
-        investedAmount: investedByTheme.cdb_santander,
-        monthlyIncome: realized,
-        monthlyYieldPct:
-          investedByTheme.cdb_santander > 0 && latestMonthEntry
-            ? (realized / investedByTheme.cdb_santander) * 100
-            : null,
-        forecastMonthlyIncome: forecast,
-        forecastMonthlyYieldPct:
-          investedByTheme.cdb_santander > 0 && forecast !== null
-            ? (forecast / investedByTheme.cdb_santander) * 100
-            : null,
-      };
-      })(),
+          key: `cdb_${cdb.id}`,
+          label: buildInvestmentLabel(cdb),
+          investedAmount: invested,
+          monthlyIncome: realized,
+          monthlyYieldPct:
+            invested > 0 && latestMonthEntry ? (realized / invested) * 100 : null,
+          forecastMonthlyIncome: forecast,
+          forecastMonthlyYieldPct:
+            invested > 0 && forecast !== null ? (forecast / invested) * 100 : null,
+        };
+      }),
       (() => {
         const realized = latestMonthEntry?.fii_dividends ?? 0;
         const forecast = latestMonthEntry !== null ? resolveForecastIncome(realized) : null;
         return {
-        key: "fiis",
-        label: "Dividendos FIIs",
-        investedAmount: investedByTheme.fiis,
-        monthlyIncome: realized,
-        monthlyYieldPct:
-          investedByTheme.fiis > 0 && latestMonthEntry
-            ? (realized / investedByTheme.fiis) * 100
-            : null,
-        forecastMonthlyIncome: forecast,
-        forecastMonthlyYieldPct:
-          investedByTheme.fiis > 0 && forecast !== null
-            ? (forecast / investedByTheme.fiis) * 100
-            : null,
-      };
+          key: "fiis",
+          label: "Dividendos FIIs",
+          investedAmount: investedFiis,
+          monthlyIncome: realized,
+          monthlyYieldPct:
+            investedFiis > 0 && latestMonthEntry ? (realized / investedFiis) * 100 : null,
+          forecastMonthlyIncome: forecast,
+          forecastMonthlyYieldPct:
+            investedFiis > 0 && forecast !== null ? (forecast / investedFiis) * 100 : null,
+        };
       })(),
     ],
   };
@@ -501,18 +496,17 @@ function buildInsights(
     ipcaTrend3mPercent: number | null;
   },
 ): FinancialInsights {
-  const totalCdb = distribution.itauCdb + distribution.otherCdb;
+  const totalCdb = distribution.cdbItems.reduce((acc, c) => acc + c.value, 0);
   const totalFii = distribution.fii;
   const ratio = totalCdb > 0 ? (totalFii / totalCdb) * 100 : 0;
 
-  let bestSource: FinancialInsights["bestSource"] = "FII";
-  if (distribution.itauCdb >= distribution.otherCdb && distribution.itauCdb >= totalFii) {
-    bestSource = "CDB_ITAU";
-  } else if (
-    distribution.otherCdb > distribution.itauCdb &&
-    distribution.otherCdb >= totalFii
-  ) {
-    bestSource = "CDB_OTHER";
+  let bestSource: string = "FII";
+  let bestValue = totalFii;
+  for (const item of distribution.cdbItems) {
+    if (item.value > bestValue) {
+      bestValue = item.value;
+      bestSource = item.label;
+    }
   }
 
   const trend =
