@@ -47,6 +47,21 @@ const EVENT_TYPE_OPTIONS: Array<{ value: CashEventType; label: string }> = [
   { value: "TAXA", label: "Taxa" },
 ];
 
+const CDB_INSTITUTION_COLORS: Record<string, string> = {
+  "Itaú": "text-amber-400",
+  "Santander": "text-rose-400",
+  "Nubank": "text-violet-400",
+  "XP": "text-sky-400",
+  "Banco do Brasil": "text-blue-400",
+  "Inter": "text-orange-400",
+  "BTG Pactual": "text-cyan-400",
+};
+const DEFAULT_CDB_COLOR = "text-amber-400";
+
+function getCdbColor(institution: string): string {
+  return CDB_INSTITUTION_COLORS[institution] ?? DEFAULT_CDB_COLOR;
+}
+
 const EVENT_TYPE_COLORS: Record<CashEventType, string> = {
   APORTE: "text-emerald-300",
   RESGATE: "text-amber-300",
@@ -108,6 +123,11 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
 
   const [page, setPage] = useState(1);
   const pageSize = 10;
+
+  const [revisionPage, setRevisionPage] = useState(1);
+  const revisionPageSize = 10;
+  const [eventPage, setEventPage] = useState(1);
+  const eventPageSize = 10;
 
   const [editing, setEditing] = useState<ReturnRow | null>(null);
   const [eventYear, setEventYear] = useState(() => new Date().getFullYear());
@@ -828,7 +848,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                         className={`px-2 py-2 font-medium ${
                           row.isFii
                             ? "text-emerald-400"
-                            : "text-amber-400"
+                            : getCdbColor(investmentById.get(row.investmentId)?.institution ?? "")
                         }`}
                       >
                         {formatCurrencyBRL(row.income)}
@@ -1114,7 +1134,12 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                   </td>
                 </tr>
               ) : (
-                revisionRows.map((row) => (
+                (() => {
+                  const totalRevisionPages = Math.max(1, Math.ceil(revisionRows.length / revisionPageSize));
+                  const safeRevisionPage = Math.min(revisionPage, totalRevisionPages);
+                  const revisionStart = (safeRevisionPage - 1) * revisionPageSize;
+                  const revisionPageRows = revisionRows.slice(revisionStart, revisionStart + revisionPageSize);
+                  return revisionPageRows.map((row) => (
                   <tr key={row.id} className="border-b border-slate-800/60 last:border-0">
                     <td className="px-2 py-2 text-slate-300">{parseBrDateTime(row.created_at)}</td>
                     <td className="px-2 py-2 text-slate-300">{row.year}</td>
@@ -1144,10 +1169,33 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                       {formatCurrencyBRL(Number(row.delta_income_value ?? 0))}
                     </td>
                   </tr>
-                ))
+                ));
+                })()
               )}
             </tbody>
           </table>
+          {revisionRows.length > revisionPageSize && (
+            <div className="mt-2 flex items-center justify-end gap-3 text-xs text-slate-400">
+              <span>Mostrando {Math.min(revisionPage * revisionPageSize, revisionRows.length)} de {revisionRows.length}</span>
+              <button
+                type="button"
+                disabled={revisionPage === 1}
+                onClick={() => setRevisionPage((p) => Math.max(1, p - 1))}
+                className="rounded border border-slate-700 px-2 py-1 text-slate-200 hover:bg-slate-800 disabled:opacity-40"
+              >
+                Anterior
+              </button>
+              <span>Página {revisionPage} / {Math.ceil(revisionRows.length / revisionPageSize)}</span>
+              <button
+                type="button"
+                disabled={revisionPage >= Math.ceil(revisionRows.length / revisionPageSize)}
+                onClick={() => setRevisionPage((p) => p + 1)}
+                className="rounded border border-slate-700 px-2 py-1 text-slate-200 hover:bg-slate-800 disabled:opacity-40"
+              >
+                Próxima
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1245,6 +1293,13 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
           ) : cashEvents.length === 0 ? (
             <p className="text-xs text-slate-400">Nenhum evento lançado para {eventYear}.</p>
           ) : (
+            (() => {
+              const totalEventPages = Math.max(1, Math.ceil(cashEvents.length / eventPageSize));
+              const safeEventPage = Math.min(eventPage, totalEventPages);
+              const eventStart = (safeEventPage - 1) * eventPageSize;
+              const eventPageRows = cashEvents.slice(eventStart, eventStart + eventPageSize);
+              return (
+                <>
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-xs">
                 <thead className="text-slate-400">
@@ -1258,7 +1313,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {cashEvents.map((event) => {
+                  {eventPageRows.map((event) => {
                     const inv = investmentById.get(event.investment_id);
                     return (
                       <tr
@@ -1289,6 +1344,31 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                 </tbody>
               </table>
             </div>
+            {cashEvents.length > eventPageSize && (
+              <div className="mt-2 flex items-center justify-end gap-3 text-xs text-slate-400">
+                <span>Mostrando {Math.min(safeEventPage * eventPageSize, cashEvents.length)} de {cashEvents.length}</span>
+                <button
+                  type="button"
+                  disabled={safeEventPage === 1}
+                  onClick={() => setEventPage((p) => Math.max(1, p - 1))}
+                  className="rounded border border-slate-700 px-2 py-1 text-slate-200 hover:bg-slate-800 disabled:opacity-40"
+                >
+                  Anterior
+                </button>
+                <span>Página {safeEventPage} / {totalEventPages}</span>
+                <button
+                  type="button"
+                  disabled={safeEventPage >= totalEventPages}
+                  onClick={() => setEventPage((p) => p + 1)}
+                  className="rounded border border-slate-700 px-2 py-1 text-slate-200 hover:bg-slate-800 disabled:opacity-40"
+                >
+                  Próxima
+                </button>
+              </div>
+            )}
+                </>
+              );
+            })()
           )}
         </div>
       </div>
@@ -1304,7 +1384,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
               <tr>
                 <th className="px-2 py-2">Meses</th>
                 {cdbInvestments.map((inv) => (
-                  <th key={inv.id} className="px-2 py-2 text-amber-400">
+                  <th key={inv.id} className={`px-2 py-2 ${getCdbColor(inv.institution)}`}>
                     {`CDB ${inv.institution}`}
                   </th>
                 ))}
@@ -1340,7 +1420,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                       {monthNameFull(row.month)}
                     </td>
                     {cdbInvestments.map((inv) => (
-                      <td key={inv.id} className="px-2 py-2 font-medium text-amber-400">
+                      <td key={inv.id} className={`px-2 py-2 font-medium ${getCdbColor(inv.institution)}`}>
                         {formatCurrencyBRL(row.cdbValues.get(inv.id) ?? 0)}
                       </td>
                     ))}
