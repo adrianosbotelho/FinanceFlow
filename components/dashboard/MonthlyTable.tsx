@@ -26,6 +26,16 @@ function toneClass(value: number | null): string {
   return "text-slate-200";
 }
 
+function countBusinessDaysInMonth(year: number, month: number): number {
+  const daysInMonth = new Date(year, month, 0).getDate();
+  let count = 0;
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const weekDay = new Date(year, month - 1, day).getDay();
+    if (weekDay >= 1 && weekDay <= 5) count += 1;
+  }
+  return count;
+}
+
 const CDB_COLORS = ["text-orange-300", "text-rose-300", "text-sky-300", "text-violet-300", "text-amber-300"];
 
 export function MonthlyTable({ data }: Props) {
@@ -143,6 +153,7 @@ export function MonthlyTable({ data }: Props) {
           <thead>
             <tr className="bg-slate-900/80 text-xs uppercase tracking-wider text-slate-400">
               <th className="px-6 py-4 font-bold">Mês</th>
+              <th className="px-6 py-4 font-bold text-cyan-300">Dias Úteis</th>
               {cdbLabels.map((label, idx) => (
                 <th key={label} className={`px-6 py-4 font-bold ${CDB_COLORS[idx % CDB_COLORS.length]}`}>
                   {label}
@@ -165,6 +176,9 @@ export function MonthlyTable({ data }: Props) {
                 >
                   <td className="px-6 py-4 font-medium text-slate-100">
                     {monthLabel(m.month)} {m.year}
+                  </td>
+                  <td className="px-6 py-4 font-medium text-cyan-300">
+                    {countBusinessDaysInMonth(m.year, m.month)}
                   </td>
                   {m.cdb_items.map((cdb, idx) => (
                     <td key={cdb.investment_id} className={`px-6 py-4 font-medium ${CDB_COLORS[idx % CDB_COLORS.length]}`}>
@@ -195,6 +209,7 @@ export function MonthlyTable({ data }: Props) {
               <td className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-300">
                 Resumo
               </td>
+              <td className="px-6 py-4 font-bold text-cyan-300">—</td>
               {summary.cdbTotals.map((total, idx) => (
                 <td key={idx} className={`px-6 py-4 font-bold ${CDB_COLORS[idx % CDB_COLORS.length]}`}>
                   {formatCurrencyBRL(total)}
