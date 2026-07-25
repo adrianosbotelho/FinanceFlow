@@ -50,9 +50,17 @@ export function KPIAdvancedGrid({ kpis }: KPIAdvancedGridProps) {
   );
   const rolling12MonthlyAverage = kpis.rolling12Months / 12;
 
+  const cdbCount = kpis.cdbItems.length;
+  const cdbGridCols =
+    cdbCount <= 2 ? "grid-cols-2" :
+    cdbCount === 3 ? "grid-cols-3" :
+    cdbCount === 4 ? "grid-cols-4" :
+    "grid-cols-3";
+
   return (
     <section className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-6">
-      <article className="rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm xl:col-span-2">
+      {/* Row 1: Patrimônio + Lucro */}
+      <article className="rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm xl:col-span-3">
         <p className="text-sm font-semibold text-slate-200">Patrimônio total</p>
         <div className="mt-2 flex items-center gap-2">
           <p className="text-3xl font-extrabold text-slate-50">
@@ -70,7 +78,7 @@ export function KPIAdvancedGrid({ kpis }: KPIAdvancedGridProps) {
         </p>
       </article>
 
-      <article className="rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm xl:col-span-2">
+      <article className="rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm xl:col-span-3">
         <p className="text-sm font-semibold text-slate-200">Lucro total</p>
         <p className={`mt-2 text-3xl font-extrabold ${profitTone}`}>
           {formatCurrencyBRL(kpis.totalProfit)}
@@ -91,26 +99,30 @@ export function KPIAdvancedGrid({ kpis }: KPIAdvancedGridProps) {
         </div>
       </article>
 
-      {kpis.cdbItems.map((cdb, idx) => {
-        const colorClass = CDB_COLORS[idx % CDB_COLORS.length];
-        const tone = toneClass(cdb.momGrowth);
-        return (
-          <article key={cdb.investment_id} className="rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm">
-            <p className="text-sm font-semibold text-slate-200">{cdb.label} (M/M)</p>
-            <p className={`mt-2 text-2xl font-extrabold ${tone}`}>
-              {formatPercentage(cdb.momGrowth)} {arrow(cdb.momGrowth)}
-            </p>
-            <p className="mt-2 text-xs text-slate-400">Mês atual</p>
-            <p className={`text-base font-semibold ${colorClass}`}>
-              {formatCurrencyBRL(cdb.currentMonth)}
-            </p>
-            <p className={`mt-1 text-xs font-semibold ${toneClass(cdb.momDelta)}`}>
-              Δ M/M: {formatSignedCurrency(cdb.momDelta)}
-            </p>
-          </article>
-        );
-      })}
+      {/* Row 2: CDB cards (linha própria, distribuídos igualmente) */}
+      <div className={`col-span-1 grid gap-4 lg:col-span-2 xl:col-span-6 ${cdbGridCols}`}>
+        {kpis.cdbItems.map((cdb, idx) => {
+          const colorClass = CDB_COLORS[idx % CDB_COLORS.length];
+          const tone = toneClass(cdb.momGrowth);
+          return (
+            <article key={cdb.investment_id} className="rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm">
+              <p className="text-sm font-semibold text-slate-200">{cdb.label} (M/M)</p>
+              <p className={`mt-2 text-2xl font-extrabold ${tone}`}>
+                {formatPercentage(cdb.momGrowth)} {arrow(cdb.momGrowth)}
+              </p>
+              <p className="mt-2 text-xs text-slate-400">Mês atual</p>
+              <p className={`text-base font-semibold ${colorClass}`}>
+                {formatCurrencyBRL(cdb.currentMonth)}
+              </p>
+              <p className={`mt-1 text-xs font-semibold ${toneClass(cdb.momDelta)}`}>
+                Δ M/M: {formatSignedCurrency(cdb.momDelta)}
+              </p>
+            </article>
+          );
+        })}
+      </div>
 
+      {/* Row 3: Proventos + Variação/Rentabilidade */}
       <article className="rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm xl:col-span-3">
         <p className="text-sm font-semibold text-slate-200">Proventos Recebidos (12M)</p>
         <p className="mt-2 text-3xl font-extrabold text-slate-50">
