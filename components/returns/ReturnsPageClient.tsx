@@ -229,18 +229,13 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
       if (!inv) continue;
 
       const isFii = inv.type === "FII";
-      const isItau = inv.type === "CDB" && inv.institution === "Itaú";
       const key = isFii
         ? `FII-${ret.year}-${ret.month}`
-        : isItau
-          ? `CDB-ITAU-${ret.year}-${ret.month}`
-          : `CDB-SANTANDER-${ret.year}-${ret.month}`;
+        : `CDB-${inv.id}-${ret.year}-${ret.month}`;
 
       const label = isFii
         ? "Dividendos FIIs"
-        : isItau
-          ? "CDB Itaú"
-          : "CDB Santander";
+        : `CDB ${inv.institution}`;
 
       const incomeValue = Number(ret.income_value ?? 0);
 
@@ -292,15 +287,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
   }, [cashEvents, years]);
 
   const uiInvestments: Investment[] = useMemo(() => {
-    return investments.map((inv) => ({
-      ...inv,
-      name:
-        inv.type === "CDB" && inv.institution === "Itaú"
-          ? "CDB Itaú"
-          : inv.type === "CDB"
-            ? "CDB Santander"
-            : inv.name,
-    }));
+    return investments;
   }, [investments]);
 
   const investmentById = useMemo(() => {
@@ -321,11 +308,9 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
     return returnRevisions.map((revision) => {
       const inv = investmentById.get(revision.investment_id);
       const label = inv
-        ? inv.type === "CDB" && inv.institution === "Itaú"
-          ? "CDB Itaú"
-          : inv.type === "CDB"
-            ? "CDB Santander"
-            : inv.name
+        ? inv.type === "FII"
+          ? inv.name
+          : `CDB ${inv.institution}`
         : revision.investment_id;
       return {
         ...revision,
@@ -483,13 +468,17 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
     return sortDirection === "asc" ? "↑" : "↓";
   };
 
-  // Resumo mensal consolidado (formato Itau / Santander / FIIs / Total)
+  // Resumo mensal consolidado (dinâmico por investimento CDB + FIIs agrupados)
+  const cdbInvestments = useMemo(
+    () => investments.filter((inv) => inv.type === "CDB"),
+    [investments],
+  );
+
   const monthlySummary = useMemo(() => {
     type MonthSummary = {
       year: number;
       month: number;
-      itau: number;
-      santander: number;
+      cdbValues: Map<string, number>;
       fiis: number;
       total: number;
     };
@@ -507,8 +496,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
         entry = {
           year: row.year,
           month: row.month,
-          itau: 0,
-          santander: 0,
+          cdbValues: new Map(),
           fiis: 0,
           total: 0,
         };
@@ -517,13 +505,12 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
 
       if (row.isFii) {
         entry.fiis += row.income;
-      } else if (row.label === "CDB Itaú") {
-        entry.itau += row.income;
       } else {
-        entry.santander += row.income;
+        const currentVal = entry.cdbValues.get(row.investmentId) ?? 0;
+        entry.cdbValues.set(row.investmentId, currentVal + row.income);
       }
 
-      entry.total = entry.itau + entry.santander + entry.fiis;
+      entry.total = Array.from(entry.cdbValues.values()).reduce((a, b) => a + b, 0) + entry.fiis;
     }
 
     return Array.from(map.values()).sort(
@@ -670,12 +657,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
     { value: "fii", label: "Todos os FIIs" },
     ...uiInvestments.map((inv) => ({
       value: inv.id,
-      label:
-        inv.institution === "Itaú"
-          ? "CDB Itaú"
-          : inv.type === "CDB"
-            ? "CDB Santander"
-            : inv.name,
+      label: inv.type === "FII" ? inv.name : `CDB ${inv.institution}`,
     })),
   ];
 
@@ -846,11 +828,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                         className={`px-2 py-2 font-medium ${
                           row.isFii
                             ? "text-emerald-400"
-                            : row.label === "CDB Itaú"
-                              ? "text-amber-400"
-                              : row.label === "CDB Santander"
-                                ? "text-rose-400"
-                                : "text-slate-100"
+                            : "text-amber-400"
                         }`}
                       >
                         {formatCurrencyBRL(row.income)}
@@ -1325,8 +1303,11 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
             <thead className="border-b border-slate-800 text-slate-400">
               <tr>
                 <th className="px-2 py-2">Meses</th>
-                <th className="px-2 py-2 text-amber-400">Itaú</th>
-                <th className="px-2 py-2 text-rose-400">CDB Santander</th>
+                {cdbInvestments.map((inv) => (
+                  <th key={inv.id} className="px-2 py-2 text-amber-400">
+                    {`CDB ${inv.institution}`}
+                  </th>
+                ))}
                 <th className="px-2 py-2 text-emerald-400">FIIs</th>
                 <th className="px-2 py-2">Total</th>
                 <th className="px-2 py-2">Status</th>
@@ -1337,7 +1318,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
               {monthlySummary.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={cdbInvestments.length + 5}
                     className="px-2 py-4 text-center text-slate-400"
                   >
                     Nenhum dado para o ano selecionado.
@@ -1358,12 +1339,11 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                     <td className="px-2 py-2 text-slate-300">
                       {monthNameFull(row.month)}
                     </td>
-                    <td className="px-2 py-2 font-medium text-amber-400">
-                      {formatCurrencyBRL(row.itau)}
-                    </td>
-                    <td className="px-2 py-2 font-medium text-rose-400">
-                      {formatCurrencyBRL(row.santander)}
-                    </td>
+                    {cdbInvestments.map((inv) => (
+                      <td key={inv.id} className="px-2 py-2 font-medium text-amber-400">
+                        {formatCurrencyBRL(row.cdbValues.get(inv.id) ?? 0)}
+                      </td>
+                    ))}
                     <td className="px-2 py-2 font-medium text-emerald-400">
                       {formatCurrencyBRL(row.fiis)}
                     </td>
