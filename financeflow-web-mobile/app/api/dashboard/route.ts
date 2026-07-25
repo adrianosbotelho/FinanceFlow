@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase";
-import { DashboardMonth, DashboardPayload } from "@/types";
+import { CdbKpiEntry, DashboardMonth, DashboardPayload } from "@/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-function isItau(institution: string): boolean {
-  return institution
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .includes("itau");
+function buildInvestmentLabel(inv: { type: string; institution: string }): string {
+  if (inv.type === "FII") return "Dividendos FIIs";
+  return `CDB ${inv.institution}`;
 }
 
 export async function GET(req: NextRequest) {
@@ -19,7 +16,7 @@ export async function GET(req: NextRequest) {
 
   const [{ data: investments, error: invError }, { data: returns, error: retError }] =
     await Promise.all([
-      supabase.from("investments").select("id,type,institution"),
+      supabase.from("investments").select("id,type,institution,name"),
       supabase
         .from("monthly_returns")
         .select("investment_id,month,year,income_value")
@@ -35,36 +32,42 @@ export async function GET(req: NextRequest) {
   }
 
   const byInv = new Map(investments.map((i) => [i.id, i]));
+  const cdbInvestments = investments.filter((inv) => inv.type === "CDB");
   const monthMap = new Map<string, DashboardMonth>();
 
   for (const row of returns) {
     const inv = byInv.get(row.investment_id);
     if (!inv) continue;
     const key = `${row.year}-${row.month}`;
-    const bucket =
-      monthMap.get(key) ??
-      {
+    let bucket = monthMap.get(key);
+    if (!bucket) {
+      bucket = {
         month: Number(row.month),
         year: Number(row.year),
-        cdb_itau: 0,
-        cdb_santander: 0,
+        cdb_items: cdbInvestments.map((cdb) => ({
+          investment_id: cdb.id,
+          label: buildInvestmentLabel(cdb),
+          income: 0,
+        })),
         fiis: 0,
         total: 0,
         mom_pct: null,
         mom_value: null,
       };
+      monthMap.set(key, bucket);
+    }
 
     const income = Number(row.income_value ?? 0);
     if (inv.type === "CDB") {
-      if (isItau(inv.institution)) {
-        bucket.cdb_itau += income;
-      } else {
-        bucket.cdb_santander += income;
+      const cdbEntry = bucket.cdb_items.find((c) => c.investment_id === inv.id);
+      if (cdbEntry) {
+        cdbEntry.income += income;
       }
     } else {
       bucket.fiis += income;
     }
-    bucket.total = bucket.cdb_itau + bucket.cdb_santander + bucket.fiis;
+    const cdbTotal = bucket.cdb_items.reduce((acc, c) => acc + c.income, 0);
+    bucket.total = cdbTotal + bucket.fiis;
     monthMap.set(key, bucket);
   }
 
@@ -88,12 +91,22 @@ export async function GET(req: NextRequest) {
         .slice(-1)[0] ?? null
     : null;
 
-  const cdbCurrent = current ? current.cdb_itau + current.cdb_santander : 0;
-  const cdbPrev = prev ? prev.cdb_itau + prev.cdb_santander : 0;
-  const cdbItauCurrent = current?.cdb_itau ?? 0;
-  const cdbItauPrev = prev?.cdb_itau ?? null;
-  const cdbSantanderCurrent = current?.cdb_santander ?? 0;
-  const cdbSantanderPrev = prev?.cdb_santander ?? null;
+  const cdbCurrent = current ? current.cdb_items.reduce((acc, c) => acc + c.income, 0) : 0;
+  const cdbPrev = prev ? prev.cdb_items.reduce((acc, c) => acc + c.income, 0) : 0;
+
+  const cdbItems: CdbKpiEntry[] = cdbInvestments.map((cdb) => {
+    const currEntry = current?.cdb_items.find((c) => c.investment_id === cdb.id);
+    const prevEntry = prev?.cdb_items.find((c) => c.investment_id === cdb.id);
+    const currIncome = currEntry?.income ?? 0;
+    const prevIncome = prevEntry?.income ?? 0;
+    return {
+      investment_id: cdb.id,
+      label: buildInvestmentLabel(cdb),
+      currentMonth: currIncome,
+      momGrowth: prevIncome > 0 ? ((currIncome - prevIncome) / prevIncome) * 100 : null,
+      momDelta: prev ? currIncome - prevIncome : null,
+    };
+  });
 
   const payload: DashboardPayload = {
     year,
@@ -101,22 +114,10 @@ export async function GET(req: NextRequest) {
       totalMonth: current?.total ?? 0,
       cdbMonth: cdbCurrent,
       fiisMonth: current?.fiis ?? 0,
-      cdbItauMonth: cdbItauCurrent,
-      cdbSantanderMonth: cdbSantanderCurrent,
       momTotalPct: prev && prev.total > 0 && current ? ((current.total - prev.total) / prev.total) * 100 : null,
       momCdbPct: cdbPrev > 0 ? ((cdbCurrent - cdbPrev) / cdbPrev) * 100 : null,
       momFiisPct: prev && prev.fiis > 0 && current ? ((current.fiis - prev.fiis) / prev.fiis) * 100 : null,
-      momCdbItauPct:
-        cdbItauPrev !== null && cdbItauPrev > 0
-          ? ((cdbItauCurrent - cdbItauPrev) / cdbItauPrev) * 100
-          : null,
-      momCdbSantanderPct:
-        cdbSantanderPrev !== null && cdbSantanderPrev > 0
-          ? ((cdbSantanderCurrent - cdbSantanderPrev) / cdbSantanderPrev) * 100
-          : null,
-      momCdbItauValue: cdbItauPrev !== null ? cdbItauCurrent - cdbItauPrev : null,
-      momCdbSantanderValue:
-        cdbSantanderPrev !== null ? cdbSantanderCurrent - cdbSantanderPrev : null,
+      cdbItems,
       ytd: monthlySeries.reduce((acc, m) => acc + m.total, 0),
     },
     monthlySeries,
