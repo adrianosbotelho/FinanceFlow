@@ -19,6 +19,14 @@ export function ReturnsClient({ initialYear, envReady }: { initialYear: number; 
   const formRef = useRef<HTMLElement | null>(null);
   const incomeInputRef = useRef<HTMLInputElement | null>(null);
 
+  const [cashEvents, setCashEvents] = useState<Array<{ id: string; investment_id: string; event_date: string; type: string; amount: number; notes?: string | null }>>([]);
+  const [eventInvestmentId, setEventInvestmentId] = useState("");
+  const [eventDate, setEventDate] = useState(new Date().toISOString().slice(0, 10));
+  const [eventType, setEventType] = useState<string>("APORTE");
+  const [eventAmount, setEventAmount] = useState("");
+  const [eventNotes, setEventNotes] = useState("");
+  const [eventSaving, setEventSaving] = useState(false);
+
   function parseIncomeInput(raw: string): number | null {
     const cleaned = raw.trim().replace(/^R\$\s*/i, "").replace(/\s+/g, "");
     if (!cleaned) return null;
@@ -34,15 +42,19 @@ export function ReturnsClient({ initialYear, envReady }: { initialYear: number; 
 
   async function loadAll(selectedYear: number) {
     setLoading(true);
-    const [invRes, retRes] = await Promise.all([
+    const [invRes, retRes, eventsRes] = await Promise.all([
       fetch("/api/investments", { cache: "no-store" }),
       fetch(`/api/returns?year=${selectedYear}`, { cache: "no-store" }),
+      fetch(`/api/cash-events?year=${selectedYear}`, { cache: "no-store" }),
     ]);
     const inv = invRes.ok ? ((await invRes.json()) as Investment[]) : [];
     const ret = retRes.ok ? ((await retRes.json()) as ReturnRow[]) : [];
+    const events = eventsRes.ok ? await eventsRes.json() : [];
     setInvestments(inv);
     setRows(ret);
+    setCashEvents(Array.isArray(events) ? events : []);
     if (!investmentId && inv.length > 0) setInvestmentId(inv[0].id);
+    if (!eventInvestmentId && inv.length > 0) setEventInvestmentId(inv[0].id);
     setLoading(false);
   }
 
@@ -72,6 +84,33 @@ export function ReturnsClient({ initialYear, envReady }: { initialYear: number; 
       { total: 0 },
     );
   }, [sortedRows]);
+
+  const monthlySummary = useMemo(() => {
+    const cdbInvestments = investments.filter((inv) => inv.type === "CDB");
+    const months = new Map<number, { month: number; cdbValues: Map<string, number>; fiis: number; total: number }>();
+
+    for (const r of rows) {
+      const inv = investments.find((i) => i.id === r.investment_id);
+      if (!inv) continue;
+      let entry = months.get(r.month);
+      if (!entry) {
+        entry = { month: r.month, cdbValues: new Map(), fiis: 0, total: 0 };
+        months.set(r.month, entry);
+      }
+      const income = Number(r.income_value ?? 0);
+      if (inv.type === "CDB") {
+        entry.cdbValues.set(inv.id, (entry.cdbValues.get(inv.id) ?? 0) + income);
+      } else {
+        entry.fiis += income;
+      }
+      entry.total = Array.from(entry.cdbValues.values()).reduce((a, b) => a + b, 0) + entry.fiis;
+    }
+
+    return {
+      cdbInvestments,
+      months: Array.from(months.values()).sort((a, b) => a.month - b.month),
+    };
+  }, [rows, investments]);
 
   async function save() {
     if (!envReady) return;
@@ -256,6 +295,169 @@ export function ReturnsClient({ initialYear, envReady }: { initialYear: number; 
                 </div>
               </article>
             ))}
+          </div>
+        )}
+      </section>
+
+      {!loading && monthlySummary.months.length > 0 && (
+        <section className="card overflow-x-auto">
+          <h2 className="mb-3 text-sm font-semibold text-slate-100">Resumo mensal consolidado</h2>
+          <table className="min-w-full text-left text-xs">
+            <thead className="border-b border-slate-700 text-slate-400">
+              <tr>
+                <th className="px-2 py-2">Mês</th>
+                {monthlySummary.cdbInvestments.map((inv) => (
+                  <th key={inv.id} className="px-2 py-2 text-amber-300">
+                    CDB {inv.institution}
+                  </th>
+                ))}
+                <th className="px-2 py-2 text-emerald-300">FIIs</th>
+                <th className="px-2 py-2 font-bold">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {monthlySummary.months.map((entry) => (
+                <tr key={entry.month} className="border-b border-slate-800/70 last:border-0">
+                  <td className="px-2 py-2 text-slate-200">{monthName(entry.month)}</td>
+                  {monthlySummary.cdbInvestments.map((inv) => (
+                    <td key={inv.id} className="px-2 py-2 text-amber-300">
+                      {formatCurrency(entry.cdbValues.get(inv.id) ?? 0)}
+                    </td>
+                  ))}
+                  <td className="px-2 py-2 text-emerald-300">{formatCurrency(entry.fiis)}</td>
+                  <td className="px-2 py-2 font-bold text-slate-100">{formatCurrency(entry.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
+      <section className="card">
+        <h2 className="mb-3 text-sm font-semibold text-slate-100">Eventos de caixa ({year})</h2>
+        <div className="grid gap-3 md:grid-cols-5">
+          <div>
+            <label className="mb-1 block text-xs text-slate-400">Investimento</label>
+            <select
+              value={eventInvestmentId}
+              onChange={(e) => setEventInvestmentId(e.target.value)}
+              className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+              disabled={!envReady}
+            >
+              {investments.map((inv) => (
+                <option key={inv.id} value={inv.id}>
+                  {inv.type} • {inv.institution}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-slate-400">Data</label>
+            <input
+              type="date"
+              value={eventDate}
+              onChange={(e) => setEventDate(e.target.value)}
+              className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+              disabled={!envReady}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-slate-400">Tipo</label>
+            <select
+              value={eventType}
+              onChange={(e) => setEventType(e.target.value)}
+              className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+              disabled={!envReady}
+            >
+              <option value="APORTE">Aporte</option>
+              <option value="RESGATE">Resgate</option>
+              <option value="IMPOSTO">Imposto</option>
+              <option value="TAXA">Taxa</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-slate-400">Valor (R$)</label>
+            <input
+              value={eventAmount}
+              onChange={(e) => setEventAmount(e.target.value)}
+              className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+              placeholder="0,00"
+              disabled={!envReady}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-slate-400">Obs (opcional)</label>
+            <input
+              value={eventNotes}
+              onChange={(e) => setEventNotes(e.target.value)}
+              className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+              disabled={!envReady}
+            />
+          </div>
+        </div>
+        <button
+          onClick={async () => {
+            if (!eventInvestmentId || !eventDate || !eventAmount) return;
+            setEventSaving(true);
+            try {
+              const parsed = parseIncomeInput(eventAmount);
+              if (parsed === null) return;
+              const res = await fetch("/api/cash-events", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  investment_id: eventInvestmentId,
+                  event_date: eventDate,
+                  type: eventType,
+                  amount: parsed,
+                  notes: eventNotes || null,
+                }),
+              });
+              if (!res.ok) throw new Error("Falha ao salvar evento");
+              setEventAmount("");
+              setEventNotes("");
+              await loadAll(year);
+            } catch (e) {
+              alert(e instanceof Error ? e.message : "Erro");
+            } finally {
+              setEventSaving(false);
+            }
+          }}
+          className="mt-3 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold hover:bg-indigo-500 disabled:bg-slate-700"
+          disabled={!envReady || eventSaving}
+        >
+          {eventSaving ? "Salvando..." : "Registrar evento"}
+        </button>
+
+        {cashEvents.length > 0 && (
+          <div className="mt-4 space-y-2">
+            {cashEvents.slice(0, 10).map((ev) => {
+              const inv = investments.find((i) => i.id === ev.investment_id);
+              return (
+                <div key={ev.id} className="flex items-center justify-between rounded-lg border border-slate-700 px-3 py-2">
+                  <div>
+                    <p className="text-xs text-slate-300">
+                      {ev.event_date} • {inv ? `${inv.name} (${inv.institution})` : "-"} • <span className="font-semibold text-indigo-300">{ev.type}</span>
+                    </p>
+                    <p className="text-sm font-bold text-slate-100">{formatCurrency(ev.amount)}</p>
+                    {ev.notes && <p className="text-xs text-slate-500">{ev.notes}</p>}
+                  </div>
+                  <button
+                    onClick={async () => {
+                      if (!confirm("Excluir evento?")) return;
+                      await fetch(`/api/cash-events?id=${ev.id}`, { method: "DELETE" });
+                      await loadAll(year);
+                    }}
+                    className="rounded-md border border-rose-700 px-2 py-1 text-[11px] text-rose-200 hover:bg-rose-900/30"
+                  >
+                    Excluir
+                  </button>
+                </div>
+              );
+            })}
+            {cashEvents.length > 10 && (
+              <p className="text-xs text-slate-500">Mostrando 10 de {cashEvents.length} eventos.</p>
+            )}
           </div>
         )}
       </section>
