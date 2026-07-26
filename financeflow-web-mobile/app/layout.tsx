@@ -1,9 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { Suspense } from "react";
 import { AppNav } from "@/components/AppNav";
 import { PwaRegister } from "@/components/PwaRegister";
 import { RealtimeRefreshBanner } from "@/components/RealtimeRefreshBanner";
 import { VersionBadge } from "@/components/VersionBadge";
+import { YearMonthFilter } from "@/components/YearMonthFilter";
 
 const BUILD_GENERATED_AT = new Date().toISOString();
 
@@ -35,7 +37,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <AppNav />
           <main className="w-full p-4 pb-[calc(9.5rem+env(safe-area-inset-bottom))] md:p-6 md:pb-6">
             <div className="mx-auto w-full max-w-6xl space-y-6">
-              <div className="flex justify-end">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Suspense fallback={<div className="h-8 w-48 rounded bg-slate-800" />}>
+                  <YearMonthFilter />
+                </Suspense>
                 <VersionBadge sha={sha} env={env} deployTimeIso={deployTimeIso} />
               </div>
               <RealtimeRefreshBanner />

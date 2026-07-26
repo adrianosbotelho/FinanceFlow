@@ -181,6 +181,20 @@ export default async function DashboardPage({
         </article>
       </section>
 
+      <section className="grid grid-cols-2 gap-3">
+        <article className="rounded-[1.5rem] border-2 border-slate-700 bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 p-3.5 shadow-lg">
+          <p className="card-title">Patrimônio investido</p>
+          <p className="card-value">{formatCurrency(data.kpis.totalInvested)}</p>
+        </article>
+        <article className={`rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.portfolioYieldPct)}`}>
+          <p className={`card-title ${trendTitleClass(data.kpis.portfolioYieldPct)}`}>Rentabilidade (12M)</p>
+          <p className={`card-value ${trendValueClass(data.kpis.portfolioYieldPct)}`}>{formatPct(data.kpis.portfolioYieldPct)}</p>
+          <p className={`text-xs ${trendMetaClass(data.kpis.portfolioYieldPct)}`}>
+            Proventos 12M: {formatCurrency(data.kpis.rolling12)}
+          </p>
+        </article>
+      </section>
+
       <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
         {data.kpis.cdbItems.map((cdb) => (
           <article key={cdb.investment_id} className={`min-h-[176px] rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(cdb.momGrowth)}`}>

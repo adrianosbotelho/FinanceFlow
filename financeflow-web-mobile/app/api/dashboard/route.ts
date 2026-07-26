@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
 
   const [{ data: investments, error: invError }, { data: returns, error: retError }] =
     await Promise.all([
-      supabase.from("investments").select("id,type,institution,name"),
+      supabase.from("investments").select("id,type,institution,name,amount_invested"),
       supabase
         .from("monthly_returns")
         .select("investment_id,month,year,income_value")
@@ -108,6 +108,10 @@ export async function GET(req: NextRequest) {
     };
   });
 
+  const totalInvested = investments.reduce((acc, inv) => acc + Number(inv.amount_invested ?? 0), 0);
+  const rolling12 = seriesAll.slice(-12).reduce((acc, m) => acc + m.total, 0);
+  const portfolioYield = totalInvested > 0 ? (rolling12 / totalInvested) * 100 : 0;
+
   const payload: DashboardPayload = {
     year,
     kpis: {
@@ -119,6 +123,9 @@ export async function GET(req: NextRequest) {
       momFiisPct: prev && prev.fiis > 0 && current ? ((current.fiis - prev.fiis) / prev.fiis) * 100 : null,
       cdbItems,
       ytd: monthlySeries.reduce((acc, m) => acc + m.total, 0),
+      totalInvested,
+      rolling12,
+      portfolioYieldPct: portfolioYield,
     },
     monthlySeries,
   };
