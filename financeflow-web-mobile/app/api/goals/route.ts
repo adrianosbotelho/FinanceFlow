@@ -87,3 +87,70 @@ export async function GET(req: NextRequest) {
     headers: { "Cache-Control": "no-store, no-cache, must-revalidate" },
   });
 }
+
+export async function POST(req: NextRequest) {
+  const supabase = getSupabaseServerClient();
+  const body = await req.json();
+  const { investment_id, type, year, month, target } = body;
+
+  if (!investment_id || !type || !year || target === undefined) {
+    return NextResponse.json({ error: "Campos obrigatórios: investment_id, type, year, target" }, { status: 400 });
+  }
+
+  if (type === "monthly") {
+    if (!month) {
+      return NextResponse.json({ error: "Mês obrigatório para meta mensal" }, { status: 400 });
+    }
+    const { data, error } = await supabase
+      .from("investment_goals_monthly")
+      .upsert({ investment_id, year, month, monthly_target: Number(target) }, { onConflict: "investment_id,year,month" })
+      .select()
+      .single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(data, { status: 201 });
+  }
+
+  if (type === "annual") {
+    const { data, error } = await supabase
+      .from("investment_goals_annual")
+      .upsert({ investment_id, year, annual_target: Number(target) }, { onConflict: "investment_id,year" })
+      .select()
+      .single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(data, { status: 201 });
+  }
+
+  return NextResponse.json({ error: "type deve ser 'monthly' ou 'annual'" }, { status: 400 });
+}
+
+export async function DELETE(req: NextRequest) {
+  const supabase = getSupabaseServerClient();
+  const url = new URL(req.url);
+  const investment_id = url.searchParams.get("investment_id");
+  const type = url.searchParams.get("type");
+  const year = url.searchParams.get("year");
+  const month = url.searchParams.get("month");
+
+  if (!investment_id || !type || !year) {
+    return NextResponse.json({ error: "Parâmetros obrigatórios: investment_id, type, year" }, { status: 400 });
+  }
+
+  if (type === "monthly") {
+    const { error } = await supabase
+      .from("investment_goals_monthly")
+      .delete()
+      .eq("investment_id", investment_id)
+      .eq("year", Number(year))
+      .eq("month", Number(month));
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  } else if (type === "annual") {
+    const { error } = await supabase
+      .from("investment_goals_annual")
+      .delete()
+      .eq("investment_id", investment_id)
+      .eq("year", Number(year));
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
+}
