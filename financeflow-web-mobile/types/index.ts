@@ -57,6 +57,9 @@ export interface DashboardPayload {
     momFiisPct: number | null;
     cdbItems: CdbKpiEntry[];
     ytd: number;
+    totalInvested: number;
+    rolling12: number;
+    portfolioYieldPct: number;
   };
   monthlySeries: DashboardMonth[];
 }
