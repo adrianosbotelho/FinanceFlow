@@ -59,6 +59,15 @@ function HealthIcon({ active }: { active: boolean }) {
   );
 }
 
+function PerformanceIcon({ active }: { active: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={`h-6 w-6 ${iconTone(active)}`}>
+      <path d="M3 17l6-6 4 4 8-8" />
+      <path d="M17 7h4v4" />
+    </svg>
+  );
+}
+
 function LogoutIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-6 w-6 text-slate-300">
@@ -74,6 +83,7 @@ const links = [
   { href: "/retornos", label: "Retornos", icon: ReturnsIcon },
   { href: "/investimentos", label: "Investimentos", icon: InvestmentsIcon },
   { href: "/metas", label: "Metas", icon: GoalsIcon },
+  { href: "/performance", label: "Performance", icon: PerformanceIcon },
   { href: "/health", label: "Health", icon: HealthIcon },
 ];
 
@@ -125,7 +135,7 @@ export function AppNav() {
       </aside>
 
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-800 bg-slate-900/95 backdrop-blur md:hidden">
-        <div className="grid grid-cols-6 gap-1.5 px-2 py-2 pb-[calc(env(safe-area-inset-bottom)+0.95rem)]">
+        <div className="grid grid-cols-7 gap-1.5 px-2 py-2 pb-[calc(env(safe-area-inset-bottom)+0.95rem)]">
           {links.map((link) => {
             const active = pathname === link.href;
             const Icon = link.icon;
