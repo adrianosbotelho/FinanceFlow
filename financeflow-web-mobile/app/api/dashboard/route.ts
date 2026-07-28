@@ -5,9 +5,9 @@ import { CdbKpiEntry, DashboardMonth, DashboardPayload } from "@/types";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-function buildInvestmentLabel(inv: { type: string; institution: string }): string {
+function buildInvestmentLabel(inv: { type: string; institution: string; name: string }): string {
   if (inv.type === "FII") return "Dividendos FIIs";
-  return `CDB ${inv.institution}`;
+  return inv.name || `CDB ${inv.institution}`;
 }
 
 export async function GET(req: NextRequest) {

@@ -255,7 +255,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
 
       const label = isFii
         ? "Dividendos FIIs"
-        : `CDB ${inv.institution}`;
+        : inv.name || `CDB ${inv.institution}`;
 
       const incomeValue = Number(ret.income_value ?? 0);
 
@@ -677,7 +677,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
     { value: "fii", label: "Todos os FIIs" },
     ...uiInvestments.map((inv) => ({
       value: inv.id,
-      label: inv.type === "FII" ? inv.name : `CDB ${inv.institution}`,
+      label: inv.type === "FII" ? inv.name : (inv.name || `CDB ${inv.institution}`),
     })),
   ];
 
