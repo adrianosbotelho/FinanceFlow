@@ -54,7 +54,7 @@ function isItauInstitution(institution: string): boolean {
 
 function buildInvestmentLabel(inv: { type: string; institution: string; name: string }): string {
   if (inv.type === "FII") return "Dividendos FIIs";
-  return `CDB ${inv.institution}`;
+  return inv.name || `CDB ${inv.institution}`;
 }
 
 function countBusinessDaysInMonth(year: number, month: number): number {
