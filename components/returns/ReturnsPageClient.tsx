@@ -342,6 +342,15 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
 
   const selectedRevisionMonth = useMemo(() => {
     if (revisionRows.length === 0) return null;
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+    const hasCurrentMonth = revisionRows.some(
+      (r) => Number(r.year) === currentYear && Number(r.month) === currentMonth,
+    );
+    if (hasCurrentMonth) {
+      return { year: currentYear, month: currentMonth };
+    }
     const latest = revisionRows[0];
     return {
       year: Number(latest.year),
