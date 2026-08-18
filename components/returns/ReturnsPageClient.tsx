@@ -58,6 +58,21 @@ const CDB_INSTITUTION_COLORS: Record<string, string> = {
 };
 const DEFAULT_CDB_COLOR = "text-amber-400";
 
+const CDB_INSTITUTION_HEX: Record<string, string> = {
+  "Itaú": "#f59e0b",
+  "Santander": "#f43f5e",
+  "Nubank": "#a78bfa",
+  "XP": "#38bdf8",
+  "Banco do Brasil": "#60a5fa",
+  "Inter": "#fb923c",
+  "BTG Pactual": "#22d3ee",
+};
+const DEFAULT_CDB_HEX = "#f59e0b";
+
+function getCdbHex(institution: string): string {
+  return CDB_INSTITUTION_HEX[institution] ?? DEFAULT_CDB_HEX;
+}
+
 function getCdbColor(institution: string): string {
   return CDB_INSTITUTION_COLORS[institution] ?? DEFAULT_CDB_COLOR;
 }
@@ -375,6 +390,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
         seq: idx + 1,
         timestamp: parseBrDateTime(row.created_at),
         investmentLabel: row.investmentLabel,
+        investmentInstitution: row.investmentInstitution,
         delta: Number(row.delta_income_value ?? 0),
         newValue: Number(row.new_income_value ?? 0),
       }));
@@ -1018,14 +1034,39 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                         borderColor: "#1f2937",
                       }}
                       labelStyle={{ color: "#e2e8f0", fontWeight: 600 }}
+                      itemStyle={{ color: "#e2e8f0" }}
                     />
-                    <Legend />
+                    <Legend
+                      content={() => {
+                        const seen = new Map<string, string>();
+                        for (const p of revisionChartData) {
+                          if (!seen.has(p.investmentLabel)) {
+                            seen.set(p.investmentLabel, getCdbHex(p.investmentInstitution));
+                          }
+                        }
+                        return (
+                          <div className="mt-2 flex flex-wrap gap-3 text-[11px]">
+                            {Array.from(seen.entries()).map(([label, color]) => (
+                              <span key={label} className="flex items-center gap-1">
+                                <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: color }} />
+                                {label}
+                              </span>
+                            ))}
+                            <span className="flex items-center gap-1">
+                              <span className="inline-block h-0.5 w-4 rounded" style={{ backgroundColor: "#22d3ee" }} />
+                              Valor atualizado
+                            </span>
+                          </div>
+                        );
+                      }}
+                    />
                     <ReferenceLine yAxisId="delta" y={0} stroke="#64748b" />
                     <Bar yAxisId="delta" dataKey="delta" name="Δ atualização">
                       {revisionChartData.map((point) => (
                         <Cell
                           key={`delta-${point.seq}`}
-                          fill={point.delta >= 0 ? "#22c55e" : "#f43f5e"}
+                          fill={getCdbHex(point.investmentInstitution)}
+                          fillOpacity={point.delta >= 0 ? 1 : 0.5}
                         />
                       ))}
                     </Bar>
@@ -1036,7 +1077,12 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                       name="Valor atualizado"
                       stroke="#22d3ee"
                       strokeWidth={2}
-                      dot={{ r: 2 }}
+                      dot={(props: Record<string, unknown>) => {
+                        const { cx, cy, index } = props as { cx: number; cy: number; index: number };
+                        const point = revisionChartData[index];
+                        if (!point) return <circle cx={cx} cy={cy} r={3} fill="#22d3ee" />;
+                        return <circle cx={cx} cy={cy} r={3} fill={getCdbHex(point.investmentInstitution)} />;
+                      }}
                     />
                   </ComposedChart>
                 </ResponsiveContainer>
