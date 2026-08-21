@@ -181,15 +181,29 @@ export function MonthlyTable({ data }: Props) {
                   <td className="px-6 py-4 font-medium text-cyan-300">
                     {countBusinessDaysInMonth(m.year, m.month)}
                   </td>
-                  {m.cdb_items.map((cdb, idx) => (
-                    <td key={cdb.investment_id} className={`px-6 py-4 font-medium ${CDB_COLORS[idx % CDB_COLORS.length]}`}>
+                  {m.cdb_items.map((cdb, idx) => {
+                    const businessDays = countBusinessDaysInMonth(m.year, m.month);
+                    const dailyAvg = businessDays > 0 ? cdb.income / businessDays : 0;
+                    return (
+                    <td
+                      key={cdb.investment_id}
+                      className={`px-6 py-4 font-medium ${CDB_COLORS[idx % CDB_COLORS.length]} cursor-help`}
+                      title={`${formatCurrencyBRL(cdb.income)} ÷ ${businessDays} dias úteis = ${formatCurrencyBRL(dailyAvg)}/dia`}
+                    >
                       {formatCurrencyBRL(cdb.income)}
                     </td>
-                  ))}
-                  <td className="px-6 py-4 font-medium text-emerald-300">
+                    );
+                  })}
+                  <td
+                    className="px-6 py-4 font-medium text-emerald-300 cursor-help"
+                    title={`${formatCurrencyBRL(m.fii_dividends)} ÷ ${countBusinessDaysInMonth(m.year, m.month)} dias úteis = ${formatCurrencyBRL(countBusinessDaysInMonth(m.year, m.month) > 0 ? m.fii_dividends / countBusinessDaysInMonth(m.year, m.month) : 0)}/dia`}
+                  >
                     {formatCurrencyBRL(m.fii_dividends)}
                   </td>
-                  <td className="px-6 py-4 font-bold">
+                  <td
+                    className="px-6 py-4 font-bold cursor-help"
+                    title={`${formatCurrencyBRL(m.total)} ÷ ${countBusinessDaysInMonth(m.year, m.month)} dias úteis = ${formatCurrencyBRL(countBusinessDaysInMonth(m.year, m.month) > 0 ? m.total / countBusinessDaysInMonth(m.year, m.month) : 0)}/dia`}
+                  >
                     {formatCurrencyBRL(m.total)}
                   </td>
                   <td className={`px-6 py-4 font-medium ${toneClass(m.mom_growth ?? null)}`}>
