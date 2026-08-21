@@ -36,6 +36,32 @@ function countBusinessDaysInMonth(year: number, month: number): number {
   return count;
 }
 
+function countBusinessDaysElapsed(year: number, month: number): number {
+  const now = new Date();
+  if (year < now.getFullYear() || (year === now.getFullYear() && month < now.getMonth() + 1)) {
+    return countBusinessDaysInMonth(year, month);
+  }
+  if (year === now.getFullYear() && month === now.getMonth() + 1) {
+    let count = 0;
+    for (let day = 1; day <= now.getDate(); day += 1) {
+      const weekDay = new Date(year, month - 1, day).getDay();
+      if (weekDay >= 1 && weekDay <= 5) count += 1;
+    }
+    return count;
+  }
+  return 0;
+}
+
+function buildDailyTooltip(value: number, year: number, month: number): string {
+  const now = new Date();
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1;
+  const days = isCurrentMonth ? countBusinessDaysElapsed(year, month) : countBusinessDaysInMonth(year, month);
+  if (days <= 0) return formatCurrencyBRL(value);
+  const daily = value / days;
+  const label = isCurrentMonth ? `${days} dias úteis passados` : `${days} dias úteis`;
+  return `${formatCurrencyBRL(value)} ÷ ${label} = ${formatCurrencyBRL(daily)}/dia`;
+}
+
 const CDB_COLORS = ["text-orange-300", "text-rose-300", "text-sky-300", "text-violet-300", "text-amber-300"];
 
 export function MonthlyTable({ data }: Props) {
@@ -181,28 +207,24 @@ export function MonthlyTable({ data }: Props) {
                   <td className="px-6 py-4 font-medium text-cyan-300">
                     {countBusinessDaysInMonth(m.year, m.month)}
                   </td>
-                  {m.cdb_items.map((cdb, idx) => {
-                    const businessDays = countBusinessDaysInMonth(m.year, m.month);
-                    const dailyAvg = businessDays > 0 ? cdb.income / businessDays : 0;
-                    return (
+                  {m.cdb_items.map((cdb, idx) => (
                     <td
                       key={cdb.investment_id}
                       className={`px-6 py-4 font-medium ${CDB_COLORS[idx % CDB_COLORS.length]} cursor-help`}
-                      title={`${formatCurrencyBRL(cdb.income)} ÷ ${businessDays} dias úteis = ${formatCurrencyBRL(dailyAvg)}/dia`}
+                      title={buildDailyTooltip(cdb.income, m.year, m.month)}
                     >
                       {formatCurrencyBRL(cdb.income)}
                     </td>
-                    );
-                  })}
+                  ))}
                   <td
                     className="px-6 py-4 font-medium text-emerald-300 cursor-help"
-                    title={`${formatCurrencyBRL(m.fii_dividends)} ÷ ${countBusinessDaysInMonth(m.year, m.month)} dias úteis = ${formatCurrencyBRL(countBusinessDaysInMonth(m.year, m.month) > 0 ? m.fii_dividends / countBusinessDaysInMonth(m.year, m.month) : 0)}/dia`}
+                    title={buildDailyTooltip(m.fii_dividends, m.year, m.month)}
                   >
                     {formatCurrencyBRL(m.fii_dividends)}
                   </td>
                   <td
                     className="px-6 py-4 font-bold cursor-help"
-                    title={`${formatCurrencyBRL(m.total)} ÷ ${countBusinessDaysInMonth(m.year, m.month)} dias úteis = ${formatCurrencyBRL(countBusinessDaysInMonth(m.year, m.month) > 0 ? m.total / countBusinessDaysInMonth(m.year, m.month) : 0)}/dia`}
+                    title={buildDailyTooltip(m.total, m.year, m.month)}
                   >
                     {formatCurrencyBRL(m.total)}
                   </td>
