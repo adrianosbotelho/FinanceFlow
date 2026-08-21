@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { PassiveIncomeByMonth } from "../../types";
 import {
   formatCurrencyBRL,
@@ -60,6 +61,25 @@ function buildDailyTooltip(value: number, year: number, month: number): string {
   const daily = value / days;
   const label = isCurrentMonth ? `${days} dias úteis passados` : `${days} dias úteis`;
   return `${formatCurrencyBRL(value)} ÷ ${label} = ${formatCurrencyBRL(daily)}/dia`;
+}
+
+function ValueCell({ value, year, month, className }: { value: number; year: number; month: number; className: string }) {
+  const [show, setShow] = useState(false);
+  const tooltip = buildDailyTooltip(value, year, month);
+  return (
+    <td
+      className={`${className} relative cursor-help`}
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+    >
+      {formatCurrencyBRL(value)}
+      {show && (
+        <div className="absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded-md border border-slate-600 bg-slate-950 px-3 py-1.5 text-xs font-normal text-slate-100 shadow-lg">
+          {tooltip}
+        </div>
+      )}
+    </td>
+  );
 }
 
 const CDB_COLORS = ["text-orange-300", "text-rose-300", "text-sky-300", "text-violet-300", "text-amber-300"];
@@ -208,26 +228,26 @@ export function MonthlyTable({ data }: Props) {
                     {countBusinessDaysInMonth(m.year, m.month)}
                   </td>
                   {m.cdb_items.map((cdb, idx) => (
-                    <td
+                    <ValueCell
                       key={cdb.investment_id}
-                      className={`px-6 py-4 font-medium ${CDB_COLORS[idx % CDB_COLORS.length]} cursor-help`}
-                      title={buildDailyTooltip(cdb.income, m.year, m.month)}
-                    >
-                      {formatCurrencyBRL(cdb.income)}
-                    </td>
+                      value={cdb.income}
+                      year={m.year}
+                      month={m.month}
+                      className={`px-6 py-4 font-medium ${CDB_COLORS[idx % CDB_COLORS.length]}`}
+                    />
                   ))}
-                  <td
-                    className="px-6 py-4 font-medium text-emerald-300 cursor-help"
-                    title={buildDailyTooltip(m.fii_dividends, m.year, m.month)}
-                  >
-                    {formatCurrencyBRL(m.fii_dividends)}
-                  </td>
-                  <td
-                    className="px-6 py-4 font-bold cursor-help"
-                    title={buildDailyTooltip(m.total, m.year, m.month)}
-                  >
-                    {formatCurrencyBRL(m.total)}
-                  </td>
+                  <ValueCell
+                    value={m.fii_dividends}
+                    year={m.year}
+                    month={m.month}
+                    className="px-6 py-4 font-medium text-emerald-300"
+                  />
+                  <ValueCell
+                    value={m.total}
+                    year={m.year}
+                    month={m.month}
+                    className="px-6 py-4 font-bold"
+                  />
                   <td className={`px-6 py-4 font-medium ${toneClass(m.mom_growth ?? null)}`}>
                     {formatPercentage(m.mom_growth ?? null)}
                   </td>
