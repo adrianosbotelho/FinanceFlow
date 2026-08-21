@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { PassiveIncomeByMonth } from "../../types";
 import {
   formatCurrencyBRL,
@@ -34,6 +35,51 @@ function countBusinessDaysInMonth(year: number, month: number): number {
     if (weekDay >= 1 && weekDay <= 5) count += 1;
   }
   return count;
+}
+
+function countBusinessDaysElapsed(year: number, month: number): number {
+  const now = new Date();
+  if (year < now.getFullYear() || (year === now.getFullYear() && month < now.getMonth() + 1)) {
+    return countBusinessDaysInMonth(year, month);
+  }
+  if (year === now.getFullYear() && month === now.getMonth() + 1) {
+    let count = 0;
+    for (let day = 1; day <= now.getDate(); day += 1) {
+      const weekDay = new Date(year, month - 1, day).getDay();
+      if (weekDay >= 1 && weekDay <= 5) count += 1;
+    }
+    return count;
+  }
+  return 0;
+}
+
+function buildDailyTooltip(value: number, year: number, month: number): string {
+  const now = new Date();
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1;
+  const days = isCurrentMonth ? countBusinessDaysElapsed(year, month) : countBusinessDaysInMonth(year, month);
+  if (days <= 0) return formatCurrencyBRL(value);
+  const daily = value / days;
+  const label = isCurrentMonth ? `${days} dias úteis passados` : `${days} dias úteis`;
+  return `${formatCurrencyBRL(value)} ÷ ${label} = ${formatCurrencyBRL(daily)}/dia`;
+}
+
+function ValueCell({ value, year, month, className }: { value: number; year: number; month: number; className: string }) {
+  const [show, setShow] = useState(false);
+  const tooltip = buildDailyTooltip(value, year, month);
+  return (
+    <td
+      className={`${className} relative cursor-help`}
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+    >
+      {formatCurrencyBRL(value)}
+      {show && (
+        <div className="absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-950 border border-slate-600 px-3 py-1.5 text-xs font-normal text-slate-100 shadow-lg">
+          {tooltip}
+        </div>
+      )}
+    </td>
+  );
 }
 
 const CDB_COLORS = ["text-orange-300", "text-rose-300", "text-sky-300", "text-violet-300", "text-amber-300"];
@@ -181,31 +227,27 @@ export function MonthlyTable({ data }: Props) {
                   <td className="px-6 py-4 font-medium text-cyan-300">
                     {countBusinessDaysInMonth(m.year, m.month)}
                   </td>
-                  {m.cdb_items.map((cdb, idx) => {
-                    const businessDays = countBusinessDaysInMonth(m.year, m.month);
-                    const dailyAvg = businessDays > 0 ? cdb.income / businessDays : 0;
-                    return (
-                    <td
+                  {m.cdb_items.map((cdb, idx) => (
+                    <ValueCell
                       key={cdb.investment_id}
-                      className={`px-6 py-4 font-medium ${CDB_COLORS[idx % CDB_COLORS.length]} cursor-help`}
-                      title={`${formatCurrencyBRL(cdb.income)} ÷ ${businessDays} dias úteis = ${formatCurrencyBRL(dailyAvg)}/dia`}
-                    >
-                      {formatCurrencyBRL(cdb.income)}
-                    </td>
-                    );
-                  })}
-                  <td
-                    className="px-6 py-4 font-medium text-emerald-300 cursor-help"
-                    title={`${formatCurrencyBRL(m.fii_dividends)} ÷ ${countBusinessDaysInMonth(m.year, m.month)} dias úteis = ${formatCurrencyBRL(countBusinessDaysInMonth(m.year, m.month) > 0 ? m.fii_dividends / countBusinessDaysInMonth(m.year, m.month) : 0)}/dia`}
-                  >
-                    {formatCurrencyBRL(m.fii_dividends)}
-                  </td>
-                  <td
-                    className="px-6 py-4 font-bold cursor-help"
-                    title={`${formatCurrencyBRL(m.total)} ÷ ${countBusinessDaysInMonth(m.year, m.month)} dias úteis = ${formatCurrencyBRL(countBusinessDaysInMonth(m.year, m.month) > 0 ? m.total / countBusinessDaysInMonth(m.year, m.month) : 0)}/dia`}
-                  >
-                    {formatCurrencyBRL(m.total)}
-                  </td>
+                      value={cdb.income}
+                      year={m.year}
+                      month={m.month}
+                      className={`px-6 py-4 font-medium ${CDB_COLORS[idx % CDB_COLORS.length]}`}
+                    />
+                  ))}
+                  <ValueCell
+                    value={m.fii_dividends}
+                    year={m.year}
+                    month={m.month}
+                    className="px-6 py-4 font-medium text-emerald-300"
+                  />
+                  <ValueCell
+                    value={m.total}
+                    year={m.year}
+                    month={m.month}
+                    className="px-6 py-4 font-bold"
+                  />
                   <td className={`px-6 py-4 font-medium ${toneClass(m.mom_growth ?? null)}`}>
                     {formatPercentage(m.mom_growth ?? null)}
                   </td>
