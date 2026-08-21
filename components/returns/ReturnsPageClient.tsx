@@ -1034,6 +1034,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                         borderColor: "#1f2937",
                       }}
                       labelStyle={{ color: "#e2e8f0", fontWeight: 600 }}
+                      itemStyle={{ color: "#e2e8f0" }}
                     />
                     <Legend
                       content={() => {
