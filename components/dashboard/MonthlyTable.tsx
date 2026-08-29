@@ -210,7 +210,7 @@ export function MonthlyTable({ data }: Props) {
               <th className="px-6 py-4 font-bold">Var (M/M)</th>
               <th className="px-6 py-4 font-bold">Var (M/M R$)</th>
               <th className="px-6 py-4 font-bold">Var (A/A)</th>
-              <th className="px-6 py-4 font-bold text-yellow-300">Total Líquido</th>
+              <th className="px-6 py-4 font-bold text-yellow-300">Total Líquido (IR 20%)</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-700 text-sm">
