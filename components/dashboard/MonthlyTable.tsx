@@ -210,7 +210,7 @@ export function MonthlyTable({ data }: Props) {
               <th className="px-6 py-4 font-bold">Var (M/M)</th>
               <th className="px-6 py-4 font-bold">Var (M/M R$)</th>
               <th className="px-6 py-4 font-bold">Var (A/A)</th>
-              <th className="px-6 py-4 font-bold text-cyan-300">Dias Úteis</th>
+              <th className="px-6 py-4 font-bold text-yellow-300">Total Líquido</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-700 text-sm">
@@ -257,9 +257,12 @@ export function MonthlyTable({ data }: Props) {
                   <td className={`px-6 py-4 font-medium ${toneClass(m.yoy_growth ?? null)}`}>
                     {formatPercentage(m.yoy_growth ?? null)}
                   </td>
-                  <td className="px-6 py-4 font-medium text-cyan-300">
-                    {countBusinessDaysInMonth(m.year, m.month)}
-                  </td>
+                  <ValueCell
+                    value={Math.round(m.total * 0.8 * 100) / 100}
+                    year={m.year}
+                    month={m.month}
+                    className="px-6 py-4 font-medium text-yellow-300"
+                  />
                 </tr>
               );
             })}
@@ -290,7 +293,9 @@ export function MonthlyTable({ data }: Props) {
               <td className={`px-6 py-4 font-bold ${toneClass(avgYoyPercent)}`}>
                 {avgYoyPercent === null ? "—" : `Média ${formatPercentage(avgYoyPercent)}`}
               </td>
-              <td className="px-6 py-4 font-bold text-cyan-300">—</td>
+              <td className="px-6 py-4 font-bold text-yellow-300">
+                {formatCurrencyBRL(Math.round(summary.totalMonthly * 0.8 * 100) / 100)}
+              </td>
             </tr>
           </tfoot>
         </table>
