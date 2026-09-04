@@ -15,13 +15,21 @@ alter table if exists public.insight_daily_runs enable row level security;
 
 -- 2) Revoke direct table access from API roles.
 -- App access should happen via server backend with SUPABASE_SERVICE_ROLE_KEY.
-revoke all on table public.investments from anon, authenticated;
-revoke all on table public.monthly_returns from anon, authenticated;
-revoke all on table public.monthly_closures from anon, authenticated;
-revoke all on table public.monthly_positions from anon, authenticated;
-revoke all on table public.monthly_macro from anon, authenticated;
-revoke all on table public.investment_goals from anon, authenticated;
-revoke all on table public.investment_goals_monthly from anon, authenticated;
-revoke all on table public.investment_goals_annual from anon, authenticated;
-revoke all on table public.investment_cash_events from anon, authenticated;
-revoke all on table public.insight_daily_runs from anon, authenticated;
+do $$
+declare
+  tbl text;
+begin
+  for tbl in
+    select unnest(array[
+      'investments', 'monthly_returns', 'monthly_closures',
+      'monthly_positions', 'monthly_macro', 'investment_goals',
+      'investment_goals_monthly', 'investment_goals_annual',
+      'investment_cash_events', 'insight_daily_runs'
+    ])
+  loop
+    if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = tbl) then
+      execute format('revoke all on table public.%I from anon, authenticated', tbl);
+    end if;
+  end loop;
+end;
+$$;
