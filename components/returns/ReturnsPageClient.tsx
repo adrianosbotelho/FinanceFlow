@@ -544,6 +544,23 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
     return Array.from(map.values()).sort((a, b) => a.month - b.month || a.investmentLabel.localeCompare(b.investmentLabel, "pt-BR"));
   }, [cashEvents, investments]);
 
+  const cashEventsInvestmentTotals = useMemo(() => {
+    const map = new Map<string, { investmentLabel: string; aportes: number; resgates: number; impostos: number; taxas: number; fluxo: number }>();
+    for (const row of cashEventsSummary) {
+      let entry = map.get(row.investmentId);
+      if (!entry) {
+        entry = { investmentLabel: row.investmentLabel, aportes: 0, resgates: 0, impostos: 0, taxas: 0, fluxo: 0 };
+        map.set(row.investmentId, entry);
+      }
+      entry.aportes += row.aportes;
+      entry.resgates += row.resgates;
+      entry.impostos += row.impostos;
+      entry.taxas += row.taxas;
+      entry.fluxo += row.fluxo;
+    }
+    return Array.from(map.values()).sort((a, b) => a.investmentLabel.localeCompare(b.investmentLabel, "pt-BR"));
+  }, [cashEventsSummary]);
+
   // Resumo mensal consolidado (dinâmico por investimento CDB + FIIs agrupados)
   const cdbInvestments = useMemo(
     () => investments.filter((inv) => inv.type === "CDB"),
@@ -1514,6 +1531,38 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
               </tfoot>
             </table>
           </div>
+
+          {cashEventsInvestmentTotals.length > 0 && (
+            <div className="mt-4 border-t border-slate-700 pt-4">
+              <h4 className="mb-2 text-xs font-semibold text-slate-300 uppercase tracking-wider">Total por investimento ({eventYear})</h4>
+              <table className="min-w-full text-left text-xs md:text-sm">
+                <thead className="border-b border-slate-800 text-slate-400">
+                  <tr>
+                    <th className="px-2 py-2">Investimento</th>
+                    <th className="px-2 py-2 text-emerald-400">Aportes</th>
+                    <th className="px-2 py-2 text-amber-400">Resgates</th>
+                    <th className="px-2 py-2 text-rose-400">Impostos</th>
+                    <th className="px-2 py-2 text-rose-400">Taxas</th>
+                    <th className="px-2 py-2 font-bold">Fluxo Líquido</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cashEventsInvestmentTotals.map((row) => (
+                    <tr key={row.investmentLabel} className="border-b border-slate-800/60 last:border-0">
+                      <td className="px-2 py-2 font-medium text-slate-200">{row.investmentLabel}</td>
+                      <td className="px-2 py-2 text-emerald-400">{row.aportes > 0 ? formatCurrencyBRL(row.aportes) : "—"}</td>
+                      <td className="px-2 py-2 text-amber-400">{row.resgates > 0 ? formatCurrencyBRL(row.resgates) : "—"}</td>
+                      <td className="px-2 py-2 text-rose-400">{row.impostos > 0 ? formatCurrencyBRL(row.impostos) : "—"}</td>
+                      <td className="px-2 py-2 text-rose-400">{row.taxas > 0 ? formatCurrencyBRL(row.taxas) : "—"}</td>
+                      <td className={`px-2 py-2 font-bold ${row.fluxo >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                        {formatCurrencyBRL(row.fluxo)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
