@@ -355,32 +355,63 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
     });
   }, [investmentById, returnRevisions]);
 
-  const selectedRevisionMonth = useMemo(() => {
-    if (revisionRows.length === 0) return null;
+  const availableRevisionMonths = useMemo(() => {
+    const set = new Map<string, { year: number; month: number }>();
+    for (const row of revisionRows) {
+      const key = `${row.year}-${row.month}`;
+      if (!set.has(key)) {
+        set.set(key, { year: Number(row.year), month: Number(row.month) });
+      }
+    }
+    return Array.from(set.values()).sort(
+      (a, b) => a.year - b.year || a.month - b.month,
+    );
+  }, [revisionRows]);
+
+  const defaultRevisionMonth = useMemo(() => {
+    if (availableRevisionMonths.length === 0) return null;
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
-    const hasCurrentMonth = revisionRows.some(
-      (r) => Number(r.year) === currentYear && Number(r.month) === currentMonth,
+    const current = availableRevisionMonths.find(
+      (m) => m.year === currentYear && m.month === currentMonth,
     );
-    if (hasCurrentMonth) {
-      return { year: currentYear, month: currentMonth };
+    if (current) return current;
+    return availableRevisionMonths[availableRevisionMonths.length - 1];
+  }, [availableRevisionMonths]);
+
+  const [revisionMonthKey, setRevisionMonthKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (defaultRevisionMonth) {
+      setRevisionMonthKey(`${defaultRevisionMonth.year}-${defaultRevisionMonth.month}`);
     }
-    const latest = revisionRows[0];
-    return {
-      year: Number(latest.year),
-      month: Number(latest.month),
-    };
-  }, [revisionRows]);
+  }, [defaultRevisionMonth]);
+
+  const selectedRevisionMonth = useMemo(() => {
+    if (!revisionMonthKey) return defaultRevisionMonth;
+    const found = availableRevisionMonths.find(
+      (m) => `${m.year}-${m.month}` === revisionMonthKey,
+    );
+    return found ?? defaultRevisionMonth;
+  }, [revisionMonthKey, availableRevisionMonths, defaultRevisionMonth]);
+
+  const filteredRevisionRows = useMemo(() => {
+    if (!selectedRevisionMonth) return revisionRows;
+    return revisionRows.filter(
+      (row) =>
+        Number(row.year) === selectedRevisionMonth.year &&
+        Number(row.month) === selectedRevisionMonth.month,
+    );
+  }, [revisionRows, selectedRevisionMonth]);
+
+  useEffect(() => {
+    setRevisionPage(1);
+  }, [selectedRevisionMonth]);
 
   const revisionChartData = useMemo(() => {
     if (!selectedRevisionMonth) return [];
-    return [...revisionRows]
-      .filter(
-        (row) =>
-          Number(row.year) === selectedRevisionMonth.year &&
-          Number(row.month) === selectedRevisionMonth.month,
-      )
+    return [...filteredRevisionRows]
       .sort((a, b) => {
         const aTime = new Date(a.created_at ?? "").getTime();
         const bTime = new Date(b.created_at ?? "").getTime();
@@ -394,7 +425,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
         delta: Number(row.delta_income_value ?? 0),
         newValue: Number(row.new_income_value ?? 0),
       }));
-  }, [revisionRows, selectedRevisionMonth]);
+  }, [filteredRevisionRows, selectedRevisionMonth]);
 
   const monthlyForecast = useMemo(() => {
     if (!selectedRevisionMonth) return null;
@@ -1022,6 +1053,20 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
             </select>
             <select
               className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+              value={revisionMonthKey ?? ""}
+              onChange={(e) => {
+                setRevisionMonthKey(e.target.value);
+                setRevisionPage(1);
+              }}
+            >
+              {availableRevisionMonths.map((m) => (
+                <option key={`${m.year}-${m.month}`} value={`${m.year}-${m.month}`}>
+                  {monthNameFull(m.month)}
+                </option>
+              ))}
+            </select>
+            <select
+              className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
               value={revisionInvestmentFilter}
               onChange={(e) => setRevisionInvestmentFilter(e.target.value)}
             >
@@ -1230,7 +1275,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                     Carregando revisões...
                   </td>
                 </tr>
-              ) : revisionRows.length === 0 ? (
+              ) : filteredRevisionRows.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-2 py-4 text-center text-slate-400">
                     Nenhuma revisão encontrada para os filtros selecionados.
@@ -1238,10 +1283,10 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                 </tr>
               ) : (
                 (() => {
-                  const totalRevisionPages = Math.max(1, Math.ceil(revisionRows.length / revisionPageSize));
+                  const totalRevisionPages = Math.max(1, Math.ceil(filteredRevisionRows.length / revisionPageSize));
                   const safeRevisionPage = Math.min(revisionPage, totalRevisionPages);
                   const revisionStart = (safeRevisionPage - 1) * revisionPageSize;
-                  const revisionPageRows = revisionRows.slice(revisionStart, revisionStart + revisionPageSize);
+                  const revisionPageRows = filteredRevisionRows.slice(revisionStart, revisionStart + revisionPageSize);
                   return revisionPageRows.map((row) => (
                   <tr key={row.id} className="border-b border-slate-800/60 last:border-0">
                     <td className="px-2 py-2 text-slate-300">{parseBrDateTime(row.created_at)}</td>
@@ -1277,9 +1322,9 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
               )}
             </tbody>
           </table>
-          {revisionRows.length > revisionPageSize && (
+          {filteredRevisionRows.length > revisionPageSize && (
             <div className="mt-2 flex items-center justify-end gap-3 text-xs text-slate-400">
-              <span>Mostrando {Math.min(revisionPage * revisionPageSize, revisionRows.length)} de {revisionRows.length}</span>
+              <span>Mostrando {Math.min(revisionPage * revisionPageSize, filteredRevisionRows.length)} de {filteredRevisionRows.length}</span>
               <button
                 type="button"
                 disabled={revisionPage === 1}
@@ -1288,10 +1333,10 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
               >
                 Anterior
               </button>
-              <span>Página {revisionPage} / {Math.ceil(revisionRows.length / revisionPageSize)}</span>
+              <span>Página {revisionPage} / {Math.ceil(filteredRevisionRows.length / revisionPageSize)}</span>
               <button
                 type="button"
-                disabled={revisionPage >= Math.ceil(revisionRows.length / revisionPageSize)}
+                disabled={revisionPage >= Math.ceil(filteredRevisionRows.length / revisionPageSize)}
                 onClick={() => setRevisionPage((p) => p + 1)}
                 className="rounded border border-slate-700 px-2 py-1 text-slate-200 hover:bg-slate-800 disabled:opacity-40"
               >
