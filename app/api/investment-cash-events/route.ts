@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
   let query = supabase
     .from("investment_cash_events")
     .select("*")
-    .order("event_date", { ascending: true });
+    .order("event_date", { ascending: false });
 
   if (year) {
     query = query.eq("year", Number(year));
