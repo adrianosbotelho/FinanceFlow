@@ -513,6 +513,37 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
     return sortDirection === "asc" ? "↑" : "↓";
   };
 
+  const cashEventsSummary = useMemo(() => {
+    type SummaryRow = {
+      month: number;
+      investmentId: string;
+      investmentLabel: string;
+      aportes: number;
+      resgates: number;
+      impostos: number;
+      taxas: number;
+      fluxo: number;
+    };
+    const map = new Map<string, SummaryRow>();
+    for (const ev of cashEvents) {
+      const inv = investments.find((i) => i.id === ev.investment_id);
+      const label = inv ? `${inv.name} (${inv.institution})` : ev.investment_id;
+      const key = `${ev.month}-${ev.investment_id}`;
+      let row = map.get(key);
+      if (!row) {
+        row = { month: Number(ev.month), investmentId: ev.investment_id, investmentLabel: label, aportes: 0, resgates: 0, impostos: 0, taxas: 0, fluxo: 0 };
+        map.set(key, row);
+      }
+      const amount = Number(ev.amount ?? 0);
+      if (ev.type === "APORTE") row.aportes += amount;
+      else if (ev.type === "RESGATE") row.resgates += amount;
+      else if (ev.type === "IMPOSTO") row.impostos += amount;
+      else if (ev.type === "TAXA") row.taxas += amount;
+      row.fluxo = row.aportes - row.resgates - row.impostos - row.taxas;
+    }
+    return Array.from(map.values()).sort((a, b) => a.month - b.month || a.investmentLabel.localeCompare(b.investmentLabel, "pt-BR"));
+  }, [cashEvents, investments]);
+
   // Resumo mensal consolidado (dinâmico por investimento CDB + FIIs agrupados)
   const cdbInvestments = useMemo(
     () => investments.filter((inv) => inv.type === "CDB"),
@@ -1427,6 +1458,64 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
           )}
         </div>
       </div>
+
+      {cashEventsSummary.length > 0 && (
+        <div className="rounded-xl border border-slate-800 bg-surface/80 p-4">
+          <h3 className="mb-3 text-sm font-semibold text-slate-200">
+            Resumo de eventos de caixa ({eventYear})
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-xs md:text-sm">
+              <thead className="border-b border-slate-800 text-slate-400">
+                <tr>
+                  <th className="px-2 py-2">Mês</th>
+                  <th className="px-2 py-2">Investimento</th>
+                  <th className="px-2 py-2 text-emerald-400">Aportes</th>
+                  <th className="px-2 py-2 text-amber-400">Resgates</th>
+                  <th className="px-2 py-2 text-rose-400">Impostos</th>
+                  <th className="px-2 py-2 text-rose-400">Taxas</th>
+                  <th className="px-2 py-2 font-bold">Fluxo Líquido</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cashEventsSummary.map((row) => (
+                  <tr key={`${row.month}-${row.investmentId}`} className="border-b border-slate-800/60 last:border-0">
+                    <td className="px-2 py-2 text-slate-300">{monthNameFull(row.month)}</td>
+                    <td className="px-2 py-2 text-slate-200">{row.investmentLabel}</td>
+                    <td className="px-2 py-2 text-emerald-400">{row.aportes > 0 ? formatCurrencyBRL(row.aportes) : "—"}</td>
+                    <td className="px-2 py-2 text-amber-400">{row.resgates > 0 ? formatCurrencyBRL(row.resgates) : "—"}</td>
+                    <td className="px-2 py-2 text-rose-400">{row.impostos > 0 ? formatCurrencyBRL(row.impostos) : "—"}</td>
+                    <td className="px-2 py-2 text-rose-400">{row.taxas > 0 ? formatCurrencyBRL(row.taxas) : "—"}</td>
+                    <td className={`px-2 py-2 font-bold ${row.fluxo >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                      {formatCurrencyBRL(row.fluxo)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-slate-600 bg-slate-900/50">
+                  <td className="px-2 py-2 text-xs font-bold uppercase tracking-wider text-slate-300" colSpan={2}>Total</td>
+                  <td className="px-2 py-2 font-bold text-emerald-400">
+                    {formatCurrencyBRL(cashEventsSummary.reduce((acc, r) => acc + r.aportes, 0))}
+                  </td>
+                  <td className="px-2 py-2 font-bold text-amber-400">
+                    {formatCurrencyBRL(cashEventsSummary.reduce((acc, r) => acc + r.resgates, 0))}
+                  </td>
+                  <td className="px-2 py-2 font-bold text-rose-400">
+                    {formatCurrencyBRL(cashEventsSummary.reduce((acc, r) => acc + r.impostos, 0))}
+                  </td>
+                  <td className="px-2 py-2 font-bold text-rose-400">
+                    {formatCurrencyBRL(cashEventsSummary.reduce((acc, r) => acc + r.taxas, 0))}
+                  </td>
+                  <td className={`px-2 py-2 font-extrabold ${cashEventsSummary.reduce((acc, r) => acc + r.fluxo, 0) >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                    {formatCurrencyBRL(cashEventsSummary.reduce((acc, r) => acc + r.fluxo, 0))}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Resumo mensal no formato Itau / Santander / FIIs / Total */}
       <div className="rounded-xl border border-slate-800 bg-surface/80 p-4">
