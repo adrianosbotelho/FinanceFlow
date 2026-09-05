@@ -67,8 +67,24 @@ function classifyPath(filePath) {
 
 function getChangedFiles() {
   if (range) {
-    const out = run(`git diff --name-only --diff-filter=ACMR ${range}`);
-    return unique(out.split("\n").map(normalizePath).filter(Boolean));
+    try {
+      const out = run(`git diff --name-only --diff-filter=ACMR ${range}`);
+      return unique(out.split("\n").map(normalizePath).filter(Boolean));
+    } catch (error) {
+      const stderr = String(error?.stderr || "");
+      const isRangeError =
+        stderr.includes("Invalid symmetric difference expression") ||
+        stderr.includes("bad revision");
+
+      if (!isRangeError) throw error;
+
+      try {
+        const fallback = run("git diff --name-only --diff-filter=ACMR HEAD~1...HEAD");
+        return unique(fallback.split("\n").map(normalizePath).filter(Boolean));
+      } catch {
+        return [];
+      }
+    }
   }
 
   const staged = run("git diff --name-only --cached --diff-filter=ACMR")
