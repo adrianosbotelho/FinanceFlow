@@ -79,9 +79,9 @@ Mutations chamam `revalidatePath()` nas rotas afetadas e o cliente publica um ev
 - **`amount_invested` é o saldo atual** (principal + renda reinvestida). Eventos de caixa `APORTE`/`RESGATE` o atualizam. O saldo de um mês passado = saldo atual − aportes/resgates − renda lançada a partir daquele mês.
 - **Previsão** (`app/api/investments/forecast/route.ts`) — juros compostos por dia útil (base 252) sobre o saldo de abertura de cada mês, com o % do CDI de cada investimento (`cdi_rate`; sem cadastro, o % efetivo dos últimos 3 meses fechados). Aportes rendem a partir de `event_date`. Meses fechados usam o CDI realizado (BCB 4391); o atual e os futuros, o CDI de referência ou o cenário da tela.
 - **Performance** (`app/api/performance/route.ts`) — renda fixa (CDBs): saldo de cada mês reconstruído a partir do saldo atual; rentabilidade mensal = renda ÷ (saldo de abertura + ½ fluxo do mês), encadeada no ano só com meses fechados, contra CDI (BCB 4391) e IPCA (BCB 433, valores com **ponto decimal**). IR estimado a 15% sobre a renda acumulada; FGC de R$ 250 mil por instituição. O mês de estreia de cada investimento fica fora da rentabilidade.
-- **Taxas contratadas** — CDBs Santander, Itaú e Nubank: 100% do CDI; Caixinha Turbo Ultra (Nubank): 120% do CDI.
+- **Taxas contratadas** — ficam em `investments.cdi_rate` (% do CDI); têm prioridade sobre o % efetivo estimado pelo histórico.
 - **Metas** — a meta anual de renda é a **soma das metas mensais** do ano (`investment_goals_monthly`), comparada com a projeção dos mesmos meses; `FINANCEFLOW_ANNUAL_INCOME_TARGET` só vale sem metas cadastradas. A tabela `investment_goals` (metas fixas) é legado.
-- **FIIs** — foram encerrados (valor aplicado 0). Investimento sem posição e sem renda no mês fica fora do motor de insights e das telas (cards, stress test, reinvestimento); o histórico de renda deles continua valendo nos totais passados.
+- **Investimentos sem posição** — investimento com valor aplicado 0 e sem renda no mês (ex.: FIIs encerrados) fica fora do motor de insights e das telas (cards, stress test, reinvestimento); o histórico de renda continua valendo nos totais passados.
 - **Motor de insights** — `INSIGHTS_ENGINE_VERSION` (`lib/month-pace.ts`) é gravado em `insight_daily_runs` e `insight_professional_runs`, e o histórico exibido é filtrado pela versão. **Ao mudar qualquer cálculo dos insights, incrementar a versão.**
 - **Dados de mercado** — `lib/cdi-reference.ts` (SGS 12 = CDI diário, 4391 = CDI mensal) e as rotas de insights (13522 = IPCA 12m, Yahoo para IBOV/IFIX) usam cache em memória com TTLs distintos para sucesso e fallback. Sempre prever fallback quando a API externa falhar.
 
@@ -91,6 +91,8 @@ Mutations chamam `revalidatePath()` nas rotas afetadas e o cliente publica um ev
 - **Benchmark** — rendimento sobre o capital vs CDI acumulado nos dias úteis do mês, e % do CDI realizado vs contratado; IFIX/Ibov são só contexto (variação de preço não é comparável com renda fixa).
 
 ## Convenções de código
+
+- **Nunca colocar dados reais** (saldos, rendas, rentabilidades, taxas, metas, nomes de investimentos/instituições da carteira, datas de lançamentos) em descrições e comentários de PR, mensagens de commit ou arquivos versionados — **o repositório é público**. Descrever verificações de forma genérica ou com valores fictícios.
 
 - **Imports relativos** (`../../lib/supabase`) em todo o código; o alias `@/*` existe no `tsconfig.json` mas não é usado — seguir o padrão vigente.
 - Server components por padrão; `"use client"` só quando há estado, efeitos ou Recharts.
@@ -102,13 +104,13 @@ Mutations chamam `revalidatePath()` nas rotas afetadas e o cliente publica um ev
 ## Dívidas técnicas conhecidas
 
 - **Componentes muito grandes**: `InsightsPageClient.tsx` (~1850 linhas), `ReturnsPageClient.tsx` (~1720), `GoalsPageClient.tsx` (~1260), `app/api/insights/professional/route.ts` (~1170), `app/api/dashboard/route.ts` (~960).
-- **Datas de início ausentes**: CDB Nubank e Caixinha Turbo Ultra foram abertos no meio de jul/2026 e não têm `start_date`; a previsão de julho fica superestimada até que sejam preenchidas no cadastro.
+- **Datas de início ausentes**: investimentos abertos no meio de um mês sem `start_date` (nem aporte inicial lançado) distorcem a previsão e a performance do mês de abertura até que a data seja preenchida no cadastro.
 - **Histórico antigo dos insights**: as linhas de `insight_daily_runs`/`insight_professional_runs` de versões anteriores do motor seguem no banco (ocultas pelo filtro de versão). Remoção manual, se desejado: `delete from <tabela> where report->>'engineVersion' is distinct from '<versão atual>';`.
 
-### Resolvidas (set/2026)
+### Resolvidas
 
 - Rotas sem `force-dynamic` servindo dados congelados do Data Cache (PR #48).
-- Motor de insights comparando mês parcial com meses cheios, "melhor fonte" sempre FIIs, grupos fixos Itaú/Santander/FIIs (PR #49).
+- Motor de insights comparando mês parcial com meses cheios, "melhor fonte" sempre FIIs, grupos fixos por instituição (PR #49).
 - KPIs do Dashboard e selo de dias úteis sem feriados (PRs #50–#52).
 - Mass assignment em `app/api/returns` (PR #53).
 - Drift de schema e falta de RLS em `supabase/schema.sql` (PR #54).
