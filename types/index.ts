@@ -655,43 +655,72 @@ export interface HealthCheckPayload {
   };
 }
 
+// Performance da renda fixa (CDBs). Saldos reconstruídos a partir do saldo atual (amount_invested),
+// aportes/resgates e renda lançada; rentabilidade mensal encadeada (TWR) vs CDI (BCB 4391) e IPCA (BCB 433).
 export interface PerformanceKPIs {
-  investedCapital: number;
-  currentCostBasis: number;
-  currentMarketValue: number;
-  ytdPassiveIncomeNet: number;
-  ytdTaxes: number;
-  ytdFees: number;
-  nominalReturnPercent: number;
-  realReturnPercent: number;
+  currentBalance: number;
+  openingBalance: number;
+  netContributions: number;
+  unrecordedApplications: number;
+  grossIncome: number;
+  netIncomeAfterTax: number;
+  estimatedTaxRatePercent: number;
+  estimatedTaxOnRedemption: number;
+  balanceAfterTax: number;
+  returnPercent: number | null;
+  cdiPercent: number | null;
+  percentOfCdi: number | null;
+  ipcaPercent: number | null;
+  realReturnPercent: number | null;
+  closedThroughMonth: number | null;
+  fiiDividends: number;
 }
 
 export interface PerformanceMonthPoint {
   month: number;
   year: number;
-  passiveIncome: number;
-  taxes: number;
-  fees: number;
-  netIncome: number;
-  marketValue: number;
-  costBasis: number;
-  inflationRate: number;
-  nominalReturnPercent: number;
-  realReturnPercent: number;
+  status: "closed" | "in_progress" | "future";
+  closingBalance: number | null;
+  netContributions: number;
+  grossIncome: number;
+  returnPercent: number | null;
+  cdiPercent: number | null;
+  percentOfCdi: number | null;
+  ipcaPercent: number | null;
+  accumulatedReturnPercent: number | null;
+  accumulatedCdiPercent: number | null;
+  accumulatedIpcaPercent: number | null;
 }
 
-export interface ConcentrationItem {
+export interface PerformanceInvestmentItem {
   investmentId: string;
   label: string;
-  value: number;
+  institution: string;
+  balance: number;
   sharePercent: number;
+  grossIncome: number;
+  returnPercent: number | null;
+  percentOfCdi: number | null;
+  contractedCdiPercent: number | null;
+  estimatedTax: number;
+  returnMonths: number;
+}
+
+export interface PerformanceInstitutionItem {
+  institution: string;
+  balance: number;
+  sharePercent: number;
+  fgcLimit: number;
+  fgcUsagePercent: number;
+  fgcStatus: "ok" | "atencao" | "acima";
 }
 
 export interface PerformancePayload {
+  year: number;
   kpis: PerformanceKPIs;
   monthlySeries: PerformanceMonthPoint[];
-  concentration: ConcentrationItem[];
-  cashEvents: InvestmentCashEvent[];
+  investments: PerformanceInvestmentItem[];
+  institutions: PerformanceInstitutionItem[];
   inflationSource: "bcb" | "manual" | "none";
   warnings: string[];
 }
