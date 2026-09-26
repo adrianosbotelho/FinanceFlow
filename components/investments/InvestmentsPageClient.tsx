@@ -20,6 +20,7 @@ import {
 type ForecastResponse = {
   cdbInvested: number;
   cdiAnnualRatePct: number;
+  cdiSource?: "scenario" | "bcb" | "env" | "fallback";
   year: number;
   currentMonth: number;
   kpis: {
@@ -43,6 +44,8 @@ type ForecastResponse = {
     label: string;
     institution: string;
     amountInvested: number;
+    cdiPercent?: number;
+    cdiPercentSource?: "contracted" | "historical" | "default";
     current: {
       forecast: number;
       realized: number;
@@ -288,8 +291,19 @@ export function InvestmentsPageClient() {
           <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
             <div>
               <h3 className="text-sm font-semibold text-slate-100">
-                Projeção CDB (100% CDI) vs Realizado
+                Projeção CDB (% do CDI de cada investimento) vs Realizado
               </h3>
+              <p className="text-[11px] text-slate-400">
+                CDI: {forecast.cdiAnnualRatePct.toFixed(2).replace(".", ",")}% a.a. (
+                {forecast.cdiSource === "scenario"
+                  ? "cenário"
+                  : forecast.cdiSource === "bcb"
+                    ? "BCB, atual"
+                    : forecast.cdiSource === "env"
+                      ? "configuração do ambiente"
+                      : "valor padrão, BCB indisponível"}
+                )
+              </p>
             </div>
             <div className="flex flex-wrap items-end gap-2">
               <div className="flex flex-col gap-1">
@@ -299,7 +313,7 @@ export function InvestmentsPageClient() {
                   onChange={(e) => setCdiScenario(e.target.value)}
                   className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100"
                 >
-                  <option value="default">Atual (env)</option>
+                  <option value="default">Atual (BCB)</option>
                   <option value="9">9,00%</option>
                   <option value="10.5">10,50%</option>
                   <option value="12">12,00%</option>
@@ -429,6 +443,16 @@ export function InvestmentsPageClient() {
                     {formatCurrencyBRL(item.current.forecast)} | Realizado mês:{" "}
                     {formatCurrencyBRL(item.current.realized)}
                   </p>
+                  {item.cdiPercent !== undefined ? (
+                    <p className="text-[11px] text-slate-500">
+                      Taxa: {item.cdiPercent.toFixed(0)}% do CDI
+                      {item.cdiPercentSource === "contracted"
+                        ? " (contratado)"
+                        : item.cdiPercentSource === "historical"
+                          ? " (estimado pelo histórico; preencha o % contratado no cadastro)"
+                          : " (padrão; preencha o % contratado no cadastro)"}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="h-52">
                   <ResponsiveContainer width="100%" height="100%">

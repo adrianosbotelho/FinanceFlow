@@ -20,22 +20,17 @@ import {
   parseIsoDate,
 } from "../../../lib/month-pace";
 import { MonthPace } from "../../../types";
+import { resolveCdiAnnualReference } from "../../../lib/cdi-reference";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const FALLBACK_CDI_ANNUAL_RATE = 10.65;
-const CDI_SERIES_URL =
-  "https://api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados/ultimos/5?formato=json";
 const IPCA_12M_SERIES_URL =
   "https://api.bcb.gov.br/dados/serie/bcdata.sgs.13522/dados/ultimos/12?formato=json";
 const SELIC_TREND_LOOKBACK_DAYS = 120;
-const CDI_CACHE_SUCCESS_TTL_MS = 6 * 60 * 60 * 1000;
-const CDI_CACHE_FALLBACK_TTL_MS = 30 * 60 * 1000;
 const FII_TREND_CACHE_SUCCESS_TTL_MS = 6 * 60 * 60 * 1000;
 const FII_TREND_CACHE_FALLBACK_TTL_MS = 30 * 60 * 1000;
 
-let cdiAnnualCache: { value: number; expiresAt: number } | null = null;
 let fiiTrendCache:
   | {
       value: {
@@ -695,78 +690,6 @@ function buildInsights(
     anomalyReason: anomaly.reason,
     commentary,
   };
-}
-
-function resolveEnvCdiAnnualFallback(): number {
-  const cdiEnv = Number(process.env.FINANCEFLOW_CDI_ANNUAL_RATE ?? FALLBACK_CDI_ANNUAL_RATE);
-  return Number.isFinite(cdiEnv) && cdiEnv > 0 ? cdiEnv : FALLBACK_CDI_ANNUAL_RATE;
-}
-
-function annualizeDailyRate(dailyRatePercent: number): number {
-  return (Math.pow(1 + dailyRatePercent / 100, 252) - 1) * 100;
-}
-
-async function resolveCdiAnnualReference(): Promise<number> {
-  const now = Date.now();
-  if (cdiAnnualCache && cdiAnnualCache.expiresAt > now) {
-    return cdiAnnualCache.value;
-  }
-
-  const fallback = resolveEnvCdiAnnualFallback();
-  let timeout: ReturnType<typeof setTimeout> | null = null;
-
-  try {
-    const controller = new AbortController();
-    timeout = setTimeout(() => controller.abort(), 1800);
-    const response = await fetch(CDI_SERIES_URL, {
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (timeout) clearTimeout(timeout);
-
-    if (!response.ok) {
-      throw new Error(`BCB status ${response.status}`);
-    }
-
-    const payload = (await response.json()) as BcbSeriesPoint[];
-    if (!Array.isArray(payload) || payload.length === 0) {
-      throw new Error("BCB payload vazio");
-    }
-
-    const latestPoint = [...payload]
-      .reverse()
-      .find((point) => Number.isFinite(Number((point.valor ?? "").replace(",", "."))));
-    if (!latestPoint?.valor) {
-      throw new Error("BCB sem valor válido");
-    }
-
-    const dailyRate = Number(latestPoint.valor.replace(",", "."));
-    if (!Number.isFinite(dailyRate) || dailyRate <= 0) {
-      throw new Error("Taxa CDI diária inválida");
-    }
-
-    const annualized = annualizeDailyRate(dailyRate);
-    if (!Number.isFinite(annualized) || annualized <= 0) {
-      throw new Error("Taxa CDI anualizada inválida");
-    }
-
-    cdiAnnualCache = {
-      value: annualized,
-      expiresAt: now + CDI_CACHE_SUCCESS_TTL_MS,
-    };
-
-    return annualized;
-  } catch (error) {
-    console.warn("Falha ao obter CDI no BCB, usando fallback local.", error);
-    cdiAnnualCache = {
-      value: fallback,
-      expiresAt: now + CDI_CACHE_FALLBACK_TTL_MS,
-    };
-    return fallback;
-  } finally {
-    if (timeout) clearTimeout(timeout);
-  }
 }
 
 function parseBcbSeriesValues(payload: BcbSeriesPoint[]): number[] {
