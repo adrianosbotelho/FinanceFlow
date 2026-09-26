@@ -1,0 +1,133 @@
+# CLAUDE.md
+
+Orientações para o Claude Code trabalhar neste repositório.
+
+## Projeto
+
+**FinanceFlow** — dashboard pessoal de renda passiva para investimentos brasileiros (CDBs e FIIs).
+Next.js 14 (App Router) + Supabase (PostgreSQL) + Recharts + Tailwind. **UI inteiramente em pt-BR.**
+
+Três superfícies no mesmo repositório:
+
+| Superfície | Diretório | Observação |
+|---|---|---|
+| Web desktop | raiz (`app/`, `components/`, `lib/`) | superfície principal |
+| App macOS | `macos-app/` (Electron) | serve `.next/standalone/` |
+| PWA mobile | `financeflow-web-mobile/` | subprojeto independente (Next 14.2.35, Recharts 3) |
+
+## Regras críticas
+
+1. **Nunca modificar `financeflow-web-mobile/`** sem instrução explícita. É um subprojeto separado, com dependências e CI próprios.
+2. **Nunca misturar desktop e mobile no mesmo commit/PR** — o Boundary Guard (`npm run guard:boundary`) reprova no CI.
+3. **Buildar ao final de cada alteração** com `node macos-app/build-standalone.js` (não apenas `npm run build` — este não copia `.next/static/` para o standalone, e o Electron quebra).
+4. **Não quebrar o que funciona**: dashboard, gráficos, tabelas e análises precisam continuar operando. Na dúvida, perguntar.
+5. **Tailwind sem classes dinâmicas** — jamais construir nomes de classe por interpolação (`grid-cols-${n}`). Usar strings literais ou adicionar ao `safelist` em `tailwind.config.ts`.
+6. `main` exige PR + status checks; o merge é feito pelo dono do repositório via UI do GitHub.
+7. **Fluxo de entrega de toda alteração desktop**: branch → commit → `npm run lint` + `npm run guard:boundary` + `node macos-app/build-standalone.js` → push + PR → merge (dono) → **compilar o app macOS** (`cd macos-app && npx electron-builder --mac`). Após o merge, voltar para `main` (`git pull --ff-only`) e apagar a branch local. O dono usa sempre o `.app` empacotado.
+
+## Comandos
+
+| Comando | Para quê |
+|---|---|
+| `npm run dev` | servidor de desenvolvimento (porta 3000) |
+| `npm run build` | build de produção (standalone) |
+| `npm run build:desktop` | build + cópia de static/public para o Electron |
+| `npm run desktop` | build + abre o app Electron |
+| `npm run lint` | ESLint (`next/core-web-vitals`) |
+| `npm run guard:boundary` | verifica isolamento desktop/mobile |
+| `npm run smoke:api` | smoke test das rotas de API (servidor rodando) |
+| `npm run smoke:macos` | smoke test do build macOS |
+| `npm run release:check` | checklist de release (web + macOS) |
+
+Não há suíte de testes automatizados — a verificação é `npm run lint` + build + smoke tests.
+
+O `.app` empacotado em `macos-app/dist/mac-arm64/` é um artefato **separado**: só incorpora código novo após `cd macos-app && npx electron-builder --mac`. Para o dia a dia, `npm run desktop` é mais rápido.
+
+## Arquitetura
+
+### Fluxo de dados
+
+Server components buscam as próprias rotas `/api/*` via `fetch` com `cache: "no-store"`, e cada página/rota declara `dynamic = "force-dynamic"` e `revalidate = 0` — **toda rota nova de `app/api/` precisa dessas duas linhas**. A URL base vem dos headers da requisição, com fallback para `NEXT_PUBLIC_BASE_URL` (ver `app/page.tsx`).
+
+O Next 14 guarda respostas de `fetch` no Data Cache por padrão; sem `force-dynamic`, as consultas do Supabase ficavam congeladas (bug já corrigido). Por segurança, o cliente em `lib/supabase.ts` força `cache: "no-store"` em todo `fetch` que faz.
+
+O Supabase só é acessado no servidor: `lib/supabase.ts` é `server-only` e usa a service-role key. As tabelas têm RLS habilitado e acesso revogado de `anon`/`authenticated` (`supabase/migrations/20260318113000_security_hardening_rls.sql`) — **nunca** consultar o Supabase direto de um client component; criar uma rota de API.
+
+Mutations chamam `revalidatePath()` nas rotas afetadas e o cliente publica um evento de sincronização (`lib/client-data-sync.ts` + `components/layout/DataRefreshBridge.tsx`), que atualiza outras abas via `localStorage`.
+
+### Diretórios
+
+- `app/` — páginas (`/`, `/insights`, `/history-performance`, `/health`, `/performance`, `/goals`, `/investments`, `/returns`) e rotas de API.
+- `components/` — organizados por feature (`dashboard/`, `returns/`, `goals/`, `insights/`, `forms/`, `layout/`, `ui/`).
+- `lib/` — lógica compartilhada:
+  - `supabase.ts` (server-only), `calculations.ts` (KPIs, MoM/YoY, CAGR), `formatters.ts` (BRL e meses em pt-BR);
+  - `monthly-closures.ts`, `monthly-return-revisions.ts`;
+  - `business-days.ts` — **única** fonte de dias úteis (feriados nacionais + Páscoa, dia útil anterior, contagem entre datas); usável em client e server;
+  - `month-pace.ts` — ritmo do mês e projeção de fechamento por investimento (server; usa o Supabase);
+  - `cdi-reference.ts` — CDI do BCB com cache e fallback (server);
+  - `daily-insights-agent.ts` — motor do agente diário (Nível 4);
+  - `investment-payload.ts` — validação do cadastro de investimentos.
+- `supabase/` — `schema.sql` (setup manual), `seed.sql` e `migrations/`.
+- `types/index.ts` — **fonte única de verdade** dos tipos de domínio e dos payloads de API. Ao mudar o formato de uma rota, atualizar aqui primeiro.
+
+### Regras de negócio
+
+- **Fechamento mensal** — `isMonthClosed()` bloqueia escritas em períodos fechados com HTTP 409. Toda rota que grava dados de um mês precisa checar isso.
+- **Trilha de auditoria** — alterações em retornos mensais gravam em `monthly_return_revisions` (valor anterior, novo, delta, CREATE/UPDATE) via `logMonthlyReturnRevision()`.
+- **Data-base D−1** — o valor de renda lançado no dia D é o acumulado até o **dia útil anterior**. Todo cálculo de "dias úteis corridos" usa a data-base (via `previousBusinessDay()`), nunca a data de hoje. Nunca contar dias úteis fora de `lib/business-days.ts`.
+- **Ritmo do mês** (`lib/month-pace.ts`) — projeção de fechamento = realizado + ganho diário recente (das revisões, janela de 5 dias úteis) × dias úteis restantes, por investimento. Comparações com outros meses são por dia útil e só contra meses fechados. O mês em andamento **nunca** é comparado como se estivesse fechado. É a base de Insights (Níveis 3–5) e das projeções do Dashboard.
+- **`amount_invested` é o saldo atual** (principal + renda reinvestida). Eventos de caixa `APORTE`/`RESGATE` o atualizam. O saldo de um mês passado = saldo atual − aportes/resgates − renda lançada a partir daquele mês.
+- **Previsão** (`app/api/investments/forecast/route.ts`) — juros compostos por dia útil (base 252) sobre o saldo de abertura de cada mês, com o % do CDI de cada investimento (`cdi_rate`; sem cadastro, o % efetivo dos últimos 3 meses fechados). Aportes rendem a partir de `event_date`. Meses fechados usam o CDI realizado (BCB 4391); o atual e os futuros, o CDI de referência ou o cenário da tela.
+- **Taxas contratadas** — CDBs Santander, Itaú e Nubank: 100% do CDI; Caixinha Turbo Ultra (Nubank): 120% do CDI.
+- **Metas** — a meta anual de renda é a **soma das metas mensais** do ano (`investment_goals_monthly`), comparada com a projeção dos mesmos meses; `FINANCEFLOW_ANNUAL_INCOME_TARGET` só vale sem metas cadastradas. A tabela `investment_goals` (metas fixas) é legado.
+- **FIIs** — foram encerrados (valor aplicado 0). Investimento sem posição e sem renda no mês fica fora do motor de insights e das telas (cards, stress test, reinvestimento); o histórico de renda deles continua valendo nos totais passados.
+- **Motor de insights** — `INSIGHTS_ENGINE_VERSION` (`lib/month-pace.ts`) é gravado em `insight_daily_runs` e `insight_professional_runs`, e o histórico exibido é filtrado pela versão. **Ao mudar qualquer cálculo dos insights, incrementar a versão.**
+- **Dados de mercado** — `lib/cdi-reference.ts` (SGS 12 = CDI diário, 4391 = CDI mensal) e as rotas de insights (13522 = IPCA 12m, Yahoo para IBOV/IFIX) usam cache em memória com TTLs distintos para sucesso e fallback. Sempre prever fallback quando a API externa falhar.
+
+### Apresentação de números
+
+- **Real em destaque, projeção como apoio**: nos cards, o percentual, a seta, a cor e o Δ refletem a variação **realizada** mês contra mês; a projeção do mês em andamento aparece como linha secundária rotulada "Projeção" (campos `projected*` em `DashboardKPIs`/`CdbKpiEntry` e `projected_total` na série).
+- **Benchmark** — rendimento sobre o capital vs CDI acumulado nos dias úteis do mês, e % do CDI realizado vs contratado; IFIX/Ibov são só contexto (variação de preço não é comparável com renda fixa).
+
+## Convenções de código
+
+- **Imports relativos** (`../../lib/supabase`) em todo o código; o alias `@/*` existe no `tsconfig.json` mas não é usado — seguir o padrão vigente.
+- Server components por padrão; `"use client"` só quando há estado, efeitos ou Recharts.
+- Valores monetários via `formatCurrencyBRL()` e percentuais via `formatPercentage()`; nunca formatar à mão.
+- Textos visíveis sempre em português. Comentários acompanham o arquivo (a maioria em português).
+- Rotas de API validam as entradas e retornam `{ error: "mensagem em pt-BR" }` com o status adequado (400 inválido, 404 não encontrado, 409 período fechado, 500 erro). **Nunca** gravar o corpo cru (`insert(body)`, `update(body)`, `upsert(body)`): montar o objeto só com as colunas permitidas.
+- Paleta de cores no `tailwind.config.ts`: `background`, `surface`, `accent`, `success`, `danger`. Tema escuro.
+
+## Dívidas técnicas conhecidas
+
+- **Componentes muito grandes**: `InsightsPageClient.tsx` (~1850 linhas), `ReturnsPageClient.tsx` (~1720), `GoalsPageClient.tsx` (~1260), `app/api/insights/professional/route.ts` (~1170), `app/api/dashboard/route.ts` (~960).
+- **Datas de início ausentes**: CDB Nubank e Caixinha Turbo Ultra foram abertos no meio de jul/2026 e não têm `start_date`; a previsão de julho fica superestimada até que sejam preenchidas no cadastro.
+- **Histórico antigo dos insights**: as linhas de `insight_daily_runs`/`insight_professional_runs` de versões anteriores do motor seguem no banco (ocultas pelo filtro de versão). Remoção manual, se desejado: `delete from <tabela> where report->>'engineVersion' is distinct from '<versão atual>';`.
+
+### Resolvidas (set/2026)
+
+- Rotas sem `force-dynamic` servindo dados congelados do Data Cache (PR #48).
+- Motor de insights comparando mês parcial com meses cheios, "melhor fonte" sempre FIIs, grupos fixos Itaú/Santander/FIIs (PR #49).
+- KPIs do Dashboard e selo de dias úteis sem feriados (PRs #50–#52).
+- Mass assignment em `app/api/returns` (PR #53).
+- Drift de schema e falta de RLS em `supabase/schema.sql` (PR #54).
+- Dias úteis duplicados sem feriados — todos migrados para `lib/business-days.ts` (PRs #49–#55).
+- Previsão com CDI fixo de 10,65%, 100% do CDI para todos e renda contada duas vezes; painel de Retornos com filtro "todos" (PRs #56–#57).
+- Cadastro de investimentos descartava `cdi_rate`, `benchmark`, `start_date`, `liquidity` e `maturity_date` (PR #57).
+
+## Ambiente
+
+`.env.local` na raiz:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+NEXT_PUBLIC_BASE_URL=http://localhost:3000
+```
+
+Opcionais: `FINANCEFLOW_CDI_ANNUAL_RATE` (fallback do CDI quando o BCB falha; padrão 10,65), `FINANCEFLOW_ANNUAL_INCOME_TARGET` (meta anual quando não há metas mensais; padrão 12.000), `FINANCEFLOW_DAILY_PLANNED_APORTE` (aporte simulado nas recomendações; padrão 1.000).
+
+Supabase local (requer Docker): `supabase start` na raiz — API em 54321, Studio em 54323, DB em 54322. As migrations de `supabase/migrations/` são aplicadas automaticamente.
+
+Para setup inicial do zero: `npm run setup` e, no SQL Editor do Supabase, rodar `supabase/schema.sql` e depois `supabase/seed.sql`. O `schema.sql` é idempotente, inclui as colunas financeiras de `investments` e aplica RLS + revoke de `anon`/`authenticated` em todas as tabelas; ao criar uma migration nova, refletir a mudança nele também.
