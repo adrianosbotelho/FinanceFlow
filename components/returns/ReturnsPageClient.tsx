@@ -428,26 +428,47 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
       });
     if (monthRows.length === 0) return null;
 
-    const oldest = monthRows[0];
-    const latest = monthRows[monthRows.length - 1];
-    const latestValue = Number(latest.new_income_value ?? 0);
-    const startValue = Number(
-      oldest.previous_income_value ?? (oldest.new_income_value - oldest.delta_income_value),
-    );
-    const growthSoFar = latestValue - startValue;
-    // O último lançamento vale até o dia útil anterior à data em que foi feito (D−1).
-    const latestDataDate = previousBusinessDay(new Date(latest.created_at ?? now.toISOString()));
-    const latestDataDay =
-      latestDataDate.getFullYear() === year && latestDataDate.getMonth() + 1 === month
-        ? latestDataDate.getDate()
-        : 0;
-    const daysElapsed = isCurrentContext
-      ? countBusinessDaysElapsedInMonth(year, month, latestDataDay)
-      : countBusinessDaysInMonth(year, month);
+    // Cada investimento tem sua própria data-base; com filtro "todos" a previsão é a soma deles.
+    const rowsByInvestment = new Map<string, typeof monthRows>();
+    for (const row of monthRows) {
+      const list = rowsByInvestment.get(row.investment_id) ?? [];
+      list.push(row);
+      rowsByInvestment.set(row.investment_id, list);
+    }
+
     const totalDays = countBusinessDaysInMonth(year, month);
+    let latestValue = 0;
+    let startValue = 0;
+    let dailyPace = 0;
+    let projectedClose = 0;
+    let daysElapsed = 0;
+    for (const investmentRows of Array.from(rowsByInvestment.values())) {
+      const oldest = investmentRows[0];
+      const latest = investmentRows[investmentRows.length - 1];
+      const invLatestValue = Number(latest.new_income_value ?? 0);
+      const invStartValue = Number(
+        oldest.previous_income_value ?? (oldest.new_income_value - oldest.delta_income_value),
+      );
+      // O último lançamento vale até o dia útil anterior à data em que foi feito (D−1).
+      const latestDataDate = previousBusinessDay(new Date(latest.created_at ?? now.toISOString()));
+      const latestDataDay =
+        latestDataDate.getFullYear() === year && latestDataDate.getMonth() + 1 === month
+          ? latestDataDate.getDate()
+          : 0;
+      const invDaysElapsed = isCurrentContext
+        ? countBusinessDaysElapsedInMonth(year, month, latestDataDay)
+        : totalDays;
+      const invDaysRemaining = isCurrentContext ? Math.max(totalDays - invDaysElapsed, 0) : 0;
+      const invDailyPace = invDaysElapsed > 0 ? (invLatestValue - invStartValue) / invDaysElapsed : 0;
+
+      latestValue += invLatestValue;
+      startValue += invStartValue;
+      dailyPace += invDailyPace;
+      projectedClose += invLatestValue + invDailyPace * invDaysRemaining;
+      daysElapsed = Math.max(daysElapsed, invDaysElapsed);
+    }
+    const growthSoFar = latestValue - startValue;
     const daysRemaining = isCurrentContext ? Math.max(totalDays - daysElapsed, 0) : 0;
-    const dailyPace = daysElapsed > 0 ? growthSoFar / daysElapsed : 0;
-    const projectedClose = latestValue + dailyPace * daysRemaining;
 
     const confidence =
       !isCurrentContext
