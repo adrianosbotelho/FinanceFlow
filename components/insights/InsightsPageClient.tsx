@@ -18,6 +18,10 @@ import {
   MarketSnapshotPayload,
   ProfessionalInsightsPayload,
 } from "../../types";
+import {
+  countBusinessDaysElapsedInMonth,
+  countBusinessDaysInMonth,
+} from "../../lib/business-days";
 import { formatCurrencyBRL, formatPercentage, monthLabel } from "../../lib/formatters";
 import { InsightsPanel } from "../dashboard/InsightsPanel";
 
@@ -93,6 +97,9 @@ type OperationalInsights = {
   stressScenarios: Array<{ label: string; impact: number; simulatedTotal: number }>;
   drivers: DriverInsight[];
   priorityAction: string;
+  asOfDate: string | null;
+  hasActiveFii: boolean;
+  goalLabel: string;
 };
 
 function marketRegimeLabel(
@@ -223,6 +230,11 @@ function signedPercentage(value: number | null): string {
   return `${signal}${value.toFixed(1)}%`;
 }
 
+function percentTwoDecimals(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  return `${value.toFixed(2)}%`;
+}
+
 function riskRegimeTone(regime: "ESTAVEL" | "ATENCAO" | "ESTRESSADO"): string {
   if (regime === "ESTAVEL") return "text-emerald-300";
   if (regime === "ATENCAO") return "text-amber-300";
@@ -236,37 +248,21 @@ function diagnosticAlertTone(severity: "low" | "medium" | "high"): string {
 }
 
 function shortDate(value: string): string {
+  // Datas "AAAA-MM-DD" são dias de calendário; new Date() as leria em UTC e voltaria um dia.
+  const isoDay = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (isoDay) return `${isoDay[3]}/${isoDay[2]}`;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
-function countBusinessDaysInMonth(year: number, month: number): number {
-  const lastDay = new Date(year, month, 0).getDate();
-  let count = 0;
-  for (let day = 1; day <= lastDay; day += 1) {
-    const weekday = new Date(year, month - 1, day).getDay();
-    if (weekday >= 1 && weekday <= 5) count += 1;
-  }
-  return count;
-}
-
-function countBusinessDaysElapsed(year: number, month: number, dayLimit: number): number {
-  let count = 0;
-  for (let day = 1; day <= dayLimit; day += 1) {
-    const weekday = new Date(year, month - 1, day).getDay();
-    if (weekday >= 1 && weekday <= 5) count += 1;
-  }
-  return count;
-}
-
 function deriveOperationalInsights(data: DashboardPayload, year: number): OperationalInsights {
   const series = [...data.monthlySeries].sort((a, b) => a.month - b.month);
+  const pace = data.monthPace ?? null;
   const now = new Date();
   const isCurrentYear = year === now.getFullYear();
-  const fallbackMonth =
-    series[series.length - 1]?.month ?? (isCurrentYear ? now.getMonth() + 1 : 12);
-  const currentMonth = isCurrentYear ? now.getMonth() + 1 : fallbackMonth;
+  const currentMonth =
+    pace?.month ?? series[series.length - 1]?.month ?? (isCurrentYear ? now.getMonth() + 1 : 12);
   const previousMonth = currentMonth === 1 ? 12 : currentMonth - 1;
 
   const byMonth = new Map(series.map((entry) => [entry.month, entry]));
@@ -277,43 +273,38 @@ function deriveOperationalInsights(data: DashboardPayload, year: number): Operat
   const previousCdbItems = previous?.cdb_items ?? [];
   const currentFii = current?.fii_dividends ?? 0;
   const previousFii = previous?.fii_dividends ?? 0;
+  const hasActiveFii = pace ? pace.hasActiveFii : currentFii > 0;
 
   const currentTotal = current?.total ?? 0;
-  const recentAverageSource = series
-    .filter((entry) => entry.month <= currentMonth)
-    .slice(-3);
-  const recentAverage =
-    recentAverageSource.length > 0
-      ? recentAverageSource.reduce((acc, entry) => acc + entry.total, 0) /
-        recentAverageSource.length
-      : 0;
+  // Média dos 3 últimos meses fechados (o mês em andamento fica fora).
+  const closedMonths = pace?.closedMonths ?? [];
+  const recentClosed = closedMonths.slice(-3);
+  const recentAverage = recentClosed.length
+    ? recentClosed.reduce((acc, entry) => acc + entry.total, 0) / recentClosed.length
+    : 0;
 
-  const totalBusinessDays = Math.max(1, countBusinessDaysInMonth(year, currentMonth));
-  const elapsedBusinessDays = isCurrentYear
-    ? Math.max(
-        1,
-        countBusinessDaysElapsed(
-          year,
-          currentMonth,
-          Math.min(now.getDate(), new Date(year, currentMonth, 0).getDate()),
-        ),
-      )
-    : totalBusinessDays;
+  const totalBusinessDays = pace?.totalBusinessDays ?? Math.max(1, countBusinessDaysInMonth(year, currentMonth));
+  const elapsedBusinessDays = pace?.elapsedBusinessDays ?? totalBusinessDays;
+  // Referência: ritmo por dia útil do mês anterior até a data-base de cada investimento.
+  const expectedToDate = pace?.expectedToDate ?? 0;
+  const projectedClose = pace?.projected ?? currentTotal;
+  const pacePercent = expectedToDate > 0 ? (currentTotal / expectedToDate) * 100 : null;
 
-  const expectedToDate =
-    recentAverage > 0 ? recentAverage * (elapsedBusinessDays / totalBusinessDays) : 0;
-  const projectedClose =
-    elapsedBusinessDays > 0
-      ? (currentTotal / elapsedBusinessDays) * totalBusinessDays
-      : currentTotal;
-  const pacePercent =
-    expectedToDate > 0 ? (currentTotal / expectedToDate) * 100 : null;
-
-  const targetAnnual = data.goalProgress.annualIncomeTarget;
+  const goal = data.goalProgress;
+  const targetAnnual = goal.annualIncomeTarget;
   const ytd = data.kpis.ytdPassiveIncome;
-  const monthsRemaining = isCurrentYear ? Math.max(1, 12 - currentMonth + 1) : 1;
-  const remainingToTarget = Math.max(targetAnnual - ytd, 0);
+  const remainingToTarget = goal.gapToTarget;
+  const monthsRemaining =
+    goal.source === "monthly_goals"
+      ? Math.max(1, goal.remainingMonthsWithGoal ?? 0)
+      : isCurrentYear
+        ? Math.max(1, 12 - currentMonth)
+        : 1;
   const requiredPerMonth = remainingToTarget / monthsRemaining;
+  const goalLabel =
+    goal.source === "monthly_goals"
+      ? `soma das metas de ${goal.monthsWithGoal ?? 0} meses`
+      : "meta configurada no ambiente";
 
   const driversBase: Array<{
     label: string;
@@ -328,7 +319,9 @@ function deriveOperationalInsights(data: DashboardPayload, year: number): Operat
         previous: prevEntry?.income ?? 0,
       };
     }),
-    { label: "FIIs", current: currentFii, previous: previousFii },
+    ...(hasActiveFii || currentFii > 0 || previousFii > 0
+      ? [{ label: "FIIs", current: currentFii, previous: previousFii }]
+      : []),
   ];
 
   const drivers: DriverInsight[] = driversBase.map((driver) => {
@@ -341,44 +334,68 @@ function deriveOperationalInsights(data: DashboardPayload, year: number): Operat
 
   const cdiReference =
     data.insights.cdiAnnualReference > 0 ? data.insights.cdiAnnualReference : 10.65;
-  const cdbTotalCurrent = currentCdbItems.reduce((acc, c) => acc + c.income, 0);
-  const cdbImpactPer1pp = cdiReference > 0 ? cdbTotalCurrent / cdiReference : 0;
+  const cdbProjected = pace
+    ? pace.investments.filter((item) => item.type === "CDB").reduce((acc, item) => acc + item.projected, 0)
+    : currentCdbItems.reduce((acc, c) => acc + c.income, 0);
+  const fiiProjected = pace
+    ? pace.investments.filter((item) => item.type === "FII").reduce((acc, item) => acc + item.projected, 0)
+    : currentFii;
+  // Renda de CDB pós-fixado é proporcional ao CDI: 1 p.p. muda a renda em 1/CDI.
+  const cdbImpactPer1pp = cdiReference > 0 ? cdbProjected / cdiReference : 0;
 
   const stressScenarios = [
     {
       label: `CDI -1pp (${cdiReference.toFixed(2)}% -> ${(cdiReference - 1).toFixed(2)}%)`,
       impact: -cdbImpactPer1pp,
-      simulatedTotal: currentTotal - cdbImpactPer1pp,
+      simulatedTotal: projectedClose - cdbImpactPer1pp,
     },
     {
       label: `CDI +1pp (${cdiReference.toFixed(2)}% -> ${(cdiReference + 1).toFixed(2)}%)`,
       impact: cdbImpactPer1pp,
-      simulatedTotal: currentTotal + cdbImpactPer1pp,
+      simulatedTotal: projectedClose + cdbImpactPer1pp,
     },
-    {
-      label: "FIIs -10%",
-      impact: -(currentFii * 0.1),
-      simulatedTotal: currentTotal - currentFii * 0.1,
-    },
-    {
-      label: "FIIs -20%",
-      impact: -(currentFii * 0.2),
-      simulatedTotal: currentTotal - currentFii * 0.2,
-    },
+    ...(hasActiveFii
+      ? [
+          {
+            label: "FIIs -10%",
+            impact: -(fiiProjected * 0.1),
+            simulatedTotal: projectedClose - fiiProjected * 0.1,
+          },
+          {
+            label: "FIIs -20%",
+            impact: -(fiiProjected * 0.2),
+            simulatedTotal: projectedClose - fiiProjected * 0.2,
+          },
+        ]
+      : []),
   ];
 
-  const biggestNegativeDriver = [...drivers]
-    .filter((driver) => driver.delta < 0)
-    .sort((a, b) => a.delta - b.delta)[0];
+  // Queda relevante: renda projetada por dia útil abaixo do mês anterior.
+  const previousById = new Map(previousCdbItems.map((item) => [item.investment_id, item.income]));
+  const weakestInvestment = (pace?.investments ?? [])
+    .map((item) => {
+      const previousValue = previousById.get(item.investmentId) ?? 0;
+      const previousPerDay = pace && previousValue > 0 ? previousValue / pace.previousMonthBusinessDays : null;
+      const currentPerDay = pace ? item.projected / pace.totalBusinessDays : 0;
+      return {
+        label: item.label,
+        deltaPct: previousPerDay ? ((currentPerDay - previousPerDay) / previousPerDay) * 100 : null,
+      };
+    })
+    .filter((item): item is { label: string; deltaPct: number } => item.deltaPct !== null)
+    .sort((a, b) => a.deltaPct - b.deltaPct)[0];
 
   let priorityAction = "Ritmo saudável. Manter estratégia atual e monitorar fechamento do mês.";
-  if (remainingToTarget <= 0) {
-    priorityAction =
-      "Meta anual já atingida. Priorize proteger consistência e evitar concentração excessiva.";
-  } else if (biggestNegativeDriver) {
-    priorityAction = `Prioridade do mês: recuperar ${biggestNegativeDriver.label}, que caiu ${formatCurrencyBRL(Math.abs(biggestNegativeDriver.delta))} vs mês anterior.`;
-  } else if (requiredPerMonth > recentAverage && remainingToTarget > 0) {
-    priorityAction = `Ritmo abaixo da meta anual: você precisa de ${formatCurrencyBRL(requiredPerMonth)}/mês, acima da média recente de ${formatCurrencyBRL(recentAverage)}.`;
+  if (weakestInvestment && weakestInvestment.deltaPct <= -5) {
+    priorityAction = `Prioridade do mês: verificar ${weakestInvestment.label}, com renda projetada ${formatPercentage(
+      weakestInvestment.deltaPct,
+    )} por dia útil vs mês anterior (aporte, resgate ou taxa).`;
+  } else if (!goal.onTrack && remainingToTarget > 0) {
+    priorityAction = `Metas de renda do ano abaixo do ritmo: faltam ${formatCurrencyBRL(
+      remainingToTarget,
+    )} (${formatCurrencyBRL(requiredPerMonth)}/mês nos meses com meta restantes).`;
+  } else if (goal.onTrack && targetAnnual > 0) {
+    priorityAction = "Metas de renda do ano no ritmo. Priorize consistência e evitar concentração excessiva.";
   }
 
   return {
@@ -399,6 +416,9 @@ function deriveOperationalInsights(data: DashboardPayload, year: number): Operat
     stressScenarios,
     drivers,
     priorityAction,
+    asOfDate: pace?.asOfDate ?? null,
+    hasActiveFii,
+    goalLabel,
   };
 }
 
@@ -864,29 +884,35 @@ export function InsightsPageClient({
               <h4 className="text-sm font-semibold text-slate-100">
                 Benchmark profissional ({professionalInsights.benchmark.referenceMonthLabel})
               </h4>
+              <p className="mt-1 text-[11px] text-slate-400">
+                Rendimento do mês sobre o capital aplicado versus o CDI acumulado nos dias úteis do mês.
+              </p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4 text-xs">
                 <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
-                  Carteira M/M:{" "}
+                  Carteira no mês:{" "}
                   <span className="font-semibold text-cyan-300">
-                    {signedPercentage(professionalInsights.benchmark.portfolioMomPercent)}
+                    {percentTwoDecimals(professionalInsights.benchmark.portfolioMomPercent)}
                   </span>
                 </p>
                 <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
-                  CDI M/M:{" "}
+                  CDI no mês:{" "}
                   <span className="font-semibold text-slate-100">
-                    {signedPercentage(professionalInsights.benchmark.cdiMomPercent)}
+                    {percentTwoDecimals(professionalInsights.benchmark.cdiMomPercent)}
                   </span>
                 </p>
-                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
-                  IFIX M/M:{" "}
-                  <span className="font-semibold text-slate-100">
-                    {signedPercentage(professionalInsights.benchmark.ifixMomPercent)}
-                  </span>
-                </p>
-                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
-                  Ibov M/M:{" "}
-                  <span className="font-semibold text-slate-100">
-                    {signedPercentage(professionalInsights.benchmark.ibovMomPercent)}
+                <p
+                  className={`rounded-md border border-slate-700 px-2 py-1 ${
+                    (professionalInsights.benchmark.portfolioPercentOfCdi ?? 100) >= 100
+                      ? "text-emerald-300"
+                      : "text-rose-300"
+                  }`}
+                >
+                  % do CDI:{" "}
+                  <span className="font-semibold">
+                    {professionalInsights.benchmark.portfolioPercentOfCdi === null ||
+                    professionalInsights.benchmark.portfolioPercentOfCdi === undefined
+                      ? "—"
+                      : formatPercentage(professionalInsights.benchmark.portfolioPercentOfCdi)}
                   </span>
                 </p>
                 <p
@@ -898,34 +924,53 @@ export function InsightsPageClient({
                 >
                   Excesso vs CDI:{" "}
                   <span className="font-semibold">
-                    {signedPercentage(professionalInsights.benchmark.excessVsCdiPercent)}
-                  </span>
-                </p>
-                <p
-                  className={`rounded-md border border-slate-700 px-2 py-1 ${
-                    (professionalInsights.benchmark.excessVsIfixPercent ?? 0) >= 0
-                      ? "text-emerald-300"
-                      : "text-rose-300"
-                  }`}
-                >
-                  Excesso vs IFIX:{" "}
-                  <span className="font-semibold">
-                    {signedPercentage(professionalInsights.benchmark.excessVsIfixPercent)}
-                  </span>
-                </p>
-                <p
-                  className={`rounded-md border border-slate-700 px-2 py-1 ${
-                    (professionalInsights.benchmark.excessVsIbovPercent ?? 0) >= 0
-                      ? "text-emerald-300"
-                      : "text-rose-300"
-                  }`}
-                >
-                  Excesso vs Ibov:{" "}
-                  <span className="font-semibold">
-                    {signedPercentage(professionalInsights.benchmark.excessVsIbovPercent)}
+                    {professionalInsights.benchmark.excessVsCdiPercent === null
+                      ? "—"
+                      : `${professionalInsights.benchmark.excessVsCdiPercent >= 0 ? "+" : ""}${professionalInsights.benchmark.excessVsCdiPercent.toFixed(2)} p.p.`}
                   </span>
                 </p>
               </div>
+              {(professionalInsights.benchmark.items ?? []).length > 0 ? (
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full min-w-[520px] text-left text-xs">
+                    <thead className="text-slate-400">
+                      <tr>
+                        <th className="py-2">Investimento</th>
+                        <th className="py-2">Rendimento no mês</th>
+                        <th className="py-2">% do CDI realizado</th>
+                        <th className="py-2">% do CDI contratado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(professionalInsights.benchmark.items ?? []).map((item) => (
+                        <tr key={item.key} className="border-t border-slate-700/70 text-slate-200">
+                          <td className="py-2">{item.label}</td>
+                          <td className="py-2 text-cyan-300">{percentTwoDecimals(item.monthlyYieldPercent)}</td>
+                          <td
+                            className={`py-2 font-semibold ${
+                              item.percentOfCdi === null
+                                ? "text-slate-400"
+                                : item.contractedCdiPercent !== null && item.percentOfCdi < item.contractedCdiPercent
+                                  ? "text-rose-300"
+                                  : "text-emerald-300"
+                            }`}
+                          >
+                            {item.percentOfCdi === null ? "—" : formatPercentage(item.percentOfCdi)}
+                          </td>
+                          <td className="py-2 text-slate-400">
+                            {item.contractedCdiPercent === null ? "—" : formatPercentage(item.contractedCdiPercent)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+              <p className="mt-3 text-[11px] text-slate-500">
+                Contexto de mercado (variação de preço, não comparável com renda fixa): IFIX{" "}
+                {signedPercentage(professionalInsights.benchmark.ifixMomPercent)} · Ibov{" "}
+                {signedPercentage(professionalInsights.benchmark.ibovMomPercent)}
+              </p>
               {professionalInsights.benchmark.warnings.length > 0 ? (
                 <ul className="mt-3 space-y-1 text-xs text-amber-300">
                   {professionalInsights.benchmark.warnings.map((warning, idx) => (
@@ -1141,8 +1186,9 @@ export function InsightsPageClient({
                   dos diagnósticos recentes. Quanto maior, melhor.
                 </p>
                 <p>
-                  <span className="font-semibold text-amber-300">Edge acumulado (R$):</span> saldo
-                  financeiro acumulado das recomendações. Positivo = gerou valor.
+                  <span className="font-semibold text-amber-300">Edge acumulado (R$):</span> renda
+                  mensal extra, somada nos meses do backtest, de um aporte seguindo a recomendação em vez
+                  da média da carteira. Positivo = gerou valor.
                 </p>
                 <p>
                   <span className="font-semibold text-rose-300">Risk score (0-100):</span> nível de
@@ -1433,7 +1479,9 @@ export function InsightsPageClient({
         </article>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-5">
+      <section
+        className={`grid gap-4 lg:grid-cols-2 ${operational.hasActiveFii ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}
+      >
         <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
           <h3 className="text-sm font-semibold text-slate-100">
             Drivers do mês ({monthLabel(operational.currentMonth)})
@@ -1480,7 +1528,7 @@ export function InsightsPageClient({
               </span>
             </p>
             <p>
-              Esperado até hoje:{" "}
+              Esperado (ritmo do mês anterior):{" "}
               <span className="font-semibold text-slate-100">
                 {formatCurrencyBRL(operational.expectedToDate)}
               </span>
@@ -1506,7 +1554,8 @@ export function InsightsPageClient({
               </span>
             </p>
             <p className="text-slate-400">
-              {operational.elapsedBusinessDays}/{operational.totalBusinessDays} dias úteis.
+              {operational.elapsedBusinessDays}/{operational.totalBusinessDays} dias úteis com dados
+              {operational.asOfDate ? ` (até ${shortDate(operational.asOfDate)})` : ""}.
             </p>
           </div>
         </article>
@@ -1518,6 +1567,13 @@ export function InsightsPageClient({
               Meta anual:{" "}
               <span className="font-semibold text-slate-100">
                 {formatCurrencyBRL(operational.targetAnnual)}
+              </span>
+              <span className="text-slate-500"> ({operational.goalLabel})</span>
+            </p>
+            <p>
+              Projeção nesses meses:{" "}
+              <span className="font-semibold text-cyan-300">
+                {formatCurrencyBRL(data.goalProgress.annualProjection)}
               </span>
             </p>
             <p>
@@ -1543,7 +1599,7 @@ export function InsightsPageClient({
               </span>
             </p>
             <p>
-              Média recente (3M):{" "}
+              Média recente (3 meses fechados):{" "}
               <span className="font-semibold text-slate-100">
                 {formatCurrencyBRL(operational.recentAverage)}
               </span>
@@ -1554,7 +1610,7 @@ export function InsightsPageClient({
         <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
           <h3 className="text-sm font-semibold text-slate-100">Stress test rápido</h3>
           <p className="mt-1 text-[11px] text-slate-400">
-            Base CDI: {operational.cdiReference.toFixed(2)}% a.a.
+            Base CDI: {operational.cdiReference.toFixed(2)}% a.a. · sobre a projeção do mês
           </p>
           <ul className="mt-3 space-y-2 text-xs">
             {operational.stressScenarios.map((scenario) => (
@@ -1576,63 +1632,65 @@ export function InsightsPageClient({
           </ul>
         </article>
 
-        <article className="rounded-xl border border-cyan-800 bg-slate-800 p-4">
-          <h3 className="text-sm font-semibold text-slate-100">
-            Reinvestimento FIIs (Tijolo x Papel)
-          </h3>
-          <p className="mt-1 text-[11px] text-slate-400">
-            Tendência de mercado real (BCB) para o próximo ciclo mensal.
-          </p>
-          <div className="mt-3 space-y-2 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-orange-300">Tijolo</span>
-              <span className="font-semibold text-orange-300">
-                {formatPercentage(fiiSuggestion.tijoloPercent)}
-              </span>
-            </div>
-            <div className="h-2 rounded-full bg-slate-700">
-              <div
-                className="h-2 rounded-full bg-orange-400"
-                style={{ width: `${fiiSuggestion.tijoloPercent}%` }}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-emerald-300">Papel</span>
-              <span className="font-semibold text-emerald-300">
-                {formatPercentage(fiiSuggestion.papelPercent)}
-              </span>
-            </div>
-            <div className="h-2 rounded-full bg-slate-700">
-              <div
-                className="h-2 rounded-full bg-emerald-400"
-                style={{ width: `${fiiSuggestion.papelPercent}%` }}
-              />
-            </div>
-            <p className="text-slate-300">
-              Regime:{" "}
-              <span className="font-semibold text-cyan-300">
-                {marketRegimeLabel(fiiSuggestion.marketRegime)}
-              </span>
+        {operational.hasActiveFii ? (
+          <article className="rounded-xl border border-cyan-800 bg-slate-800 p-4">
+            <h3 className="text-sm font-semibold text-slate-100">
+              Reinvestimento FIIs (Tijolo x Papel)
+            </h3>
+            <p className="mt-1 text-[11px] text-slate-400">
+              Tendência de mercado real (BCB) para o próximo ciclo mensal.
             </p>
-            <p className="text-slate-400">
-              Confiança:{" "}
-              <span className="font-semibold text-slate-100">
-                {formatPercentage(fiiSuggestion.confidencePercent)}
-              </span>
-            </p>
-            <p className="text-slate-400">
-              Juro real:{" "}
-              <span className="font-semibold text-slate-100">
-                {formatPercentage(fiiSuggestion.realRatePercent)}
-              </span>
-            </p>
-            <p className="text-slate-500">
-              Selic 3M {formatTrendPp(fiiSuggestion.selicTrend3mPercent)} | IPCA 3M{" "}
-              {formatTrendPp(fiiSuggestion.ipcaTrend3mPercent)}
-            </p>
-            <p className="text-[11px] text-slate-500">{fiiSuggestion.rationale}</p>
-          </div>
-        </article>
+            <div className="mt-3 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-orange-300">Tijolo</span>
+                <span className="font-semibold text-orange-300">
+                  {formatPercentage(fiiSuggestion.tijoloPercent)}
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-slate-700">
+                <div
+                  className="h-2 rounded-full bg-orange-400"
+                  style={{ width: `${fiiSuggestion.tijoloPercent}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-emerald-300">Papel</span>
+                <span className="font-semibold text-emerald-300">
+                  {formatPercentage(fiiSuggestion.papelPercent)}
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-slate-700">
+                <div
+                  className="h-2 rounded-full bg-emerald-400"
+                  style={{ width: `${fiiSuggestion.papelPercent}%` }}
+                />
+              </div>
+              <p className="text-slate-300">
+                Regime:{" "}
+                <span className="font-semibold text-cyan-300">
+                  {marketRegimeLabel(fiiSuggestion.marketRegime)}
+                </span>
+              </p>
+              <p className="text-slate-400">
+                Confiança:{" "}
+                <span className="font-semibold text-slate-100">
+                  {formatPercentage(fiiSuggestion.confidencePercent)}
+                </span>
+              </p>
+              <p className="text-slate-400">
+                Juro real:{" "}
+                <span className="font-semibold text-slate-100">
+                  {formatPercentage(fiiSuggestion.realRatePercent)}
+                </span>
+              </p>
+              <p className="text-slate-500">
+                Selic 3M {formatTrendPp(fiiSuggestion.selicTrend3mPercent)} | IPCA 3M{" "}
+                {formatTrendPp(fiiSuggestion.ipcaTrend3mPercent)}
+              </p>
+              <p className="text-[11px] text-slate-500">{fiiSuggestion.rationale}</p>
+            </div>
+          </article>
+        ) : null}
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">

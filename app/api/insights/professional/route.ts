@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "../../../../lib/supabase";
 import { formatCurrencyBRL, monthLabel } from "../../../../lib/formatters";
-import { ProfessionalInsightsPayload } from "../../../../types";
+import { countBusinessDaysInMonth } from "../../../../lib/business-days";
+import {
+  INSIGHTS_ENGINE_VERSION,
+  PaceInvestmentRow,
+  PaceRevisionRow,
+  buildMonthPace,
+  parseIsoDate,
+} from "../../../../lib/month-pace";
+import { MonthPace, ProfessionalInsightsPayload } from "../../../../types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -14,12 +22,7 @@ const YAHOO_IFIX_MONTHLY_URL =
   "https://query1.finance.yahoo.com/v8/finance/chart/IFIX.SA?range=2y&interval=1mo";
 const EXTERNAL_FETCH_TIMEOUT_MS = 5000;
 
-type InvestmentRow = {
-  id: string;
-  type: "CDB" | "FII";
-  institution: string;
-  amount_invested: number;
-};
+type InvestmentRow = PaceInvestmentRow & { cdi_rate: number | string | null };
 
 type ReturnRow = {
   investment_id: string;
@@ -27,6 +30,14 @@ type ReturnRow = {
   month: number;
   income_value: number;
   created_at?: string | null;
+};
+
+type CashEventRow = {
+  investment_id: string | null;
+  year: number;
+  month: number;
+  type: string;
+  amount: number;
 };
 
 type BcbPoint = { valor?: string };
@@ -50,23 +61,15 @@ type ProfessionalRunRow = {
   headline: string;
 };
 
-type Bucket = {
+// Um ponto por competência; no mês em andamento os valores são a projeção de fechamento.
+type MonthPoint = {
   year: number;
   month: number;
-  cdb_itau: number;
-  cdb_santander: number;
-  fiis: number;
+  businessDays: number;
+  values: Map<string, number>;
   total: number;
-  latestEntryAt: string | null;
+  inProgress: boolean;
 };
-
-function isItauInstitution(institution: string): boolean {
-  const normalized = institution
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-  return normalized.includes("itau");
-}
 
 function toNum(value: unknown): number {
   const n = Number(value ?? 0);
@@ -74,8 +77,13 @@ function toNum(value: unknown): number {
 }
 
 function toMaybeNum(value: unknown): number | null {
-  const n = Number(value ?? 0);
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 function clampMonth(input: number | null, fallback: number): number {
@@ -132,20 +140,6 @@ function pctChange(current: number | null, previous: number | null): number | nu
   return ((current - previous) / Math.abs(previous)) * 100;
 }
 
-function rollingAverage(values: number[], count: number): number {
-  if (values.length === 0) return 0;
-  const slice = values.slice(Math.max(0, values.length - count));
-  return mean(slice);
-}
-
-function annualizeDailyRate(dailyRatePercent: number): number {
-  return (Math.pow(1 + dailyRatePercent / 100, 252) - 1) * 100;
-}
-
-function monthlyEquivalentFromAnnualRate(annualRatePercent: number): number {
-  return (Math.pow(1 + annualRatePercent / 100, 1 / 12) - 1) * 100;
-}
-
 function erfApprox(x: number): number {
   const sign = x >= 0 ? 1 : -1;
   const absX = Math.abs(x);
@@ -181,131 +175,6 @@ function probabilityToReachTarget(
   return Math.max(0, Math.min(100, prob));
 }
 
-function countBusinessDaysInMonth(year: number, month: number): number {
-  const daysInMonth = new Date(year, month, 0).getDate();
-  let count = 0;
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    const weekday = new Date(year, month - 1, day).getDay();
-    if (weekday >= 1 && weekday <= 5) count += 1;
-  }
-  return count;
-}
-
-function countBusinessDaysElapsedInMonth(year: number, month: number, dayLimit: number): number {
-  let count = 0;
-  for (let day = 1; day <= dayLimit; day += 1) {
-    const weekday = new Date(year, month - 1, day).getDay();
-    if (weekday >= 1 && weekday <= 5) count += 1;
-  }
-  return count;
-}
-
-function buildBucketSeries(investments: InvestmentRow[], returns: ReturnRow[]): Bucket[] {
-  const invById = new Map<string, InvestmentRow>(investments.map((inv) => [inv.id, inv]));
-  const byMonth = new Map<string, Bucket>();
-
-  for (const row of returns) {
-    const inv = invById.get(row.investment_id);
-    if (!inv) continue;
-    const key = monthKey(row.year, row.month);
-    let bucket = byMonth.get(key);
-    if (!bucket) {
-      bucket = {
-        year: row.year,
-        month: row.month,
-        cdb_itau: 0,
-        cdb_santander: 0,
-        fiis: 0,
-        total: 0,
-        latestEntryAt: null,
-      };
-      byMonth.set(key, bucket);
-    }
-
-    const income = toNum(row.income_value);
-    if (inv.type === "FII") {
-      bucket.fiis += income;
-    } else if (isItauInstitution(inv.institution)) {
-      bucket.cdb_itau += income;
-    } else {
-      bucket.cdb_santander += income;
-    }
-
-    bucket.total = bucket.cdb_itau + bucket.cdb_santander + bucket.fiis;
-    const createdAt = row.created_at ?? null;
-    if (createdAt && (!bucket.latestEntryAt || createdAt > bucket.latestEntryAt)) {
-      bucket.latestEntryAt = createdAt;
-    }
-  }
-
-  return Array.from(byMonth.values()).sort((a, b) => a.year - b.year || a.month - b.month);
-}
-
-type ForecastKey = "cdb_itau" | "cdb_santander" | "fiis" | "total";
-type AssetKey = "cdb_itau" | "cdb_santander" | "fiis";
-const ASSET_KEYS: AssetKey[] = ["cdb_itau", "cdb_santander", "fiis"];
-const ASSET_LABELS: Record<AssetKey, string> = {
-  cdb_itau: "CDB Itaú",
-  cdb_santander: "CDB Santander",
-  fiis: "Dividendos FIIs",
-};
-
-function buildForecastMetric(
-  series: Bucket[],
-  key: ForecastKey,
-  year: number,
-  month: number,
-  label: string,
-) {
-  const errors: number[] = [];
-  const absErrors: number[] = [];
-  const absPctErrors: number[] = [];
-  let directionHits = 0;
-  let sampleSize = 0;
-
-  for (let i = 3; i < series.length; i += 1) {
-    const point = series[i];
-    if (point.year !== year || point.month > month) continue;
-
-    const history = [series[i - 1][key], series[i - 2][key], series[i - 3][key]];
-    const forecast = mean(history);
-    const actual = point[key];
-    const prevActual = series[i - 1][key];
-    const error = actual - forecast;
-    const denominator = Math.max(Math.abs(actual), 1);
-
-    errors.push(error);
-    absErrors.push(Math.abs(error));
-    absPctErrors.push(Math.abs(error) / denominator);
-    sampleSize += 1;
-
-    const predDelta = forecast - prevActual;
-    const realDelta = actual - prevActual;
-    const predSign = Math.sign(Math.abs(predDelta) < 0.01 ? 0 : predDelta);
-    const realSign = Math.sign(Math.abs(realDelta) < 0.01 ? 0 : realDelta);
-    if (predSign === realSign) directionHits += 1;
-  }
-
-  return {
-    key,
-    label,
-    sampleSize,
-    mapePercent: sampleSize > 0 ? mean(absPctErrors) * 100 : null,
-    maeValue: sampleSize > 0 ? mean(absErrors) : null,
-    biasValue: sampleSize > 0 ? mean(errors) : null,
-    directionAccuracyPercent: sampleSize > 0 ? (directionHits / sampleSize) * 100 : null,
-  };
-}
-
-function previousMonthOf(year: number, month: number): { year: number; month: number } {
-  if (month > 1) return { year, month: month - 1 };
-  return { year: year - 1, month: 12 };
-}
-
-function findBucket(series: Bucket[], year: number, month: number): Bucket | null {
-  return series.find((item) => item.year === year && item.month === month) ?? null;
-}
-
 function safeBand(base: number, sigma: number): { pessimistic: number; base: number; optimistic: number } {
   const delta = Math.abs(sigma);
   return {
@@ -315,35 +184,9 @@ function safeBand(base: number, sigma: number): { pessimistic: number; base: num
   };
 }
 
-function pickLatestTimestamp(series: Bucket[]): string | null {
-  let latest: string | null = null;
-  for (const point of series) {
-    if (point.latestEntryAt && (!latest || point.latestEntryAt > latest)) {
-      latest = point.latestEntryAt;
-    }
-  }
-  return latest;
-}
-
-function monthSequence(start: number, end: number): number[] {
-  const values: number[] = [];
-  for (let month = start; month <= end; month += 1) values.push(month);
-  return values;
-}
-
-function linearSlope(values: number[]): number {
-  if (values.length <= 1) return 0;
-  const n = values.length;
-  const xMean = (n - 1) / 2;
-  const yMean = mean(values);
-  let numerator = 0;
-  let denominator = 0;
-  for (let i = 0; i < n; i += 1) {
-    numerator += (i - xMean) * (values[i] - yMean);
-    denominator += (i - xMean) * (i - xMean);
-  }
-  if (Math.abs(denominator) < 0.000001) return 0;
-  return numerator / denominator;
+function resolvePlannedAporte(): number {
+  const planned = Number(process.env.FINANCEFLOW_DAILY_PLANNED_APORTE ?? 1000);
+  return Number.isFinite(planned) && planned > 0 ? planned : 1000;
 }
 
 async function fetchJson(url: string): Promise<unknown | null> {
@@ -372,6 +215,7 @@ async function fetchDiagnosisHistory(
     .select("run_date,year,month,hit_rate_percent,cumulative_edge_value,risk_score,risk_regime,headline")
     .eq("year", year)
     .eq("month", month)
+    .eq("report->>engineVersion", INSIGHTS_ENGINE_VERSION)
     .order("run_date", { ascending: false })
     .limit(21);
 
@@ -453,7 +297,7 @@ function buildDiagnosticAlerts(
     const deterioration = d2.cumulativeEdgeValue - d0.cumulativeEdgeValue;
     alerts.push({
       id: "edge-down-3d",
-      severity: Math.abs(d0.cumulativeEdgeValue) >= 500 ? "high" : "medium",
+      severity: Math.abs(d0.cumulativeEdgeValue) >= 5 ? "high" : "medium",
       title: "Edge acumulado deteriorando",
       message: `Edge caiu ${formatCurrencyBRL(deterioration)} na janela diária e está negativo.`,
       trigger: `${formatCurrencyBRL(d2.cumulativeEdgeValue)} → ${formatCurrencyBRL(
@@ -523,30 +367,133 @@ function extractYahooMonthlyCloses(
     })
     .sort((a, b) => a.year - b.year || a.month - b.month);
 }
+function linearSlope(values: number[]): number {
+  if (values.length <= 1) return 0;
+  const n = values.length;
+  const xMean = (n - 1) / 2;
+  const yMean = mean(values);
+  let numerator = 0;
+  let denominator = 0;
+  for (let i = 0; i < n; i += 1) {
+    numerator += (i - xMean) * (values[i] - yMean);
+    denominator += (i - xMean) * (i - xMean);
+  }
+  if (Math.abs(denominator) < 0.000001) return 0;
+  return numerator / denominator;
+}
 
-function buildRiskRadar(series: Bucket[]): ProfessionalInsightsPayload["riskRadar"] {
+function buildMonthSeries(returns: ReturnRow[], pace: MonthPace): MonthPoint[] {
+  const byMonth = new Map<string, MonthPoint>();
+  const ensurePoint = (year: number, month: number): MonthPoint => {
+    const key = monthKey(year, month);
+    let point = byMonth.get(key);
+    if (!point) {
+      point = {
+        year,
+        month,
+        businessDays: Math.max(1, countBusinessDaysInMonth(year, month)),
+        values: new Map<string, number>(),
+        total: 0,
+        inProgress: false,
+      };
+      byMonth.set(key, point);
+    }
+    return point;
+  };
+
+  for (const row of returns) {
+    if (row.year > pace.year || (row.year === pace.year && row.month > pace.month)) continue;
+    const point = ensurePoint(row.year, row.month);
+    point.values.set(row.investment_id, (point.values.get(row.investment_id) ?? 0) + toNum(row.income_value));
+  }
+
+  if (pace.isCurrentMonth) {
+    const current = ensurePoint(pace.year, pace.month);
+    current.inProgress = true;
+    for (const item of pace.investments) {
+      current.values.set(item.investmentId, item.projected);
+    }
+  }
+
+  for (const point of Array.from(byMonth.values())) {
+    point.total = Array.from(point.values.values()).reduce((acc, value) => acc + value, 0);
+  }
+
+  return Array.from(byMonth.values()).sort((a, b) => a.year - b.year || a.month - b.month);
+}
+
+function valueOf(point: MonthPoint, key: string): number {
+  return key === "total" ? point.total : point.values.get(key) ?? 0;
+}
+
+// Erro da previsão ingênua (média por dia útil dos 3 meses anteriores), só com meses fechados.
+function buildForecastMetric(series: MonthPoint[], key: string, year: number, label: string) {
+  const closed = series.filter((point) => !point.inProgress);
+  const errors: number[] = [];
+  const absErrors: number[] = [];
+  const absPctErrors: number[] = [];
+  let directionHits = 0;
+  let sampleSize = 0;
+
+  for (let i = 3; i < closed.length; i += 1) {
+    const point = closed[i];
+    if (point.year !== year) continue;
+    const history = [closed[i - 1], closed[i - 2], closed[i - 3]];
+    const actual = valueOf(point, key);
+    // Sem posição no período avaliado (ativo novo ou encerrado) não entra na amostra.
+    if (actual <= 0 || history.some((item) => valueOf(item, key) <= 0)) continue;
+
+    const forecast = mean(history.map((item) => valueOf(item, key) / item.businessDays)) * point.businessDays;
+    const prevActual = valueOf(closed[i - 1], key);
+    const error = actual - forecast;
+
+    errors.push(error);
+    absErrors.push(Math.abs(error));
+    absPctErrors.push(Math.abs(error) / actual);
+    sampleSize += 1;
+
+    const predDelta = forecast - prevActual;
+    const realDelta = actual - prevActual;
+    const predSign = Math.sign(Math.abs(predDelta) < 0.01 ? 0 : predDelta);
+    const realSign = Math.sign(Math.abs(realDelta) < 0.01 ? 0 : realDelta);
+    if (predSign === realSign) directionHits += 1;
+  }
+
+  return {
+    key,
+    label,
+    sampleSize,
+    mapePercent: sampleSize > 0 ? mean(absPctErrors) * 100 : null,
+    maeValue: sampleSize > 0 ? mean(absErrors) : null,
+    biasValue: sampleSize > 0 ? mean(errors) : null,
+    directionAccuracyPercent: sampleSize > 0 ? (directionHits / sampleSize) * 100 : null,
+  };
+}
+
+// Renda por dia útil elimina o efeito de meses com mais ou menos dias úteis.
+function buildRiskRadar(series: MonthPoint[]): ProfessionalInsightsPayload["riskRadar"] {
+  const window = series.slice(-12);
+  const perDay = window.map((point) => point.total / point.businessDays);
   const momReturns: number[] = [];
-  for (let i = 1; i < series.length; i += 1) {
-    const pct = pctChange(series[i].total, series[i - 1].total);
+  for (let i = 1; i < perDay.length; i += 1) {
+    const pct = pctChange(perDay[i], perDay[i - 1]);
     if (pct !== null) momReturns.push(pct);
   }
   const vol3 = stdDev(momReturns.slice(-3));
   const vol6 = stdDev(momReturns.slice(-6));
 
-  const totalSeries = series.map((item) => item.total);
   let peak = 0;
   let maxDrawdown = 0;
-  for (const value of totalSeries) {
+  for (const value of perDay) {
     peak = Math.max(peak, value);
     if (peak > 0) {
-      const dd = ((value - peak) / peak) * 100;
-      maxDrawdown = Math.min(maxDrawdown, dd);
+      maxDrawdown = Math.min(maxDrawdown, ((value - peak) / peak) * 100);
     }
   }
 
-  const trendWindow = totalSeries.slice(-6);
+  const trendWindow = perDay.slice(-6);
   const slope = linearSlope(trendWindow);
-  const meanBase = Math.max(1, mean(trendWindow));
+  const meanBase = Math.max(0.000001, mean(trendWindow));
   const trendPerMonthPercent = (slope / meanBase) * 100;
 
   const drawdownScore = Math.min(35, Math.abs(maxDrawdown) * 1.8);
@@ -566,184 +513,133 @@ function buildRiskRadar(series: Bucket[]): ProfessionalInsightsPayload["riskRada
   };
 }
 
+// Capital aproximado em cada competência: saldo aplicado atual menos o fluxo líquido posterior.
+function buildCapitalResolver(investments: InvestmentRow[], cashEvents: CashEventRow[]) {
+  const investedNow = new Map(investments.map((inv) => [inv.id, toNum(inv.amount_invested)]));
+  return (investmentId: string, year: number, month: number): number => {
+    let capital = investedNow.get(investmentId) ?? 0;
+    for (const event of cashEvents) {
+      if (event.investment_id !== investmentId) continue;
+      const isAfter = event.year > year || (event.year === year && event.month > month);
+      if (!isAfter) continue;
+      const type = String(event.type ?? "").toUpperCase();
+      if (type === "APORTE") capital -= toNum(event.amount);
+      if (type === "RESGATE") capital += toNum(event.amount);
+    }
+    return capital;
+  };
+}
+
 function buildRecommendation(
-  series: Bucket[],
-  investedByTheme: { cdb_itau: number; cdb_santander: number; fiis: number },
+  series: MonthPoint[],
+  pace: MonthPace,
+  labels: Map<string, string>,
+  capitalAt: (investmentId: string, year: number, month: number) => number,
+  cdiMonthPercent: number | null,
 ): ProfessionalInsightsPayload["recommendation"] {
-  function buildBacktestDiagnosis(
-    evaluations: ProfessionalInsightsPayload["recommendation"]["backtest"]["evaluations"],
-    hitRatePercent: number | null,
-    cumulativeEdgeValue: number,
-    averageEdgeValue: number | null,
-  ): ProfessionalInsightsPayload["recommendation"]["backtest"]["diagnosis"] {
-    if (evaluations.length === 0) {
-      return {
-        headline: "Amostra insuficiente para diagnóstico robusto.",
-        strengths: ["Necessário acumular histórico para validar consistência do motor."],
-        weaknesses: ["Sem pontos suficientes para identificar padrão de erro."],
-        nextAdjustment: "Manter coleta por mais competências antes de calibrar pesos.",
-      };
-    }
-
-    const recent = evaluations.slice(0, Math.min(3, evaluations.length));
-    const recentHits = recent.filter((item) => item.hit).length;
-    const positiveEdges = evaluations.filter((item) => item.edgeValue >= 0).length;
-    const edgeHitRate = (positiveEdges / evaluations.length) * 100;
-
-    const missPairs = new Map<string, number>();
-    for (const ev of evaluations) {
-      if (ev.hit) continue;
-      const key = `${ev.predictedLabel} -> ${ev.actualBestLabel}`;
-      missPairs.set(key, (missPairs.get(key) ?? 0) + 1);
-    }
-    const mainMiss = Array.from(missPairs.entries()).sort((a, b) => b[1] - a[1])[0] ?? null;
-
-    const headline =
-      hitRatePercent === null
-        ? "Sem taxa de acerto calculável."
-        : hitRatePercent >= 60
-          ? "Motor com aderência boa ao regime atual."
-          : hitRatePercent >= 45
-            ? "Motor com aderência moderada; exige calibração leve."
-            : "Motor com aderência baixa; precisa de ajuste tático.";
-
-    const strengths: string[] = [];
-    strengths.push(
-      `Taxa de acerto em ${hitRatePercent === null ? "—" : `${hitRatePercent.toFixed(1)}%`} e edge positivo em ${edgeHitRate.toFixed(1)}% dos casos.`,
-    );
-    if (cumulativeEdgeValue >= 0) {
-      strengths.push(
-        `Edge acumulado favorável (${cumulativeEdgeValue >= 0 ? "+" : ""}${formatCurrencyBRL(
-          Math.abs(cumulativeEdgeValue),
-        )}).`,
-      );
-    } else {
-      strengths.push(`Sinal ainda preserva alguns acertos direcionais no período recente.`);
-    }
-    if (recentHits >= 2) {
-      strengths.push(`Recência positiva: ${recentHits}/${recent.length} acertos nas últimas competências.`);
-    }
-
-    const weaknesses: string[] = [];
-    if (mainMiss) {
-      weaknesses.push(`Falha recorrente: ${mainMiss[0]} (${mainMiss[1]} ocorrência(s)).`);
-    } else {
-      weaknesses.push("Não há padrão dominante de erro entre ativos.");
-    }
-    if (averageEdgeValue !== null && averageEdgeValue < 0) {
-      weaknesses.push(
-        `Edge médio negativo (${formatCurrencyBRL(averageEdgeValue)}), indicando seleção abaixo da média da cesta.`,
-      );
-    }
-    if (recentHits <= 1 && recent.length >= 2) {
-      weaknesses.push("Desempenho recente enfraqueceu, sugerindo mudança de regime de curto prazo.");
-    }
-
-    let nextAdjustment =
-      "Ajustar peso de momentum para janela mais curta quando houver queda de acerto em 2 meses seguidos.";
-    if (mainMiss && mainMiss[0].includes("FIIs")) {
-      nextAdjustment =
-        "Adicionar penalização macro para FIIs quando IFIX estiver em tendência negativa mensal.";
-    } else if (mainMiss && mainMiss[0].includes("CDB Santander")) {
-      nextAdjustment =
-        "Revisar peso de estabilidade para evitar superconcentração no CDB Santander em meses de reversão.";
-    }
-
-    return {
-      headline,
-      strengths: strengths.slice(0, 3),
-      weaknesses: weaknesses.slice(0, 3),
-      nextAdjustment,
-    };
-  }
-
-  function computeRecommendationItemsAtIndex(targetIndex: number) {
-    const cutoff = Math.min(series.length - 1, Math.max(0, targetIndex));
-    return ASSET_KEYS.map((key) => {
-      const incomeSeries = series.slice(0, cutoff + 1).map((point) => point[key]);
-      const current = incomeSeries[incomeSeries.length - 1] ?? 0;
-      const previous = incomeSeries[incomeSeries.length - 2] ?? null;
-      const momentum = pctChange(current, previous);
-      const invested = investedByTheme[key];
-      const monthlyYield = invested > 0 ? (current / invested) * 100 : null;
-
-      const momSeries: number[] = [];
-      for (let i = 1; i < incomeSeries.length; i += 1) {
-        const pct = pctChange(incomeSeries[i], incomeSeries[i - 1]);
-        if (pct !== null) momSeries.push(pct);
+  const plannedAporte = resolvePlannedAporte();
+  // O mês de estreia de cada investimento é parcial (aplicação no meio do mês) e distorce o rendimento.
+  const firstIncomeKey = new Map<string, string>();
+  for (const point of series) {
+    for (const [investmentId, value] of Array.from(point.values.entries())) {
+      if (value > 0 && !firstIncomeKey.has(investmentId)) {
+        firstIncomeKey.set(investmentId, monthKey(point.year, point.month));
       }
-      const vol = stdDev(momSeries.slice(-6));
-      const stabilityPercent = Math.max(0, Math.min(100, 100 - vol * 8));
+    }
+  }
+  const yieldAt = (investmentId: string, point: MonthPoint): number | null => {
+    if (firstIncomeKey.get(investmentId) === monthKey(point.year, point.month)) return null;
+    const capital = capitalAt(investmentId, point.year, point.month);
+    const value = point.values.get(investmentId) ?? 0;
+    if (capital <= 0 || value <= 0) return null;
+    return (value / capital) * 100;
+  };
 
-      const momentumScore = momentum === null ? 40 : Math.max(0, Math.min(100, 50 + momentum * 2));
+  const current = series[series.length - 1] ?? null;
+  const previous = series.length > 1 ? series[series.length - 2] : null;
+  const items: ProfessionalInsightsPayload["recommendation"]["items"] = pace.investments
+    .filter((item) => item.invested > 0)
+    .map((item) => {
+      const monthlyYield = current ? yieldAt(item.investmentId, current) : null;
+      const previousYield = previous ? yieldAt(item.investmentId, previous) : null;
+      const momentum = pctChange(monthlyYield, previousYield);
+      const yieldHistory = series
+        .slice(-6)
+        .map((point) => yieldAt(item.investmentId, point))
+        .filter((value): value is number => value !== null);
+      const yieldMean = mean(yieldHistory);
+      const cv = yieldMean > 0 ? stdDev(yieldHistory) / yieldMean : 0;
+      const stabilityPercent = clamp(100 - cv * 400, 0, 100);
+      const percentOfCdi =
+        monthlyYield !== null && cdiMonthPercent !== null && cdiMonthPercent > 0
+          ? (monthlyYield / cdiMonthPercent) * 100
+          : null;
+
       const yieldScore =
-        monthlyYield === null ? 20 : Math.max(0, Math.min(100, (monthlyYield / 1.2) * 100));
-      const totalScore = momentumScore * 0.4 + yieldScore * 0.35 + stabilityPercent * 0.25;
+        percentOfCdi !== null
+          ? clamp(((percentOfCdi - 80) / 50) * 100, 0, 100)
+          : monthlyYield !== null
+            ? clamp((monthlyYield / 1.2) * 100, 0, 100)
+            : 0;
+      const momentumScore = momentum === null ? 50 : clamp(50 + momentum * 5, 0, 100);
+      const score = yieldScore * 0.6 + stabilityPercent * 0.25 + momentumScore * 0.15;
 
-      const rationale = `Momentum ${
-        momentum === null ? "indefinido" : `${momentum >= 0 ? "+" : ""}${momentum.toFixed(1)}%`
-      }, yield mensal ${monthlyYield === null ? "n/d" : `${monthlyYield.toFixed(2)}%`} e estabilidade ${stabilityPercent.toFixed(0)}%.`;
+      const rationale = `Rendimento ${
+        monthlyYield === null ? "n/d" : `${monthlyYield.toFixed(2)}%`
+      } no mês${percentOfCdi === null ? "" : ` (${percentOfCdi.toFixed(0)}% do CDI)`}, variação ${
+        momentum === null ? "indefinida" : `${momentum >= 0 ? "+" : ""}${momentum.toFixed(1)}%`
+      } vs mês anterior e estabilidade ${stabilityPercent.toFixed(0)}%.`;
 
       return {
-        key,
-        label: ASSET_LABELS[key],
-        score: totalScore,
+        key: item.investmentId,
+        label: item.label,
+        score,
         momentumPercent: momentum,
         monthlyYieldPercent: monthlyYield,
         stabilityPercent,
         rationale,
       };
-    }).sort((a, b) => b.score - a.score);
-  }
+    })
+    .sort((a, b) => b.score - a.score);
 
-  const items = computeRecommendationItemsAtIndex(series.length - 1);
-  const best = items[0] ?? {
-    key: "cdb_itau" as const,
-    label: "CDB Itaú",
-    score: 0,
-    momentumPercent: null,
-    monthlyYieldPercent: null,
-    stabilityPercent: 0,
-    rationale: "",
-  };
+  const best = items[0] ?? null;
 
+  // Backtest: o sinal do mês M escolhe o maior rendimento sobre o capital; o resultado é medido em M+1.
+  const closed = series.filter((point) => !point.inProgress).slice(-13);
   const evaluations: ProfessionalInsightsPayload["recommendation"]["backtest"]["evaluations"] = [];
   let hitCount = 0;
   let cumulativeEdgeValue = 0;
+  for (let i = 0; i < closed.length - 1; i += 1) {
+    const signalMonth = closed[i];
+    const resultMonth = closed[i + 1];
+    const candidates = Array.from(labels.keys())
+      .map((key) => ({ key, signal: yieldAt(key, signalMonth), result: yieldAt(key, resultMonth) }))
+      .filter(
+        (item): item is { key: string; signal: number; result: number } =>
+          item.signal !== null && item.result !== null,
+      );
+    if (candidates.length < 2) continue;
 
-  for (let i = 2; i < series.length - 1; i += 1) {
-    const predictionMonth = series[i];
-    const nextMonth = series[i + 1];
-    const predictedItems = computeRecommendationItemsAtIndex(i);
-    const predictedBest = predictedItems[0];
-    if (!predictedBest) continue;
-
-    const actualSorted = ASSET_KEYS.map((key) => ({
-      key,
-      label: ASSET_LABELS[key],
-      value: nextMonth[key],
-    })).sort((a, b) => b.value - a.value);
-    const actualBest = actualSorted[0];
-    if (!actualBest) continue;
-
-    const chosenValue = nextMonth[predictedBest.key];
-    const averageValue = mean(actualSorted.map((item) => item.value));
-    const edgeValue = chosenValue - averageValue;
-    const hit = predictedBest.key === actualBest.key;
-
+    const predicted = candidates.slice().sort((a, b) => b.signal - a.signal)[0];
+    const actualBest = candidates.slice().sort((a, b) => b.result - a.result)[0];
+    const averageResult = mean(candidates.map((item) => item.result));
+    const chosenValue = (predicted.result / 100) * plannedAporte;
+    const bestValue = (actualBest.result / 100) * plannedAporte;
+    const edgeValue = ((predicted.result - averageResult) / 100) * plannedAporte;
+    const hit = predicted.key === actualBest.key;
     if (hit) hitCount += 1;
     cumulativeEdgeValue += edgeValue;
 
     evaluations.push({
-      fromMonthLabel: `${monthLabel(predictionMonth.month)}/${predictionMonth.year}`,
-      toMonthLabel: `${monthLabel(nextMonth.month)}/${nextMonth.year}`,
-      predictedKey: predictedBest.key,
-      predictedLabel: predictedBest.label,
+      fromMonthLabel: `${monthLabel(signalMonth.month)}/${signalMonth.year}`,
+      toMonthLabel: `${monthLabel(resultMonth.month)}/${resultMonth.year}`,
+      predictedKey: predicted.key,
+      predictedLabel: labels.get(predicted.key) ?? predicted.key,
       actualBestKey: actualBest.key,
-      actualBestLabel: actualBest.label,
+      actualBestLabel: labels.get(actualBest.key) ?? actualBest.key,
       hit,
       chosenValue,
-      bestValue: actualBest.value,
+      bestValue,
       edgeValue,
     });
   }
@@ -751,26 +647,103 @@ function buildRecommendation(
   const sampleSize = evaluations.length;
   const hitRatePercent = sampleSize > 0 ? (hitCount / sampleSize) * 100 : null;
   const averageEdgeValue = sampleSize > 0 ? cumulativeEdgeValue / sampleSize : null;
-  const diagnosis = buildBacktestDiagnosis(
-    evaluations.slice().reverse(),
-    hitRatePercent,
-    cumulativeEdgeValue,
-    averageEdgeValue,
-  );
 
   return {
-    bestAssetKey: best.key,
-    bestAssetLabel: best.label,
-    action: `Próximo aporte tático: priorizar ${best.label} (score ${best.score.toFixed(1)}).`,
+    bestAssetKey: best?.key ?? "",
+    bestAssetLabel: best?.label ?? "—",
+    action: best
+      ? `Próximo aporte tático: priorizar ${best.label} (score ${best.score.toFixed(1)}).`
+      : "Sem investimentos ativos para recomendar aporte.",
     items,
     backtest: {
       sampleSize,
       hitRatePercent,
       cumulativeEdgeValue,
       averageEdgeValue,
-      evaluations: evaluations.slice(-12).reverse(),
-      diagnosis,
+      evaluations: evaluations.slice().reverse().slice(0, 12),
+      diagnosis: buildBacktestDiagnosis(
+        evaluations.slice().reverse(),
+        hitRatePercent,
+        cumulativeEdgeValue,
+        averageEdgeValue,
+        plannedAporte,
+      ),
     },
+  };
+}
+
+function buildBacktestDiagnosis(
+  evaluations: ProfessionalInsightsPayload["recommendation"]["backtest"]["evaluations"],
+  hitRatePercent: number | null,
+  cumulativeEdgeValue: number,
+  averageEdgeValue: number | null,
+  plannedAporte: number,
+): ProfessionalInsightsPayload["recommendation"]["backtest"]["diagnosis"] {
+  if (evaluations.length === 0) {
+    return {
+      headline: "Amostra insuficiente para diagnóstico robusto.",
+      strengths: ["Necessário acumular histórico com ao menos dois investimentos ativos."],
+      weaknesses: ["Sem pontos suficientes para identificar padrão de erro."],
+      nextAdjustment: "Manter lançamentos e aportes registrados para calibrar o motor.",
+    };
+  }
+
+  const recent = evaluations.slice(0, Math.min(3, evaluations.length));
+  const recentHits = recent.filter((item) => item.hit).length;
+  const positiveEdges = evaluations.filter((item) => item.edgeValue >= 0).length;
+  const edgeHitRate = (positiveEdges / evaluations.length) * 100;
+
+  const missPairs = new Map<string, number>();
+  for (const ev of evaluations) {
+    if (ev.hit) continue;
+    const key = `${ev.predictedLabel} -> ${ev.actualBestLabel}`;
+    missPairs.set(key, (missPairs.get(key) ?? 0) + 1);
+  }
+  const mainMiss = Array.from(missPairs.entries()).sort((a, b) => b[1] - a[1])[0] ?? null;
+
+  const headline =
+    hitRatePercent === null
+      ? "Sem taxa de acerto calculável."
+      : hitRatePercent >= 60
+        ? "Motor com aderência boa ao regime atual."
+        : hitRatePercent >= 45
+          ? "Motor com aderência moderada; exige calibração leve."
+          : "Motor com aderência baixa; precisa de ajuste tático.";
+
+  const strengths: string[] = [
+    `Taxa de acerto em ${hitRatePercent === null ? "—" : `${hitRatePercent.toFixed(1)}%`} e ganho acima da média em ${edgeHitRate.toFixed(1)}% dos meses.`,
+  ];
+  if (cumulativeEdgeValue >= 0) {
+    strengths.push(
+      `Seguir o sinal rendeu ${formatCurrencyBRL(cumulativeEdgeValue)} a mais que a média, somando os meses, por aporte de ${formatCurrencyBRL(plannedAporte)}.`,
+    );
+  }
+  if (recentHits >= 2) {
+    strengths.push(`Recência positiva: ${recentHits}/${recent.length} acertos nas últimas competências.`);
+  }
+
+  const weaknesses: string[] = [];
+  if (mainMiss) {
+    weaknesses.push(`Falha recorrente: ${mainMiss[0]} (${mainMiss[1]} ocorrência(s)).`);
+  } else {
+    weaknesses.push("Não há padrão dominante de erro entre investimentos.");
+  }
+  if (averageEdgeValue !== null && averageEdgeValue < 0) {
+    weaknesses.push(
+      `Ganho médio abaixo da média da carteira (${formatCurrencyBRL(averageEdgeValue)} por mês por aporte).`,
+    );
+  }
+  if (recentHits <= 1 && recent.length >= 2) {
+    weaknesses.push("Desempenho recente enfraqueceu, sugerindo mudança de taxas entre os investimentos.");
+  }
+
+  return {
+    headline,
+    strengths: strengths.slice(0, 3),
+    weaknesses: weaknesses.slice(0, 3),
+    nextAdjustment: mainMiss
+      ? `Conferir taxa contratada (% do CDI) e aportes registrados de ${mainMiss[0].split(" -> ")[1]}, que superou o sinal.`
+      : "Manter o sinal por rendimento sobre o capital e revisar a cada fechamento.",
   };
 }
 
@@ -786,10 +759,12 @@ export async function GET(req: NextRequest) {
     searchParams.get("month") ? Number(searchParams.get("month")) : null,
     now.getMonth() + 1,
   );
+  const runDate = getSaoPauloDateISO();
 
   const [
     investmentsRes,
     returnsRes,
+    revisionsRes,
     monthlyGoalsRes,
     annualGoalsRes,
     cashEventsRes,
@@ -797,7 +772,7 @@ export async function GET(req: NextRequest) {
     ibovPayload,
     ifixPayload,
   ] = await Promise.all([
-    supabase.from("investments").select("id,type,institution,amount_invested"),
+    supabase.from("investments").select("id,type,institution,name,amount_invested,cdi_rate"),
     supabase
       .from("monthly_returns")
       .select("investment_id,year,month,income_value,created_at")
@@ -805,6 +780,11 @@ export async function GET(req: NextRequest) {
       .lte("year", year)
       .order("year", { ascending: true })
       .order("month", { ascending: true }),
+    supabase
+      .from("monthly_return_revisions")
+      .select("investment_id,new_income_value,created_at")
+      .eq("year", year)
+      .eq("month", month),
     supabase
       .from("investment_goals_monthly")
       .select("investment_id,monthly_target")
@@ -816,9 +796,9 @@ export async function GET(req: NextRequest) {
       .eq("year", year),
     supabase
       .from("investment_cash_events")
-      .select("month,type,amount")
-      .eq("year", year)
-      .lte("month", month),
+      .select("investment_id,year,month,type,amount")
+      .gte("year", year - 2)
+      .lte("year", year),
     fetchJson(BCB_CDI_DAILY_URL),
     fetchJson(YAHOO_IBOV_MONTHLY_URL),
     fetchJson(YAHOO_IFIX_MONTHLY_URL),
@@ -830,6 +810,13 @@ export async function GET(req: NextRequest) {
         error: investmentsRes.error?.message ?? returnsRes.error?.message ?? "Erro ao montar insights profissionais.",
       },
       { status: 500 },
+    );
+  }
+  if (revisionsRes.error) {
+    warnings.push(
+      isMissingTableError(revisionsRes.error.message, "monthly_return_revisions")
+        ? "Tabela monthly_return_revisions não existe. Ritmo diário estimado pela média do mês."
+        : `Falha ao ler revisões: ${revisionsRes.error.message}`,
     );
   }
   if (monthlyGoalsRes.error) {
@@ -856,100 +843,71 @@ export async function GET(req: NextRequest) {
 
   const investments = (investmentsRes.data ?? []) as InvestmentRow[];
   const returns = (returnsRes.data ?? []) as ReturnRow[];
-  const series = buildBucketSeries(investments, returns);
-  const currentYearSeries = series.filter((item) => item.year === year && item.month <= month);
+  const revisions = (revisionsRes.data ?? []) as PaceRevisionRow[];
+  const cashEvents = (cashEventsRes.data ?? []) as CashEventRow[];
+  const invById = new Map<string, InvestmentRow>(investments.map((inv) => [inv.id, inv]));
+  const labels = new Map<string, string>(
+    investments.map((inv) => [inv.id, inv.name || `${inv.type} ${inv.institution}`]),
+  );
 
-  const currentBucket =
-    findBucket(series, year, month) ??
-    currentYearSeries[currentYearSeries.length - 1] ?? {
-      year,
-      month,
-      cdb_itau: 0,
-      cdb_santander: 0,
-      fiis: 0,
-      total: 0,
-      latestEntryAt: null,
-    };
-  const prevRef = previousMonthOf(currentBucket.year, currentBucket.month);
-  const previousBucket = findBucket(series, prevRef.year, prevRef.month);
+  const pace = buildMonthPace({
+    year,
+    month,
+    today: parseIsoDate(runDate),
+    investments,
+    returns,
+    revisions,
+  });
+  const series = buildMonthSeries(returns, pace);
+  const currentPoint = series.find((point) => point.year === year && point.month === month) ?? null;
+  const previousPoint = series.filter((point) => point.year < year || (point.year === year && point.month < month)).pop() ?? null;
 
+  // Qualidade da previsão: uma linha por investimento ativo, mais o total.
   const forecastMetrics = [
-    buildForecastMetric(series, "cdb_itau", year, month, "CDB Itaú"),
-    buildForecastMetric(series, "cdb_santander", year, month, "CDB Santander"),
-    buildForecastMetric(series, "fiis", year, month, "Dividendos FIIs"),
-    buildForecastMetric(series, "total", year, month, "Total"),
+    ...pace.investments.map((item) => buildForecastMetric(series, item.investmentId, year, item.label)),
+    buildForecastMetric(series, "total", year, "Total"),
   ];
 
-  const invById = new Map<string, InvestmentRow>(investments.map((inv) => [inv.id, inv]));
+  // Meta mensal de rendimento dos CDBs ativos.
+  const activeCdbs = pace.investments.filter((item) => item.type === "CDB");
+  const activeCdbIds = new Set(activeCdbs.map((item) => item.investmentId));
   const monthlyTarget = (monthlyGoalsRes.data ?? []).reduce((acc, row) => {
     const cast = row as { investment_id: string; monthly_target: number };
-    const investment = invById.get(cast.investment_id);
-    if (!investment || investment.type !== "CDB") return acc;
-    return acc + toNum(cast.monthly_target);
+    return activeCdbIds.has(cast.investment_id) ? acc + toNum(cast.monthly_target) : acc;
   }, 0);
-  const annualTarget = (annualGoalsRes.data ?? []).reduce((acc, row) => {
-    const cast = row as { investment_id: string; annual_target: number };
-    const investment = invById.get(cast.investment_id);
-    if (!investment || investment.type !== "CDB") return acc;
-    return acc + toNum(cast.annual_target);
-  }, 0);
-
-  const currentCdbIncome = currentBucket.cdb_itau + currentBucket.cdb_santander;
-  const cdbHistory = series.map((item) => item.cdb_itau + item.cdb_santander).slice(-12);
-  const cdbSigmaBase = stdDev(cdbHistory);
-  const isCurrentContext = year === now.getFullYear() && month === now.getMonth() + 1;
-  const elapsedBusinessDays = isCurrentContext
-    ? Math.max(1, countBusinessDaysElapsedInMonth(year, month, now.getDate()))
-    : null;
-  const totalBusinessDays = isCurrentContext ? Math.max(1, countBusinessDaysInMonth(year, month)) : null;
-  const monthlyProjection =
-    isCurrentContext && elapsedBusinessDays && totalBusinessDays
-      ? currentCdbIncome * (totalBusinessDays / elapsedBusinessDays)
-      : currentCdbIncome;
-  const monthlyRemainingRatio =
-    isCurrentContext && elapsedBusinessDays && totalBusinessDays
-      ? Math.max(0, (totalBusinessDays - elapsedBusinessDays) / totalBusinessDays)
-      : 0;
-  const monthlySigma = Math.max(1, cdbSigmaBase * Math.max(0.25, Math.sqrt(monthlyRemainingRatio)));
+  const monthlyRealized = activeCdbs.reduce((acc, item) => acc + item.realized, 0);
+  const monthlyProjection = activeCdbs.reduce((acc, item) => acc + item.projected, 0);
+  const remainingAccrual = activeCdbs.reduce(
+    (acc, item) => acc + item.dailyRate * item.remainingBusinessDays,
+    0,
+  );
+  // Incerteza: ±10% no ganho dos dias restantes + 0,5% de erro de lançamento.
+  const monthlySigma = pace.isCurrentMonth ? Math.max(1, remainingAccrual * 0.1 + monthlyRealized * 0.005) : 0;
   const monthlyProb = probabilityToReachTarget(
     monthlyTarget > 0 ? monthlyTarget : null,
     monthlyProjection,
     monthlySigma,
   );
 
+  // Meta anual de patrimônio dos CDBs.
+  const annualTarget = (annualGoalsRes.data ?? []).reduce((acc, row) => {
+    const cast = row as { investment_id: string; annual_target: number };
+    const investment = invById.get(cast.investment_id);
+    if (!investment || investment.type !== "CDB") return acc;
+    return acc + toNum(cast.annual_target);
+  }, 0);
   const cdbInvestedCapital = investments.reduce((acc, inv) => {
     if (inv.type !== "CDB") return acc;
     return acc + toNum(inv.amount_invested);
   }, 0);
-  const investedByTheme = investments.reduce(
-    (acc, inv) => {
-      const amount = toNum(inv.amount_invested);
-      if (inv.type === "FII") {
-        acc.fiis += amount;
-      } else if (isItauInstitution(inv.institution)) {
-        acc.cdb_itau += amount;
-      } else {
-        acc.cdb_santander += amount;
-      }
-      return acc;
-    },
-    { cdb_itau: 0, cdb_santander: 0, fiis: 0 },
-  );
-
   const netCashByMonth = new Map<number, number>();
-  for (const row of (cashEventsRes.data ?? []) as Array<{ month: number; type: string; amount: number }>) {
-    const current = netCashByMonth.get(toNum(row.month)) ?? 0;
+  for (const row of cashEvents) {
+    if (row.year !== year || row.month > month) continue;
     const type = String(row.type ?? "").toUpperCase();
-    const delta =
-      type === "APORTE"
-        ? toNum(row.amount)
-        : type === "RESGATE"
-          ? -toNum(row.amount)
-          : 0;
-    netCashByMonth.set(toNum(row.month), current + delta);
+    const delta = type === "APORTE" ? toNum(row.amount) : type === "RESGATE" ? -toNum(row.amount) : 0;
+    netCashByMonth.set(row.month, (netCashByMonth.get(row.month) ?? 0) + delta);
   }
-
-  const monthlyNetFlowSeries = monthSequence(1, month).map((m) => netCashByMonth.get(m) ?? 0);
+  const monthlyNetFlowSeries = Array.from({ length: month }, (_, i) => netCashByMonth.get(i + 1) ?? 0);
   const avgNetFlow = mean(monthlyNetFlowSeries);
   const sigmaNetFlow = stdDev(monthlyNetFlowSeries);
   const monthsRemaining = Math.max(0, 12 - month);
@@ -961,47 +919,35 @@ export async function GET(req: NextRequest) {
     annualSigma,
   );
 
-  const totalCurrent = currentBucket.total;
-  const totalPrevious = previousBucket?.total ?? 0;
+  // Atribuição M/M: projeção do mês (se em andamento) versus mês anterior fechado.
+  const totalCurrent = currentPoint?.total ?? 0;
+  const totalPrevious = previousPoint?.total ?? 0;
   const totalDelta = totalCurrent - totalPrevious;
-  const attributionItems: ProfessionalInsightsPayload["attribution"]["items"] = [
-    {
-      key: "cdb_itau",
-      label: "CDB Itaú",
-      currentValue: currentBucket.cdb_itau,
-      previousValue: previousBucket?.cdb_itau ?? 0,
-      deltaValue: currentBucket.cdb_itau - (previousBucket?.cdb_itau ?? 0),
-      shareCurrentPercent: totalCurrent > 0 ? (currentBucket.cdb_itau / totalCurrent) * 100 : 0,
+  const attributionKeys = investments
+    .map((inv) => inv.id)
+    .filter((id) => (currentPoint?.values.get(id) ?? 0) > 0 || (previousPoint?.values.get(id) ?? 0) > 0);
+  const attributionItems: ProfessionalInsightsPayload["attribution"]["items"] = attributionKeys.map((id) => {
+    const currentValue = currentPoint?.values.get(id) ?? 0;
+    const previousValue = previousPoint?.values.get(id) ?? 0;
+    const deltaValue = currentValue - previousValue;
+    return {
+      key: id,
+      label: labels.get(id) ?? id,
+      currentValue,
+      previousValue,
+      deltaValue,
+      shareCurrentPercent: totalCurrent > 0 ? (currentValue / totalCurrent) * 100 : 0,
+      // Com variação total pequena (< 2% do mês anterior) a contribuição percentual perde sentido.
       contributionToDeltaPercent:
-        Math.abs(totalDelta) < 0.01 ? null : ((currentBucket.cdb_itau - (previousBucket?.cdb_itau ?? 0)) / totalDelta) * 100,
-    },
-    {
-      key: "cdb_santander",
-      label: "CDB Santander",
-      currentValue: currentBucket.cdb_santander,
-      previousValue: previousBucket?.cdb_santander ?? 0,
-      deltaValue: currentBucket.cdb_santander - (previousBucket?.cdb_santander ?? 0),
-      shareCurrentPercent: totalCurrent > 0 ? (currentBucket.cdb_santander / totalCurrent) * 100 : 0,
-      contributionToDeltaPercent:
-        Math.abs(totalDelta) < 0.01
-          ? null
-          : ((currentBucket.cdb_santander - (previousBucket?.cdb_santander ?? 0)) / totalDelta) * 100,
-    },
-    {
-      key: "fiis",
-      label: "Dividendos FIIs",
-      currentValue: currentBucket.fiis,
-      previousValue: previousBucket?.fiis ?? 0,
-      deltaValue: currentBucket.fiis - (previousBucket?.fiis ?? 0),
-      shareCurrentPercent: totalCurrent > 0 ? (currentBucket.fiis / totalCurrent) * 100 : 0,
-      contributionToDeltaPercent:
-        Math.abs(totalDelta) < 0.01 ? null : ((currentBucket.fiis - (previousBucket?.fiis ?? 0)) / totalDelta) * 100,
-    },
-  ];
+        Math.abs(totalDelta) < Math.max(0.01, totalPrevious * 0.02) ? null : (deltaValue / totalDelta) * 100,
+    };
+  });
 
-  const monthsWithDataSet = new Set(currentYearSeries.map((item) => item.month));
+  // Saúde de dados.
+  const currentYearPoints = series.filter((point) => point.year === year && point.month <= month);
+  const monthsWithDataSet = new Set(currentYearPoints.map((point) => point.month));
   const expectedMonths = month;
-  const missingMonths = monthSequence(1, month).filter((m) => !monthsWithDataSet.has(m));
+  const missingMonths = Array.from({ length: month }, (_, i) => i + 1).filter((m) => !monthsWithDataSet.has(m));
   const monthsWithData = Math.max(0, expectedMonths - missingMonths.length);
   const completenessPercent = expectedMonths > 0 ? (monthsWithData / expectedMonths) * 100 : 0;
 
@@ -1013,17 +959,20 @@ export async function GET(req: NextRequest) {
   }
   const duplicateRows = Array.from(duplicateKeyCount.values()).filter((value) => value > 1).length;
 
-  const latestTotals = series.slice(-24).map((item) => item.total);
-  const totalMean = mean(latestTotals);
-  const totalStd = stdDev(latestTotals);
+  const closedPerDay = series
+    .filter((point) => !point.inProgress)
+    .slice(-24)
+    .map((point) => point.total / point.businessDays);
+  const perDayMean = mean(closedPerDay);
+  const perDayStd = stdDev(closedPerDay);
   const outlierCount =
-    totalStd <= 0
-      ? 0
-      : series
-          .slice(-24)
-          .filter((item) => Math.abs((item.total - totalMean) / totalStd) >= 2.5).length;
+    perDayStd <= 0 ? 0 : closedPerDay.filter((value) => Math.abs((value - perDayMean) / perDayStd) >= 2.5).length;
 
-  const latestEntryAt = pickLatestTimestamp(currentYearSeries);
+  const entryTimestamps = [
+    ...returns.filter((row) => row.year === year).map((row) => row.created_at ?? null),
+    ...revisions.map((row) => row.created_at),
+  ].filter((value): value is string => Boolean(value));
+  const latestEntryAt = entryTimestamps.length ? entryTimestamps.sort()[entryTimestamps.length - 1] : null;
   const stalenessDays =
     latestEntryAt === null
       ? null
@@ -1050,40 +999,67 @@ export async function GET(req: NextRequest) {
         ? "B"
         : "C";
 
+  // Benchmark: rendimento do mês sobre o capital aplicado versus CDI acumulado nos dias úteis do mês.
   const benchmarkWarnings: string[] = [];
   const cdiDaily = extractLatestBcbValue(cdiPayload);
-  let cdiMom: number | null = null;
-  if (cdiDaily !== null) {
-    cdiMom = monthlyEquivalentFromAnnualRate(annualizeDailyRate(cdiDaily));
-  } else {
-    benchmarkWarnings.push("CDI indisponível para benchmark.");
+  const cdiMonthPercent =
+    cdiDaily !== null ? (Math.pow(1 + cdiDaily / 100, pace.totalBusinessDays) - 1) * 100 : null;
+  if (cdiMonthPercent === null) benchmarkWarnings.push("CDI indisponível para benchmark.");
+
+  const activeCapital = pace.investments.reduce((acc, item) => acc + item.invested, 0);
+  const activeProjected = pace.investments.reduce((acc, item) => acc + item.projected, 0);
+  const portfolioYield = activeCapital > 0 ? (activeProjected / activeCapital) * 100 : null;
+  const portfolioPercentOfCdi =
+    portfolioYield !== null && cdiMonthPercent !== null && cdiMonthPercent > 0
+      ? (portfolioYield / cdiMonthPercent) * 100
+      : null;
+  const benchmarkItems = pace.investments
+    .filter((item) => item.invested > 0)
+    .map((item) => {
+      const monthlyYieldPercent = (item.projected / item.invested) * 100;
+      return {
+        key: item.investmentId,
+        label: item.label,
+        monthlyYieldPercent,
+        percentOfCdi:
+          cdiMonthPercent !== null && cdiMonthPercent > 0 ? (monthlyYieldPercent / cdiMonthPercent) * 100 : null,
+        contractedCdiPercent: toMaybeNum(invById.get(item.investmentId)?.cdi_rate),
+      };
+    });
+  if (benchmarkItems.length > 0 && benchmarkItems.every((item) => item.contractedCdiPercent === null)) {
+    benchmarkWarnings.push("Preencha o % do CDI contratado em Investimentos para comparar com o realizado.");
+  }
+  if (pace.isCurrentMonth) {
+    benchmarkWarnings.push("Mês em andamento: rendimento calculado sobre a projeção de fechamento.");
   }
 
   const ibovSeries = extractYahooMonthlyCloses(ibovPayload);
   const ifixSeries = extractYahooMonthlyCloses(ifixPayload);
-  const prevMonthRef = previousMonthOf(year, month);
+  const prevMonthRef = month > 1 ? { year, month: month - 1 } : { year: year - 1, month: 12 };
+  const closeOf = (items: Array<{ year: number; month: number; close: number }>, y: number, m: number) =>
+    items.find((item) => item.year === y && item.month === m)?.close ?? null;
+  const ibovMom = pctChange(closeOf(ibovSeries, year, month), closeOf(ibovSeries, prevMonthRef.year, prevMonthRef.month));
+  const ifixMom = pctChange(closeOf(ifixSeries, year, month), closeOf(ifixSeries, prevMonthRef.year, prevMonthRef.month));
 
-  const ibovCurrent = ibovSeries.find((item) => item.year === year && item.month === month) ?? null;
-  const ibovPrev =
-    ibovSeries.find((item) => item.year === prevMonthRef.year && item.month === prevMonthRef.month) ??
-    null;
-  const ifixCurrent = ifixSeries.find((item) => item.year === year && item.month === month) ?? null;
-  const ifixPrev =
-    ifixSeries.find((item) => item.year === prevMonthRef.year && item.month === prevMonthRef.month) ??
-    null;
+  const riskRadar = buildRiskRadar(series);
+  const capitalAt = buildCapitalResolver(investments, cashEvents);
+  const recommendation = buildRecommendation(series, pace, labels, capitalAt, cdiMonthPercent);
 
-  const ibovMom = pctChange(ibovCurrent?.close ?? null, ibovPrev?.close ?? null);
-  const ifixMom = pctChange(ifixCurrent?.close ?? null, ifixPrev?.close ?? null);
-  if (ibovMom === null) benchmarkWarnings.push("Ibovespa mensal indisponível para competência selecionada.");
-  if (ifixMom === null) benchmarkWarnings.push("IFIX mensal indisponível para competência selecionada.");
-
-  const portfolioMom = pctChange(totalCurrent, totalPrevious);
-  const riskRadar = buildRiskRadar(currentYearSeries.length > 0 ? currentYearSeries : series);
-  const recommendation = buildRecommendation(
-    currentYearSeries.length > 0 ? currentYearSeries : series,
-    investedByTheme,
-  );
-  const runDate = getSaoPauloDateISO();
+  const benchmark: ProfessionalInsightsPayload["benchmark"] = {
+    referenceMonthLabel: `${monthLabel(month)}/${year}`,
+    portfolioMomPercent: portfolioYield,
+    cdiMomPercent: cdiMonthPercent,
+    portfolioPercentOfCdi,
+    ifixMomPercent: ifixMom,
+    ibovMomPercent: ibovMom,
+    excessVsCdiPercent:
+      portfolioYield !== null && cdiMonthPercent !== null ? portfolioYield - cdiMonthPercent : null,
+    // Índices de preço não são comparáveis com rendimento de renda fixa; ficam só como contexto.
+    excessVsIfixPercent: null,
+    excessVsIbovPercent: null,
+    items: benchmarkItems,
+    warnings: benchmarkWarnings,
+  };
 
   const persistPayload = {
     run_date: runDate,
@@ -1095,6 +1071,7 @@ export async function GET(req: NextRequest) {
     risk_regime: riskRadar.regime,
     headline: recommendation.backtest.diagnosis.headline,
     report: {
+      engineVersion: INSIGHTS_ENGINE_VERSION,
       recommendation: {
         action: recommendation.action,
         bestAssetKey: recommendation.bestAssetKey,
@@ -1102,12 +1079,7 @@ export async function GET(req: NextRequest) {
         backtest: recommendation.backtest,
       },
       riskRadar,
-      benchmark: {
-        portfolioMomPercent: portfolioMom,
-        cdiMomPercent: cdiMom,
-        ifixMomPercent: ifixMom,
-        ibovMomPercent: ibovMom,
-      },
+      benchmark,
     },
     updated_at: new Date().toISOString(),
   };
@@ -1140,13 +1112,16 @@ export async function GET(req: NextRequest) {
     },
     goalProbabilities: {
       monthlyIncome: {
-        label: "Meta mensal de rendimento (CDBs)",
+        label: pace.isCurrentMonth
+          ? `Meta mensal de rendimento (CDBs) · dados até ${
+              pace.asOfDate ? pace.asOfDate.split("-").reverse().slice(0, 2).join("/") : "—"
+            }`
+          : "Meta mensal de rendimento (CDBs)",
         targetValue: monthlyTarget > 0 ? monthlyTarget : null,
-        realizedValue: currentCdbIncome,
+        realizedValue: monthlyRealized,
         projectedValue: monthlyProjection,
         probabilityPercent: monthlyProb,
-        confidenceBand:
-          monthlyTarget > 0 ? safeBand(monthlyProjection, monthlySigma) : null,
+        confidenceBand: monthlyTarget > 0 ? safeBand(monthlyProjection, monthlySigma) : null,
       },
       annualCapital: {
         label: "Meta anual de patrimônio (CDBs)",
@@ -1154,34 +1129,18 @@ export async function GET(req: NextRequest) {
         realizedValue: cdbInvestedCapital,
         projectedValue: projectedAnnualCapital,
         probabilityPercent: annualProb,
-        confidenceBand:
-          annualTarget > 0 ? safeBand(projectedAnnualCapital, annualSigma) : null,
+        confidenceBand: annualTarget > 0 ? safeBand(projectedAnnualCapital, annualSigma) : null,
       },
     },
     attribution: {
-      monthLabel: `${monthLabel(currentBucket.month)}/${currentBucket.year}`,
-      previousMonthLabel: previousBucket
-        ? `${monthLabel(previousBucket.month)}/${previousBucket.year}`
-        : null,
+      monthLabel: `${monthLabel(month)}/${year}${pace.isCurrentMonth ? " (projeção)" : ""}`,
+      previousMonthLabel: previousPoint ? `${monthLabel(previousPoint.month)}/${previousPoint.year}` : null,
       totalCurrent,
       totalPrevious,
       totalDelta,
       items: attributionItems,
     },
-    benchmark: {
-      referenceMonthLabel: `${monthLabel(month)}/${year}`,
-      portfolioMomPercent: portfolioMom,
-      cdiMomPercent: cdiMom,
-      ifixMomPercent: ifixMom,
-      ibovMomPercent: ibovMom,
-      excessVsCdiPercent:
-        portfolioMom !== null && cdiMom !== null ? portfolioMom - cdiMom : null,
-      excessVsIfixPercent:
-        portfolioMom !== null && ifixMom !== null ? portfolioMom - ifixMom : null,
-      excessVsIbovPercent:
-        portfolioMom !== null && ibovMom !== null ? portfolioMom - ibovMom : null,
-      warnings: benchmarkWarnings,
-    },
+    benchmark,
     riskRadar,
     recommendation,
     diagnosisHistory: historyResult.history,
