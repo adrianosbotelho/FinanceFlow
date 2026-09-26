@@ -724,3 +724,39 @@ export interface PerformancePayload {
   inflationSource: "bcb" | "manual" | "none";
   warnings: string[];
 }
+
+// Histórico de renda passiva (página Histórico de Performance). O cliente agrega por filtro.
+export interface PerformanceHistoryInvestment {
+  id: string;
+  label: string;
+  type: InvestmentType;
+  institution: string;
+  active: boolean;
+}
+
+export interface PerformanceHistoryMonth {
+  year: number;
+  month: number;
+  status: "closed" | "in_progress";
+  byInvestment: Record<string, number>;
+  /** Só no mês em andamento: projeção de fechamento por investimento (lib/month-pace). */
+  projectedByInvestment: Record<string, number> | null;
+}
+
+export interface PerformanceHistoryGap {
+  investmentId: string;
+  label: string;
+  months: Array<{ year: number; month: number }>;
+}
+
+export interface PerformanceHistoryPayload {
+  currentYear: number;
+  currentMonth: number;
+  asOfDate: string | null;
+  investments: PerformanceHistoryInvestment[];
+  months: PerformanceHistoryMonth[];
+  currentMonthBusinessDays: number;
+  remainingYearBusinessDays: number;
+  gaps: PerformanceHistoryGap[];
+  warnings: string[];
+}
