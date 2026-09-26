@@ -31,14 +31,20 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
   const year = Number(body?.year);
   const month = Number(body?.month);
-  const investmentId = String(body?.investment_id ?? "");
+  const investmentId = String(body?.investment_id ?? "").trim();
   const incomeValue = Number(body?.income_value);
-  if (!Number.isFinite(year) || !Number.isFinite(month)) {
+  if (!Number.isInteger(year) || !Number.isInteger(month)) {
     return NextResponse.json(
       { error: "Ano e mês são obrigatórios." },
+      { status: 400 },
+    );
+  }
+  if (month < 1 || month > 12 || year < 2000 || year > 2100) {
+    return NextResponse.json(
+      { error: "Ano ou mês fora do intervalo válido." },
       { status: 400 },
     );
   }
@@ -80,7 +86,16 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await supabase
     .from("monthly_returns")
-    .upsert(body, { onConflict: "investment_id,month,year" })
+    // Só as colunas permitidas; campos extras do corpo (id, created_at...) são ignorados.
+    .upsert(
+      {
+        investment_id: investmentId,
+        year,
+        month,
+        income_value: Math.round(incomeValue * 100) / 100,
+      },
+      { onConflict: "investment_id,month,year" },
+    )
     .select("*")
     .single();
 
