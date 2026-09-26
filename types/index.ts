@@ -156,10 +156,15 @@ export interface DashboardKPIs {
   capitalGainPct: number;
   totalProfit: number;
   totalProfitPct: number;
-  /** "projection": mês em andamento, variações comparam a projeção de fechamento. */
+  /** "projection": mês em andamento; os campos projected* trazem a comparação da projeção de fechamento. */
   comparisonBasis?: "projection" | "realized";
   projectedCurrentMonth?: number;
   momDeltaValue?: number | null;
+  projectedMomGrowth?: number | null;
+  projectedMomDelta?: number | null;
+  projectedCdbMomGrowth?: number | null;
+  projectedFiiMomGrowth?: number | null;
+  projectedYoyGrowth?: number | null;
   hasActiveFii?: boolean;
 }
 

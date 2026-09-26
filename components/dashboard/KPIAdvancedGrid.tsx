@@ -156,7 +156,7 @@ export function KPIAdvancedGrid({ kpis }: KPIAdvancedGridProps) {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <p className="text-sm font-semibold text-slate-200">
-              Variação da renda (M/M){isProjection ? " · projeção" : ""}
+              Variação da renda (M/M)
             </p>
             <p className={`mt-2 text-3xl font-extrabold ${incomeVariationTone}`}>
               {formatPercentage(kpis.momGrowth)} {arrow(kpis.momGrowth)}
@@ -165,6 +165,17 @@ export function KPIAdvancedGrid({ kpis }: KPIAdvancedGridProps) {
               Δ R$: {formatSignedCurrency(monthlyIncomeDelta)}
             </p>
             <p className="mt-1 text-xs text-slate-400">Comparação com mês anterior</p>
+            {isProjection && kpis.projectedCurrentMonth !== undefined ? (
+              <p className="mt-1 text-xs text-slate-400">
+                Projeção: <span className="font-semibold text-slate-200">{formatCurrencyBRL(kpis.projectedCurrentMonth)}</span>
+                {kpis.projectedMomGrowth !== null && kpis.projectedMomGrowth !== undefined ? (
+                  <span className={`ml-1 font-semibold ${toneClass(kpis.projectedMomGrowth)}`}>
+                    ({kpis.projectedMomGrowth > 0 ? "+" : ""}
+                    {formatPercentage(kpis.projectedMomGrowth)}; {formatSignedCurrency(kpis.projectedMomDelta)})
+                  </span>
+                ) : null}
+              </p>
+            ) : null}
           </div>
           <div>
             <p className="text-sm font-semibold text-slate-200">Rentabilidade (12M)</p>

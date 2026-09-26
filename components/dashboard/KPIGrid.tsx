@@ -6,10 +6,12 @@ interface KPIGridProps {
 }
 
 export function KPIGrid({ kpis }: KPIGridProps) {
-  // Mês em andamento: variações comparam a projeção de fechamento com o mês anterior.
+  // Destaque = variação real; no mês em andamento a projeção de fechamento aparece como linha secundária.
   const isProjection = kpis.comparisonBasis === "projection";
-  const momLabel = isProjection ? "projeção do mês vs mês anterior" : "vs mês anterior";
-  const yoyLabel = isProjection ? "projeção vs mesmo mês do ano anterior" : "vs mesmo mês do ano anterior";
+  const momLabel = "vs mês anterior";
+  const yoyLabel = "vs mesmo mês do ano anterior";
+  const projectionMomLabel = isProjection ? "Projeção do mês vs mês anterior:" : null;
+  const projectionYoyLabel = isProjection ? "Projeção vs mesmo mês do ano anterior:" : null;
   const showFii = kpis.hasActiveFii !== false || kpis.fiiDividendsCurrentMonth > 0;
 
   return (
@@ -21,12 +23,16 @@ export function KPIGrid({ kpis }: KPIGridProps) {
         value={kpis.totalPassiveIncomeCurrentMonth}
         delta={kpis.momGrowth}
         comparisonLabel={momLabel}
+        secondaryLabel={projectionMomLabel}
+        secondaryDelta={kpis.projectedMomGrowth}
       />
       <KPICard
         label="Rendimento CDBs (mês, total)"
         value={kpis.cdbTotalYieldCurrentMonth}
         delta={kpis.cdbMomGrowth}
         comparisonLabel={momLabel}
+        secondaryLabel={projectionMomLabel}
+        secondaryDelta={kpis.projectedCdbMomGrowth}
       />
       {showFii ? (
         <KPICard
@@ -34,6 +40,8 @@ export function KPIGrid({ kpis }: KPIGridProps) {
           value={kpis.fiiDividendsCurrentMonth}
           delta={kpis.fiiMomGrowth}
           comparisonLabel={momLabel}
+          secondaryLabel={projectionMomLabel}
+          secondaryDelta={kpis.projectedFiiMomGrowth}
         />
       ) : null}
       <KPICard
@@ -42,6 +50,8 @@ export function KPIGrid({ kpis }: KPIGridProps) {
         variant="percent"
         delta={kpis.momGrowth}
         comparisonLabel={momLabel}
+        secondaryLabel={projectionMomLabel}
+        secondaryDelta={kpis.projectedMomGrowth}
       />
       <KPICard
         label="Desempenho Ano a Ano"
@@ -49,6 +59,8 @@ export function KPIGrid({ kpis }: KPIGridProps) {
         variant="percent"
         delta={kpis.yoyGrowth}
         comparisonLabel={yoyLabel}
+        secondaryLabel={projectionYoyLabel}
+        secondaryDelta={kpis.projectedYoyGrowth}
       />
       <KPICard
         label="Renda acumulada no ano (YTD)"

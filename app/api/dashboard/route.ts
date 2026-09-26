@@ -287,7 +287,7 @@ export async function GET(req: NextRequest) {
     hasActiveFii: monthPace.hasActiveFii,
   };
 
-  // Mês em andamento: as variações comparam a projeção de fechamento (e não o parcial) com meses cheios.
+  // Mês em andamento: momGrowth/yoyGrowth seguem com o realizado; a comparação da projeção vai em projected*.
   const paceEntry = referenceSeries.find(
     (m) => m.year === monthPace.year && m.month === monthPace.month,
   );
@@ -314,12 +314,14 @@ export async function GET(req: NextRequest) {
 
     kpis.comparisonBasis = "projection";
     kpis.projectedCurrentMonth = monthPace.projected;
-    kpis.momGrowth = monthPace.projectedVsPreviousPercent;
     kpis.momDeltaValue =
+      monthPace.previousMonthTotal !== null ? paceEntry.total - monthPace.previousMonthTotal : null;
+    kpis.projectedMomGrowth = monthPace.projectedVsPreviousPercent;
+    kpis.projectedMomDelta =
       monthPace.previousMonthTotal !== null ? monthPace.projected - monthPace.previousMonthTotal : null;
-    kpis.yoyGrowth = monthPace.yoyPercent;
-    kpis.cdbMomGrowth = pctVs(cdbProjected, previousCdbTotal);
-    kpis.fiiMomGrowth = pctVs(fiiProjected, previousEntry?.fii_dividends);
+    kpis.projectedYoyGrowth = monthPace.yoyPercent;
+    kpis.projectedCdbMomGrowth = pctVs(cdbProjected, previousCdbTotal);
+    kpis.projectedFiiMomGrowth = pctVs(fiiProjected, previousEntry?.fii_dividends);
     kpis.cdbItems = kpis.cdbItems.map((item) => {
       const projected = projectedById.get(item.investment_id) ?? item.currentMonth;
       const previousIncome = previousEntry?.cdb_items.find(
@@ -335,8 +337,6 @@ export async function GET(req: NextRequest) {
     });
 
     paceEntry.projected_total = monthPace.projected;
-    paceEntry.mom_growth = monthPace.projectedVsPreviousPercent;
-    paceEntry.yoy_growth = monthPace.yoyPercent;
   }
 
   const distribution: IncomeDistribution = (() => {

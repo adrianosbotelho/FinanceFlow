@@ -24,14 +24,17 @@ export function PassiveIncomeLineChart({ data }: Props) {
 
   const lastEntry = data.length > 0 ? data[data.length - 1] : null;
   const currentTotal = lastEntry?.total ?? 0;
-  // Mês em andamento: a variação compara a projeção de fechamento, não o parcial.
-  const comparableTotal = lastEntry?.projected_total ?? currentTotal;
-  const isProjection = lastEntry?.projected_total !== undefined;
+  // Destaque = variação real; no mês em andamento a projeção aparece como linha secundária.
+  const projectedTotal = lastEntry?.projected_total;
   const previousTotal =
     data.length > 1 ? data[data.length - 2]?.total ?? null : null;
   const momGrowth =
     previousTotal !== null && previousTotal > 0
-      ? ((comparableTotal - previousTotal) / previousTotal) * 100
+      ? ((currentTotal - previousTotal) / previousTotal) * 100
+      : null;
+  const projectedMomGrowth =
+    projectedTotal !== undefined && previousTotal !== null && previousTotal > 0
+      ? ((projectedTotal - previousTotal) / previousTotal) * 100
       : null;
   const isPositive = momGrowth !== null && momGrowth >= 0;
   const isNegative = momGrowth !== null && momGrowth < 0;
@@ -76,10 +79,23 @@ export function PassiveIncomeLineChart({ data }: Props) {
               {deltaArrow}
               {deltaLabel}
             </span>
-            <span className="text-[11px] text-slate-500">
-              {isProjection ? "projeção vs mês anterior" : "vs mês anterior"}
-            </span>
+            <span className="text-[11px] text-slate-500">vs mês anterior</span>
           </div>
+          {projectedTotal !== undefined ? (
+            <p className="mt-1 text-[11px] text-slate-400">
+              Projeção: {formatCurrencyBRL(projectedTotal)}
+              {projectedMomGrowth !== null ? (
+                <span
+                  className={`ml-1 font-semibold ${
+                    projectedMomGrowth > 0 ? "text-success" : projectedMomGrowth < 0 ? "text-rose-400" : "text-slate-400"
+                  }`}
+                >
+                  ({projectedMomGrowth > 0 ? "+" : ""}
+                  {projectedMomGrowth.toFixed(1)}%)
+                </span>
+              ) : null}
+            </p>
+          ) : null}
         </div>
       </div>
       <div className="flex-1 p-4 md:p-6">
