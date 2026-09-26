@@ -8,8 +8,27 @@ create table if not exists investments (
   institution text not null,
   name text not null,
   amount_invested numeric(15,2) not null,
+  cdi_rate numeric(6,2) default null,
+  benchmark text default null,
+  start_date date default null,
+  liquidity text default null,
+  maturity_date date default null,
   created_at timestamptz default now()
 );
+
+-- Bancos criados antes dessas colunas (migration 20260725120000_investment_financial_fields).
+alter table investments
+  add column if not exists cdi_rate numeric(6,2) default null,
+  add column if not exists benchmark text default null,
+  add column if not exists start_date date default null,
+  add column if not exists liquidity text default null,
+  add column if not exists maturity_date date default null;
+
+comment on column investments.cdi_rate is 'Percentage of CDI for this CDB (e.g. 110 means 110% CDI). NULL uses portfolio default.';
+comment on column investments.benchmark is 'Benchmark description (e.g. "110% CDI", "IPCA+6%")';
+comment on column investments.start_date is 'Investment start date';
+comment on column investments.liquidity is 'Liquidity type (e.g. "diária", "no vencimento", "D+30")';
+comment on column investments.maturity_date is 'Maturity/expiration date of the investment';
 
 create table if not exists monthly_returns (
   id uuid primary key default gen_random_uuid(),
@@ -164,3 +183,24 @@ create table if not exists insight_professional_runs (
 
 create index if not exists idx_insight_prof_runs_year_month_date
   on insight_professional_runs (year, month, run_date desc);
+
+-- Segurança (migrations 20260318113000, 20260404113000 e 20260425110500):
+-- RLS em todas as tabelas e sem acesso direto pelas roles da Data API.
+-- O app acessa o banco só pelo servidor, com SUPABASE_SERVICE_ROLE_KEY.
+do $$
+declare
+  tbl text;
+begin
+  for tbl in
+    select unnest(array[
+      'investments', 'monthly_returns', 'monthly_return_revisions', 'monthly_closures',
+      'monthly_positions', 'monthly_macro', 'investment_goals',
+      'investment_goals_monthly', 'investment_goals_annual',
+      'investment_cash_events', 'insight_daily_runs', 'insight_professional_runs'
+    ])
+  loop
+    execute format('alter table public.%I enable row level security', tbl);
+    execute format('revoke all on table public.%I from anon, authenticated', tbl);
+  end loop;
+end;
+$$;
