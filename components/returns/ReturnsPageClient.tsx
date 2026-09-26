@@ -25,6 +25,11 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import {
+  countBusinessDaysElapsedInMonth,
+  countBusinessDaysInMonth,
+  previousBusinessDay,
+} from "../../lib/business-days";
 
 type ReturnRow = {
   year: number;
@@ -95,25 +100,6 @@ function parseBrDateTime(raw: string | undefined): string {
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) return raw;
   return parsed.toLocaleString("pt-BR");
-}
-
-function countBusinessDaysInMonth(year: number, month: number): number {
-  const daysInMonth = new Date(year, month, 0).getDate();
-  let count = 0;
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    const weekDay = new Date(year, month - 1, day).getDay();
-    if (weekDay >= 1 && weekDay <= 5) count += 1;
-  }
-  return count;
-}
-
-function countBusinessDaysElapsedInMonth(year: number, month: number, maxDay: number): number {
-  let count = 0;
-  for (let day = 1; day <= maxDay; day += 1) {
-    const weekDay = new Date(year, month - 1, day).getDay();
-    if (weekDay >= 1 && weekDay <= 5) count += 1;
-  }
-  return count;
 }
 
 interface ReturnsPageClientProps {}
@@ -449,8 +435,14 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
       oldest.previous_income_value ?? (oldest.new_income_value - oldest.delta_income_value),
     );
     const growthSoFar = latestValue - startValue;
+    // O último lançamento vale até o dia útil anterior à data em que foi feito (D−1).
+    const latestDataDate = previousBusinessDay(new Date(latest.created_at ?? now.toISOString()));
+    const latestDataDay =
+      latestDataDate.getFullYear() === year && latestDataDate.getMonth() + 1 === month
+        ? latestDataDate.getDate()
+        : 0;
     const daysElapsed = isCurrentContext
-      ? countBusinessDaysElapsedInMonth(year, month, now.getDate())
+      ? countBusinessDaysElapsedInMonth(year, month, latestDataDay)
       : countBusinessDaysInMonth(year, month);
     const totalDays = countBusinessDaysInMonth(year, month);
     const daysRemaining = isCurrentContext ? Math.max(totalDays - daysElapsed, 0) : 0;
