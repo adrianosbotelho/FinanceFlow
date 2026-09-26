@@ -760,3 +760,67 @@ export interface PerformanceHistoryPayload {
   gaps: PerformanceHistoryGap[];
   warnings: string[];
 }
+
+// Página de Metas: meta mensal de renda e meta anual de patrimônio (CDBs).
+export type GoalMonthlyStatus = "atingida" | "no_ritmo" | "perto" | "abaixo" | "sem_meta";
+export type GoalAnnualStatus = "atingida" | "no_ritmo" | "abaixo" | "sem_meta";
+
+export interface GoalsMonthlySummary {
+  target: number | null;
+  realized: number;
+  projected: number;
+  status: GoalMonthlyStatus;
+  neededPerBusinessDay: number | null;
+}
+
+export interface GoalsAnnualSummary {
+  target: number | null;
+  balance: number;
+  gap: number;
+  progressPercent: number | null;
+  expectedIncomeUntilYearEnd: number;
+  requiredMonthlyContribution: number | null;
+  recentMonthlyContribution: number;
+  eta: { year: number; month: number } | null;
+  status: GoalAnnualStatus;
+}
+
+export interface GoalsInvestmentRow {
+  investmentId: string;
+  label: string;
+  institution: string;
+  monthly: GoalsMonthlySummary;
+  annual: GoalsAnnualSummary;
+  monthlyHits: number;
+  monthlyGoalMonths: number;
+}
+
+export interface GoalsMonthlyHistoryPoint {
+  month: number;
+  status: "closed" | "in_progress";
+  target: number | null;
+  realized: number;
+  projected: number | null;
+  hit: boolean | null;
+}
+
+export interface GoalsBalancePoint {
+  month: number;
+  total: number;
+  byInvestment: Record<string, number>;
+}
+
+export interface GoalsOverviewPayload {
+  year: number;
+  month: number;
+  asOfDate: string | null;
+  businessDaysRemaining: number;
+  contributionMonthsRemaining: number;
+  monthly: GoalsMonthlySummary;
+  annual: GoalsAnnualSummary;
+  investments: GoalsInvestmentRow[];
+  monthlyHistory: GoalsMonthlyHistoryPoint[];
+  balanceHistory: GoalsBalancePoint[];
+  annualTargets: Record<string, number>;
+  warnings: string[];
+}

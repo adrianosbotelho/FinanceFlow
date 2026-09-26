@@ -3,6 +3,13 @@ import { supabase } from "../../../lib/supabase";
 import { resolveMonthlyCdiHistory } from "../../../lib/cdi-reference";
 import { formatCurrencyBRL } from "../../../lib/formatters";
 import {
+  BalanceContext,
+  buildBalanceContexts,
+  closingBalance,
+  previousYm,
+  ym,
+} from "../../../lib/balance-history";
+import {
   PerformanceInstitutionItem,
   PerformanceInvestmentItem,
   PerformanceMonthPoint,
@@ -33,30 +40,9 @@ type CashEventRow = { investment_id: string; year: number; month: number; type: 
 type MacroRow = { month: number; inflation_rate: number | string | null };
 type BcbSeriesPoint = { data?: string; valor?: string };
 
-type CdbContext = {
-  id: string;
-  label: string;
-  institution: string;
-  balanceNow: number;
-  contractedCdiPercent: number | null;
-  firstIncomeYm: number | null;
-  incomeByYm: Map<number, number>;
-  flowByYm: Map<number, number>;
-};
-
 function toNumber(value: unknown): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
-}
-
-function ym(year: number, month: number): number {
-  return year * 100 + month;
-}
-
-function previousYm(value: number): number {
-  const year = Math.floor(value / 100);
-  const month = value % 100;
-  return month === 1 ? ym(year - 1, 12) : value - 1;
 }
 
 function isMissingTableError(error: { message?: string; code?: string } | null, table: string): boolean {
@@ -116,24 +102,9 @@ async function fetchBcbMonthlyInflation(
   }
 }
 
-function sumAfter(values: Map<number, number>, afterYm: number): number {
-  let total = 0;
-  for (const [key, value] of Array.from(values.entries())) {
-    if (key > afterYm) total += value;
-  }
-  return total;
-}
-
-// Saldo no fim da competência: saldo atual − aportes/resgates e renda lançados depois dela.
-// Antes do mês de estreia (primeira renda) o investimento ainda não existia.
-function closingBalance(ctx: CdbContext, atYm: number): number {
-  if (ctx.firstIncomeYm === null || atYm < ctx.firstIncomeYm) return 0;
-  return Math.max(0, ctx.balanceNow - sumAfter(ctx.flowByYm, atYm) - sumAfter(ctx.incomeByYm, atYm));
-}
-
 // Rentabilidade do mês sobre o saldo de abertura + metade do fluxo do mês (aproximação de Dietz).
 // O mês de estreia fica fora por ser parcial.
-function monthReturn(contexts: CdbContext[], atYm: number): number | null {
+function monthReturn(contexts: BalanceContext[], atYm: number): number | null {
   let income = 0;
   let base = 0;
   for (const ctx of contexts) {
@@ -148,11 +119,6 @@ function compound(percents: Array<number | null>): number | null {
   const valid = percents.filter((value): value is number => value !== null);
   if (valid.length === 0) return null;
   return (valid.reduce((acc, value) => acc * (1 + value / 100), 1) - 1) * 100;
-}
-
-function normalizeInstitution(value: string): string {
-  const trimmed = value.trim();
-  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 }
 
 export async function GET(req: NextRequest) {
@@ -202,47 +168,14 @@ export async function GET(req: NextRequest) {
   if (cdiHistory.size === 0) warnings.push("CDI mensal do BCB (SGS 4391) indisponível; comparativo com o CDI omitido.");
 
   const byId = new Map(investments.map((inv) => [inv.id, inv]));
-  const contexts: CdbContext[] = investments
-    .filter((inv) => inv.type === "CDB")
-    .map((inv) => ({
-      id: inv.id,
-      label: inv.name,
-      institution: normalizeInstitution(inv.institution),
-      balanceNow: toNumber(inv.amount_invested),
-      contractedCdiPercent: toNumber(inv.cdi_rate) > 0 ? toNumber(inv.cdi_rate) : null,
-      firstIncomeYm: null,
-      incomeByYm: new Map<number, number>(),
-      flowByYm: new Map<number, number>(),
-    }));
-  const contextById = new Map(contexts.map((ctx) => [ctx.id, ctx]));
+  const activeContexts = buildBalanceContexts(investments, returns, cashEvents);
 
   let fiiDividends = 0;
   for (const row of returns) {
-    const value = toNumber(row.income_value);
-    const key = ym(Number(row.year), Number(row.month));
-    const ctx = contextById.get(row.investment_id);
-    if (ctx) {
-      ctx.incomeByYm.set(key, (ctx.incomeByYm.get(key) ?? 0) + value);
-    } else if (byId.get(row.investment_id)?.type === "FII" && Number(row.year) === year) {
-      fiiDividends += value;
+    if (byId.get(row.investment_id)?.type === "FII" && Number(row.year) === year) {
+      fiiDividends += toNumber(row.income_value);
     }
   }
-  for (const event of cashEvents) {
-    const ctx = contextById.get(event.investment_id);
-    const type = String(event.type ?? "").toUpperCase();
-    if (!ctx || (type !== "APORTE" && type !== "RESGATE")) continue;
-    const key = ym(Number(event.year), Number(event.month));
-    const signed = type === "APORTE" ? toNumber(event.amount) : -toNumber(event.amount);
-    ctx.flowByYm.set(key, (ctx.flowByYm.get(key) ?? 0) + signed);
-  }
-  for (const ctx of contexts) {
-    const incomeKeys = Array.from(ctx.incomeByYm.entries())
-      .filter(([, value]) => value > 0)
-      .map(([key]) => key)
-      .sort((a, b) => a - b);
-    ctx.firstIncomeYm = incomeKeys[0] ?? null;
-  }
-  const activeContexts = contexts.filter((ctx) => ctx.balanceNow > 0 || ctx.firstIncomeYm !== null);
 
   // Série mensal.
   const monthlySeries: PerformanceMonthPoint[] = [];
@@ -353,7 +286,7 @@ export async function GET(req: NextRequest) {
 
   // IR estimado sobre toda a renda acumulada ainda aplicada (alíquota fixa de 15%).
   const taxFactor = ESTIMATED_TAX_RATE_PERCENT / 100;
-  const accumulatedIncomeUntil = (ctx: CdbContext) =>
+  const accumulatedIncomeUntil = (ctx: BalanceContext) =>
     Array.from(ctx.incomeByYm.entries()).reduce((sum, [key, value]) => sum + (key <= yearEndYm ? value : 0), 0);
   const estimatedTaxOnRedemption = activeContexts.reduce(
     (acc, ctx) => acc + accumulatedIncomeUntil(ctx) * taxFactor,
