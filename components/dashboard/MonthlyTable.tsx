@@ -84,7 +84,7 @@ export function MonthlyTable({ data }: Props) {
 
   const summary = data.reduce(
     (acc, m) => {
-      const momValue = resolveMonthOverMonthValue(m.projected_total ?? m.total, m.mom_growth);
+      const momValue = resolveMonthOverMonthValue(m.total, m.mom_growth);
       for (let i = 0; i < m.cdb_items.length; i++) {
         if (!acc.cdbTotals[i]) acc.cdbTotals[i] = 0;
         acc.cdbTotals[i] += m.cdb_items[i].income;
@@ -133,7 +133,7 @@ export function MonthlyTable({ data }: Props) {
     ];
 
     const rows = data.map((m) => {
-      const momValue = resolveMonthOverMonthValue(m.projected_total ?? m.total, m.mom_growth);
+      const momValue = resolveMonthOverMonthValue(m.total, m.mom_growth);
       return [
         String(m.month),
         String(m.year),
@@ -208,7 +208,7 @@ export function MonthlyTable({ data }: Props) {
           </thead>
           <tbody className="divide-y divide-slate-700 text-sm">
             {data.map((m) => {
-              const momValue = resolveMonthOverMonthValue(m.projected_total ?? m.total, m.mom_growth);
+              const momValue = resolveMonthOverMonthValue(m.total, m.mom_growth);
               return (
                 <tr
                   key={`${m.year}-${m.month}`}
@@ -243,9 +243,6 @@ export function MonthlyTable({ data }: Props) {
                   />
                   <td className={`px-6 py-4 font-medium ${toneClass(m.mom_growth ?? null)}`}>
                     {formatPercentage(m.mom_growth ?? null)}
-                    {m.projected_total !== undefined ? (
-                      <span className="ml-1 text-[10px] font-normal text-slate-500">(projeção)</span>
-                    ) : null}
                   </td>
                   <td className={`px-6 py-4 font-medium ${toneClass(momValue)}`}>
                     {momValue === null ? "—" : formatCurrencyBRL(momValue)}

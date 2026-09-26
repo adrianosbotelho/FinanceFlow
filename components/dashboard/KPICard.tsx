@@ -6,6 +6,9 @@ interface KPICardProps {
   variant?: "currency" | "percent";
   delta?: number | null;
   comparisonLabel?: string;
+  /** Linha secundária (ex.: projeção do mês); o destaque continua sendo o valor real. */
+  secondaryLabel?: string | null;
+  secondaryDelta?: number | null;
 }
 
 export function KPICard({
@@ -14,6 +17,8 @@ export function KPICard({
   variant = "currency",
   delta,
   comparisonLabel = "vs período base",
+  secondaryLabel = null,
+  secondaryDelta = null,
 }: KPICardProps) {
   const numericValue = value ?? 0;
   const isPositive = delta !== null && delta !== undefined && delta >= 0;
@@ -75,6 +80,20 @@ export function KPICard({
         </span>
         <span className="text-[11px] text-slate-500">{comparisonLabel}</span>
       </div>
+      {secondaryLabel ? (
+        <p className="text-[11px] text-slate-400">
+          {secondaryLabel}
+          {secondaryDelta !== null && secondaryDelta !== undefined ? (
+            <span
+              className={`ml-1 font-semibold ${
+                secondaryDelta > 0 ? "text-success" : secondaryDelta < 0 ? "text-rose-400" : "text-slate-400"
+              }`}
+            >
+              {`${secondaryDelta > 0 ? "+" : ""}${secondaryDelta.toFixed(1)}%`}
+            </span>
+          ) : null}
+        </p>
+      ) : null}
     </div>
   );
 }
