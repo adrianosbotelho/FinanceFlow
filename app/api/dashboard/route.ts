@@ -11,6 +11,15 @@ import {
 } from "../../../types";
 import { buildKpis } from "../../../lib/calculations";
 import { monthLabel } from "../../../lib/formatters";
+import { countBusinessDaysInMonth } from "../../../lib/business-days";
+import {
+  PaceInvestmentRow,
+  PaceReturnRow,
+  PaceRevisionRow,
+  buildMonthPace,
+  parseIsoDate,
+} from "../../../lib/month-pace";
+import { MonthPace } from "../../../types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -57,23 +66,13 @@ function buildInvestmentLabel(inv: { type: string; institution: string; name: st
   return inv.name || `CDB ${inv.institution}`;
 }
 
-function countBusinessDaysInMonth(year: number, month: number): number {
-  const daysInMonth = new Date(year, month, 0).getDate();
-  let count = 0;
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    const weekday = new Date(year, month - 1, day).getDay();
-    if (weekday >= 1 && weekday <= 5) count += 1;
-  }
-  return count;
-}
-
-function countBusinessDaysElapsedInMonth(year: number, month: number, dayLimit: number): number {
-  let count = 0;
-  for (let day = 1; day <= dayLimit; day += 1) {
-    const weekday = new Date(year, month - 1, day).getDay();
-    if (weekday >= 1 && weekday <= 5) count += 1;
-  }
-  return count;
+function getSaoPauloDateISO(reference = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(reference);
 }
 
 function clampMonth(input: number | null, fallback: number): number {
@@ -107,6 +106,8 @@ export async function GET(req: NextRequest) {
     { data: investments, error: invError },
     { data: returns, error: retError },
     { data: positions, error: posError },
+    { data: revisions, error: revError },
+    { data: monthlyGoals, error: goalsError },
   ] = await Promise.all([
     supabase.from("investments").select("*"),
     supabase
@@ -117,7 +118,15 @@ export async function GET(req: NextRequest) {
       .order("year")
       .order("month"),
     supabase.from("monthly_positions").select("*").eq("year", year).order("month"),
+    supabase
+      .from("monthly_return_revisions")
+      .select("investment_id,new_income_value,created_at")
+      .eq("year", year)
+      .eq("month", analysisMonth),
+    supabase.from("investment_goals_monthly").select("month,monthly_target").eq("year", year),
   ]);
+  if (revError) console.warn("[FinanceFlow] Revisões indisponíveis para o ritmo do mês:", revError.message);
+  if (goalsError) console.warn("[FinanceFlow] Metas mensais indisponíveis:", goalsError.message);
 
   if (invError || retError || !investments || !returns) {
     console.error(invError ?? retError);
@@ -233,7 +242,23 @@ export async function GET(req: NextRequest) {
     0,
   );
 
-  const kpisBase = buildKpis(referenceSeries, year, totalInvested);
+  const monthPace = buildMonthPace({
+    year,
+    month: analysisMonth,
+    today: parseIsoDate(getSaoPauloDateISO()),
+    investments: investments as PaceInvestmentRow[],
+    returns: returns as PaceReturnRow[],
+    revisions: (revisions ?? []) as PaceRevisionRow[],
+  });
+  const projectedById = new Map(
+    monthPace.investments.map((item) => [item.investmentId, item.projected]),
+  );
+
+  const kpisBase = {
+    ...buildKpis(referenceSeries, year, totalInvested),
+    // Realizado do ano + projeção do mês + ritmo por dia útil nos meses restantes.
+    annualProjection: monthPace.annualProjection,
+  };
   const monthlyPositions = Array.isArray(positions) ? positions : [];
   const latestPositionMonth = monthlyPositions.reduce((acc, pos) => {
     const month = Number(pos.month ?? 0);
@@ -298,28 +323,13 @@ export async function GET(req: NextRequest) {
   );
   const latestMonthEntry =
     currentYearSeries.length > 0 ? currentYearSeries[currentYearSeries.length - 1] : null;
-  const isCurrentContextMonth =
+  const isPaceMonth =
     latestMonthEntry !== null &&
-    year === now.getFullYear() &&
-    latestMonthEntry.month === now.getMonth() + 1;
-  const elapsedBusinessDays = isCurrentContextMonth
-    ? countBusinessDaysElapsedInMonth(year, latestMonthEntry.month, now.getDate())
-    : null;
-  const totalBusinessDays = isCurrentContextMonth
-    ? countBusinessDaysInMonth(year, latestMonthEntry.month)
-    : null;
-  const paceFactor =
-    elapsedBusinessDays !== null &&
-    totalBusinessDays !== null &&
-    elapsedBusinessDays > 0
-      ? totalBusinessDays / elapsedBusinessDays
-      : null;
-
-  function resolveForecastIncome(realizedIncome: number): number | null {
-    if (realizedIncome < 0) return null;
-    if (paceFactor !== null) return realizedIncome * paceFactor;
-    return realizedIncome;
-  }
+    latestMonthEntry.year === monthPace.year &&
+    latestMonthEntry.month === monthPace.month;
+  const fiiProjected = monthPace.investments
+    .filter((item) => item.type === "FII")
+    .reduce((acc, item) => acc + item.projected, 0);
 
   const monthlyYieldSummary: DashboardPayload["monthlyYieldSummary"] = {
     month: latestMonthEntry?.month ?? null,
@@ -334,7 +344,8 @@ export async function GET(req: NextRequest) {
       ...cdbInvestments.map((cdb) => {
         const cdbEntry = latestMonthEntry?.cdb_items.find((c) => c.investment_id === cdb.id);
         const realized = cdbEntry?.income ?? 0;
-        const forecast = latestMonthEntry !== null ? resolveForecastIncome(realized) : null;
+        const forecast =
+          latestMonthEntry === null ? null : isPaceMonth ? projectedById.get(cdb.id) ?? realized : realized;
         const invested = investedByCdb.get(cdb.id) ?? 0;
         return {
           key: `cdb_${cdb.id}`,
@@ -348,10 +359,13 @@ export async function GET(req: NextRequest) {
             invested > 0 && forecast !== null ? (forecast / invested) * 100 : null,
         };
       }),
-      (() => {
+      ...(() => {
         const realized = latestMonthEntry?.fii_dividends ?? 0;
-        const forecast = latestMonthEntry !== null ? resolveForecastIncome(realized) : null;
-        return {
+        // FIIs sem posição e sem renda no mês ficam fora do resumo.
+        if (investedFiis <= 0 && realized <= 0) return [];
+        const forecast =
+          latestMonthEntry === null ? null : isPaceMonth ? fiiProjected || realized : realized;
+        return [{
           key: "fiis",
           label: "Dividendos FIIs",
           investedAmount: investedFiis,
@@ -361,29 +375,40 @@ export async function GET(req: NextRequest) {
           forecastMonthlyIncome: forecast,
           forecastMonthlyYieldPct:
             investedFiis > 0 && forecast !== null ? (forecast / investedFiis) * 100 : null,
-        };
+        }];
       })(),
     ],
   };
 
+  // Modelos de previsão usam a projeção de fechamento no lugar do mês em andamento.
+  const modelSeries = referenceSeries.map((entry) =>
+    monthPace.isCurrentMonth && entry.year === monthPace.year && entry.month === monthPace.month
+      ? { ...entry, total: monthPace.projected }
+      : entry,
+  );
   const insights: FinancialInsights = buildInsights(
     kpis,
     distribution,
-    referenceSeries,
-    year,
+    modelSeries,
+    monthPace,
     cdiAnnualReference,
     fiiTrendSignals,
   );
-  const goalProgress = buildGoalProgress(kpis);
+  const goalProgress = buildGoalProgress(
+    monthPace,
+    (monthlyGoals ?? []) as Array<{ month: number; monthly_target: number }>,
+    referenceSeries,
+  );
   const alerts = buildConsistencyAlerts({
     year,
     monthlySeries: referenceSeries,
     analysisMonth,
-    kpis,
+    monthPace,
   });
 
   const payload: DashboardPayload = {
     kpis,
+    monthPace,
     monthlySeries: referenceSeries.filter((m) => m.year === year && m.month <= analysisMonth),
     yoySeries,
     comparisonByMonth,
@@ -403,23 +428,65 @@ export async function GET(req: NextRequest) {
   });
 }
 
-function buildGoalProgress(kpis: DashboardPayload["kpis"]): GoalProgress {
-  const annualIncomeTarget = Number(
-    process.env.FINANCEFLOW_ANNUAL_INCOME_TARGET ?? 12000,
+function buildGoalProgress(
+  pace: MonthPace,
+  monthlyGoals: Array<{ month: number; monthly_target: number }>,
+  series: PassiveIncomeByMonth[],
+): GoalProgress {
+  const targetByMonth = new Map<number, number>();
+  for (const goal of monthlyGoals) {
+    const month = Number(goal.month);
+    targetByMonth.set(month, (targetByMonth.get(month) ?? 0) + Number(goal.monthly_target ?? 0));
+  }
+  const goalMonths = Array.from(targetByMonth.entries())
+    .filter(([, target]) => target > 0)
+    .map(([month]) => month)
+    .sort((a, b) => a - b);
+
+  if (goalMonths.length === 0) {
+    const annualIncomeTarget = Number(process.env.FINANCEFLOW_ANNUAL_INCOME_TARGET ?? 12000);
+    const annualProjection = pace.annualProjection;
+    return {
+      annualIncomeTarget,
+      annualProjection,
+      progressPercent:
+        annualIncomeTarget > 0 ? Math.max(0, Math.min((annualProjection / annualIncomeTarget) * 100, 999)) : 0,
+      gapToTarget: Math.max(annualIncomeTarget - annualProjection, 0),
+      onTrack: annualProjection >= annualIncomeTarget,
+      source: "env",
+      monthsWithGoal: 0,
+      remainingMonthsWithGoal: 0,
+    };
+  }
+
+  // Compara a meta só com os meses que têm meta: realizado, projeção do mês atual ou ritmo por dia útil.
+  const projectedPerBusinessDay = pace.projected / pace.totalBusinessDays;
+  const totalByMonth = new Map(
+    series.filter((entry) => entry.year === pace.year).map((entry) => [entry.month, entry.total]),
   );
-  const annualProjection = kpis.annualProjection;
-  const progressPercent =
-    annualIncomeTarget > 0
-      ? Math.max(0, Math.min((annualProjection / annualIncomeTarget) * 100, 999))
-      : 0;
-  const gapToTarget = Math.max(annualIncomeTarget - annualProjection, 0);
+  let annualIncomeTarget = 0;
+  let annualProjection = 0;
+  for (const month of goalMonths) {
+    annualIncomeTarget += targetByMonth.get(month) ?? 0;
+    if (month < pace.month) {
+      annualProjection += totalByMonth.get(month) ?? 0;
+    } else if (month === pace.month) {
+      annualProjection += pace.projected;
+    } else {
+      annualProjection += projectedPerBusinessDay * countBusinessDaysInMonth(pace.year, month);
+    }
+  }
 
   return {
     annualIncomeTarget,
     annualProjection,
-    progressPercent,
-    gapToTarget,
+    progressPercent:
+      annualIncomeTarget > 0 ? Math.max(0, Math.min((annualProjection / annualIncomeTarget) * 100, 999)) : 0,
+    gapToTarget: Math.max(annualIncomeTarget - annualProjection, 0),
     onTrack: annualProjection >= annualIncomeTarget,
+    source: "monthly_goals",
+    monthsWithGoal: goalMonths.length,
+    remainingMonthsWithGoal: goalMonths.filter((month) => month > pace.month).length,
   };
 }
 
@@ -427,12 +494,12 @@ function buildConsistencyAlerts({
   year,
   monthlySeries,
   analysisMonth,
-  kpis,
+  monthPace,
 }: {
   year: number;
   monthlySeries: PassiveIncomeByMonth[];
   analysisMonth: number;
-  kpis: DashboardPayload["kpis"];
+  monthPace: MonthPace;
 }): ConsistencyAlert[] {
   const alerts: ConsistencyAlert[] = [];
   const yearSeries = monthlySeries.filter((m) => m.year === year);
@@ -464,19 +531,23 @@ function buildConsistencyAlerts({
     });
   }
 
-  if (kpis.momGrowth !== null && kpis.momGrowth <= -15) {
+  // No mês em andamento, compara a projeção de fechamento (e não o parcial) com meses cheios.
+  const projectionLabel = monthPace.isCurrentMonth ? " (projeção do mês)" : "";
+  const momPercent = monthPace.projectedVsPreviousPercent;
+  if (momPercent !== null && momPercent <= -15) {
     alerts.push({
       code: "MOM_SHARP_DROP",
       severity: "critical",
-      message: `Queda forte no mês: ${kpis.momGrowth.toFixed(1)}% vs mês anterior.`,
+      message: `Queda forte no mês${projectionLabel}: ${momPercent.toFixed(1)}% vs mês anterior.`,
     });
   }
 
-  if (kpis.yoyGrowth !== null && kpis.yoyGrowth < 0) {
+  const yoyPercent = monthPace.yoyPercent;
+  if (yoyPercent !== null && yoyPercent < 0) {
     alerts.push({
       code: "YOY_NEGATIVE",
       severity: "warning",
-      message: `Comparativo anual negativo: ${kpis.yoyGrowth.toFixed(1)}%.`,
+      message: `Comparativo anual negativo${projectionLabel}: ${yoyPercent.toFixed(1)}%.`,
     });
   }
 
@@ -487,7 +558,7 @@ function buildInsights(
   kpis: DashboardPayload["kpis"],
   distribution: IncomeDistribution,
   monthlySeries: PassiveIncomeByMonth[],
-  year: number,
+  monthPace: MonthPace,
   cdiAnnualReference: number,
   fiiTrendSignals: {
     selicMetaPercent: number;
@@ -509,10 +580,12 @@ function buildInsights(
     }
   }
 
+  // Variação de até ±3% por dia útil é tratada como estabilidade.
+  const paceDelta = monthPace.paceDeltaPercent;
   const trend =
-    kpis.momGrowth && kpis.momGrowth > 0
+    paceDelta !== null && paceDelta > 3
       ? "alta"
-      : kpis.momGrowth && kpis.momGrowth < 0
+      : paceDelta !== null && paceDelta < -3
         ? "queda"
         : "estável";
 
@@ -527,7 +600,15 @@ function buildInsights(
     : new Date().getMonth() + 1;
   const nextMonth = currentMonth === 12 ? 1 : currentMonth + 1;
   const seasonalityFactor = computeSeasonalityFactor(allOrdered, nextMonth);
-  const forecastNextMonth = Math.max(weightedBase * seasonalityFactor, 0);
+  // Run-rate por dia útil do mês analisado × dias úteis do próximo mês; média ponderada como fallback.
+  const nextMonthYear = monthPace.month === 12 ? monthPace.year + 1 : monthPace.year;
+  const runRateForecast =
+    monthPace.projected > 0
+      ? (monthPace.projected / monthPace.totalBusinessDays) *
+        countBusinessDaysInMonth(nextMonthYear, nextMonth) *
+        seasonalityFactor
+      : null;
+  const forecastNextMonth = Math.max(runRateForecast ?? weightedBase * seasonalityFactor, 0);
   const { stdDev, cvPercent } = summarizeVolatility(recentForVol);
   const forecastConfidence = computeForecastConfidence(histForModel.length, cvPercent);
   const bandScale = Math.max(0.05, (100 - forecastConfidence) / 100);
@@ -535,11 +616,11 @@ function buildInsights(
   const forecastRangeMin = Math.max(forecastNextMonth - rangeWidth, 0);
   const forecastRangeMax = forecastNextMonth + rangeWidth;
 
-  const anomaly = detectAnomaly(allOrdered, year);
+  const anomaly = monthPace.anomaly;
 
   const commentary = anomaly.detected
     ? `Alerta de anomalia no mês atual: ${anomaly.reason}. A previsão do próximo mês é de aproximadamente R$ ${forecastNextMonth.toFixed(2)}.`
-    : `Sua renda passiva está em ${trend}. A previsão do próximo mês é de aproximadamente R$ ${forecastNextMonth.toFixed(2)}.`;
+    : `Sua renda passiva está ${trend === "estável" ? "estável" : `em ${trend}`}. A previsão do próximo mês é de aproximadamente R$ ${forecastNextMonth.toFixed(2)}.`;
 
   return {
     growthTrend: trend,
@@ -902,33 +983,3 @@ function computeForecastConfidence(sampleSize: number, cvPercent: number): numbe
   return Math.max(35, Math.min(95, raw));
 }
 
-function detectAnomaly(
-  series: PassiveIncomeByMonth[],
-  year: number,
-): { detected: boolean; reason: string | null } {
-  const yearSeries = series.filter((item) => item.year === year);
-  if (yearSeries.length < 2) return { detected: false, reason: null };
-  const current = yearSeries[yearSeries.length - 1];
-  const baseline = series
-    .filter((item) => item.year < current.year || item.month < current.month)
-    .slice(-6)
-    .map((item) => item.total);
-  if (baseline.length < 3) return { detected: false, reason: null };
-  const { stdDev } = summarizeVolatility(baseline);
-  if (stdDev <= 0) return { detected: false, reason: null };
-  const mean = baseline.reduce((acc, v) => acc + v, 0) / baseline.length;
-  const zScore = (current.total - mean) / stdDev;
-  if (zScore <= -2) {
-    return {
-      detected: true,
-      reason: "queda fora do padrão histórico recente",
-    };
-  }
-  if (zScore >= 2) {
-    return {
-      detected: true,
-      reason: "alta fora do padrão histórico recente",
-    };
-  }
-  return { detected: false, reason: null };
-}

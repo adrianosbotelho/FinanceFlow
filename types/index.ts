@@ -195,11 +195,16 @@ export interface FinancialInsights {
 }
 
 export interface GoalProgress {
+  // Soma das metas mensais de renda do ano (ou meta via env quando não há metas cadastradas).
   annualIncomeTarget: number;
+  // Projeção de renda nos mesmos meses que têm meta.
   annualProjection: number;
   progressPercent: number;
   gapToTarget: number;
   onTrack: boolean;
+  source?: "monthly_goals" | "env";
+  monthsWithGoal?: number;
+  remainingMonthsWithGoal?: number;
 }
 
 export interface ConsistencyAlert {
@@ -236,6 +241,7 @@ export interface MonthComparisonPoint {
 
 export interface DashboardPayload {
   kpis: DashboardKPIs;
+  monthPace?: MonthPace;
   monthlySeries: PassiveIncomeByMonth[];
   yoySeries: PassiveIncomeByMonth[];
   /** Comparativo mesmo mês em ano anterior vs ano atual, por tipo (Itaú, Santander, FIIs) */
@@ -356,6 +362,8 @@ export interface MonthPace {
   dailyRate: number;
   previousMonthTotal: number | null;
   previousMonthBusinessDays: number;
+  // Renda esperada até a data-base de cada investimento, no ritmo por dia útil do mês anterior.
+  expectedToDate: number | null;
   sameMonthLastYearTotal: number | null;
   projectedVsPreviousPercent: number | null;
   paceDeltaPercent: number | null;
@@ -453,10 +461,22 @@ export interface ProfessionalDataQuality {
   warnings: string[];
 }
 
+export interface ProfessionalBenchmarkItem {
+  key: string;
+  label: string;
+  monthlyYieldPercent: number | null;
+  percentOfCdi: number | null;
+  contractedCdiPercent: number | null;
+}
+
 export interface ProfessionalBenchmark {
   referenceMonthLabel: string;
+  // Rendimento do mês sobre o capital aplicado (%), projetado quando o mês está em andamento.
   portfolioMomPercent: number | null;
+  // CDI acumulado nos dias úteis do mês (%).
   cdiMomPercent: number | null;
+  portfolioPercentOfCdi?: number | null;
+  items?: ProfessionalBenchmarkItem[];
   ifixMomPercent: number | null;
   ibovMomPercent: number | null;
   excessVsCdiPercent: number | null;

@@ -15,12 +15,8 @@ interface Props {
 }
 
 export function InsightsPanel({ kpis, insights, goalProgress, alerts }: Props) {
-  const bestSourceLabel =
-    insights.bestSource === "CDB_ITAU"
-      ? "CDB Itaú"
-      : insights.bestSource === "CDB_OTHER"
-        ? "CDB Santander"
-        : "FIIs";
+  // bestSource já vem com o nome do investimento; "FII" identifica os dividendos.
+  const bestSourceLabel = insights.bestSource === "FII" ? "FIIs" : insights.bestSource;
 
   return (
     <Card>
@@ -120,6 +116,9 @@ export function InsightsPanel({ kpis, insights, goalProgress, alerts }: Props) {
             Meta anual de renda passiva:
           </span>{" "}
           {formatCurrencyBRL(goalProgress.annualIncomeTarget)}
+          {goalProgress.source === "monthly_goals" && goalProgress.monthsWithGoal
+            ? ` (soma das metas de ${goalProgress.monthsWithGoal} meses)`
+            : ""}
         </li>
         <li>
           <span className="font-medium text-slate-100">Progresso da meta:</span>{" "}

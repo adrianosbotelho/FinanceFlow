@@ -12,7 +12,7 @@ import {
 } from "../types";
 
 // Versão do motor de insights. Históricos gravados com outra versão não são exibidos.
-export const INSIGHTS_ENGINE_VERSION = "2026-09-26-v3";
+export const INSIGHTS_ENGINE_VERSION = "2026-09-26-v4";
 
 // Janela (em dias úteis) usada para medir o ganho diário recente a partir das revisões.
 const RATE_WINDOW_BUSINESS_DAYS = 5;
@@ -132,6 +132,8 @@ export function buildMonthPace(input: {
   }
 
   const paceInvestments: MonthPaceInvestment[] = [];
+  let expectedToDate = 0;
+  let hasExpectedBase = false;
   for (const inv of investments) {
     const invested = toNum(inv.amount_invested);
     const realized = valueByInvestmentMonth.get(`${inv.id}|${monthKey(year, month)}`) ?? 0;
@@ -140,8 +142,11 @@ export function buildMonthPace(input: {
 
     const label = inv.name || `${inv.type} ${inv.institution}`;
     const previousValue = valueByInvestmentMonth.get(`${inv.id}|${monthKey(prevRef.year, prevRef.month)}`) ?? 0;
+    const previousPerBusinessDay = previousValue / previousMonthBusinessDays;
+    if (previousValue > 0) hasExpectedBase = true;
 
     if (!isCurrentMonth) {
+      expectedToDate += previousPerBusinessDay * totalBusinessDays;
       paceInvestments.push({
         investmentId: inv.id,
         label,
@@ -178,6 +183,8 @@ export function buildMonthPace(input: {
           : latestAsOf;
     const elapsedBusinessDays = effectiveAsOf ? countBusinessDaysBetween(dayBeforeMonth, effectiveAsOf) : 0;
     const remainingBusinessDays = countBusinessDaysBetween(effectiveAsOf ?? dayBeforeMonth, monthEnd);
+
+    expectedToDate += previousPerBusinessDay * elapsedBusinessDays;
 
     let dailyRate = 0;
     if (effectiveAsOf && points.length >= 2) {
@@ -286,6 +293,7 @@ export function buildMonthPace(input: {
     dailyRate,
     previousMonthTotal,
     previousMonthBusinessDays,
+    expectedToDate: hasExpectedBase ? expectedToDate : null,
     sameMonthLastYearTotal,
     projectedVsPreviousPercent: pctChange(projected, previousMonthTotal),
     paceDeltaPercent:
