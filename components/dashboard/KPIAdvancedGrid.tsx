@@ -44,10 +44,11 @@ export function KPIAdvancedGrid({ kpis }: KPIAdvancedGridProps) {
   const profitTone = toneClass(kpis.totalProfit);
   const incomeVariationTone = toneClass(kpis.momGrowth);
   const returnTone = toneClass(kpis.portfolioYield);
-  const monthlyIncomeDelta = deriveMomDelta(
-    kpis.totalPassiveIncomeCurrentMonth,
-    kpis.momGrowth,
-  );
+  const isProjection = kpis.comparisonBasis === "projection";
+  const monthlyIncomeDelta =
+    kpis.momDeltaValue !== undefined
+      ? kpis.momDeltaValue
+      : deriveMomDelta(kpis.totalPassiveIncomeCurrentMonth, kpis.momGrowth);
   const rolling12MonthlyAverage = kpis.rolling12Months / 12;
 
   const cdbCount = kpis.cdbItems.length;
@@ -110,12 +111,19 @@ export function KPIAdvancedGrid({ kpis }: KPIAdvancedGridProps) {
               <p className={`mt-2 text-2xl font-extrabold ${tone}`}>
                 {formatPercentage(cdb.momGrowth)} {arrow(cdb.momGrowth)}
               </p>
-              <p className="mt-2 text-xs text-slate-400">Mês atual</p>
+              <p className="mt-2 text-xs text-slate-400">
+                {isProjection ? "Mês atual (realizado)" : "Mês atual"}
+              </p>
               <p className={`text-base font-semibold ${colorClass}`}>
                 {formatCurrencyBRL(cdb.currentMonth)}
               </p>
+              {isProjection && cdb.projectedMonth !== undefined ? (
+                <p className="text-xs text-slate-400">
+                  Projeção: <span className="font-semibold text-slate-200">{formatCurrencyBRL(cdb.projectedMonth)}</span>
+                </p>
+              ) : null}
               <p className={`mt-1 text-xs font-semibold ${toneClass(cdb.momDelta)}`}>
-                Δ M/M: {formatSignedCurrency(cdb.momDelta)}
+                Δ M/M{isProjection ? " (projeção)" : ""}: {formatSignedCurrency(cdb.momDelta)}
               </p>
             </article>
           );
@@ -141,7 +149,9 @@ export function KPIAdvancedGrid({ kpis }: KPIAdvancedGridProps) {
       <article className="rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm xl:col-span-3">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <p className="text-sm font-semibold text-slate-200">Variação da renda (M/M)</p>
+            <p className="text-sm font-semibold text-slate-200">
+              Variação da renda (M/M){isProjection ? " · projeção" : ""}
+            </p>
             <p className={`mt-2 text-3xl font-extrabold ${incomeVariationTone}`}>
               {formatPercentage(kpis.momGrowth)} {arrow(kpis.momGrowth)}
             </p>

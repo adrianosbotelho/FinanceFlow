@@ -118,6 +118,8 @@ export interface PassiveIncomeByMonth {
   total: number;
   mom_growth?: number | null;
   yoy_growth?: number | null;
+  /** Mês em andamento: projeção de fechamento usada como base das variações. */
+  projected_total?: number;
 }
 
 /** Per-CDB KPI entry */
@@ -127,6 +129,8 @@ export interface CdbKpiEntry {
   currentMonth: number;
   momGrowth: number | null;
   momDelta: number | null;
+  /** Mês em andamento: projeção de fechamento do CDB. */
+  projectedMonth?: number;
 }
 
 export interface DashboardKPIs {
@@ -150,6 +154,11 @@ export interface DashboardKPIs {
   capitalGainPct: number;
   totalProfit: number;
   totalProfitPct: number;
+  /** "projection": mês em andamento, variações comparam a projeção de fechamento. */
+  comparisonBasis?: "projection" | "realized";
+  projectedCurrentMonth?: number;
+  momDeltaValue?: number | null;
+  hasActiveFii?: boolean;
 }
 
 /** Per-CDB distribution entry */
