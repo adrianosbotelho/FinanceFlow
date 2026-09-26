@@ -8,6 +8,7 @@ import {
   maybeEnhanceDailyInsightWithLlm,
   summarizeHistoryFromRows,
 } from "../../../../lib/daily-insights-agent";
+import { INSIGHTS_ENGINE_VERSION, loadMonthPace } from "../../../../lib/month-pace";
 import {
   DailyInsightApiPayload,
   DailyInsightGoalContext,
@@ -143,6 +144,7 @@ async function fetchHistory(year: number): Promise<DailyInsightApiPayload["histo
     .from("insight_daily_runs")
     .select("run_date,radar_status,confidence_percent,headline,generated_by")
     .eq("year", year)
+    .eq("report->>engineVersion", INSIGHTS_ENGINE_VERSION)
     .order("run_date", { ascending: false })
     .limit(14);
 
@@ -195,7 +197,17 @@ export async function GET(req: NextRequest) {
   warnings.push(...goalContextPayload.warnings);
   const goalContext = goalContextPayload.context;
 
-  const currentDataSignature = buildDailyInsightDataSignature(dashboardPayload, goalContext);
+  let monthPace;
+  try {
+    const paceResult = await loadMonthPace(year, month, runDate);
+    monthPace = paceResult.pace;
+    warnings.push(...paceResult.warnings);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Erro ao calcular ritmo do mês.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+
+  const currentDataSignature = buildDailyInsightDataSignature(dashboardPayload, monthPace, goalContext);
 
   if (!force) {
     const { data: cachedRow, error: cachedError } = await supabase
@@ -251,7 +263,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const baseReport = buildDailyInsightReport(dashboardPayload, year, month, runDate, goalContext);
+  const baseReport = buildDailyInsightReport(dashboardPayload, monthPace, runDate, goalContext);
   const report = await maybeEnhanceDailyInsightWithLlm(baseReport);
 
   const persistPayload = {

@@ -308,6 +308,7 @@ export interface DailyInsightReport {
   generatedAt: string;
   generatedBy: DailyInsightSource;
   model: string | null;
+  engineVersion?: string;
   dataSignature?: string;
   goalContext?: DailyInsightGoalContext;
   radarStatus: DailyInsightRadarStatus;
@@ -318,6 +319,56 @@ export interface DailyInsightReport {
   actions: DailyInsightAction[];
   risks: DailyInsightRisk[];
   evidence: DailyInsightEvidence[];
+}
+
+// Ritmo do mês: lançamentos são o acumulado até o dia útil anterior (D−1).
+export interface MonthPaceInvestment {
+  investmentId: string;
+  label: string;
+  type: InvestmentType;
+  invested: number;
+  realized: number;
+  asOfDate: string | null;
+  elapsedBusinessDays: number;
+  remainingBusinessDays: number;
+  dailyRate: number;
+  projected: number;
+}
+
+export interface MonthPaceClosedMonth {
+  year: number;
+  month: number;
+  total: number;
+  businessDays: number;
+}
+
+export interface MonthPace {
+  year: number;
+  month: number;
+  isCurrentMonth: boolean;
+  asOfDate: string | null;
+  totalBusinessDays: number;
+  elapsedBusinessDays: number;
+  remainingBusinessDays: number;
+  elapsedRatio: number;
+  realized: number;
+  projected: number;
+  dailyRate: number;
+  previousMonthTotal: number | null;
+  previousMonthBusinessDays: number;
+  sameMonthLastYearTotal: number | null;
+  projectedVsPreviousPercent: number | null;
+  paceDeltaPercent: number | null;
+  yoyPercent: number | null;
+  anomaly: { detected: boolean; reason: string | null };
+  volatilityPercent: number;
+  ytdRealized: number;
+  annualProjection: number;
+  hasActiveFii: boolean;
+  bestInvestment: { investmentId: string; label: string } | null;
+  bestYieldInvestment: { investmentId: string; label: string; monthlyYieldPercent: number } | null;
+  investments: MonthPaceInvestment[];
+  closedMonths: MonthPaceClosedMonth[];
 }
 
 export interface DailyInsightHistoryItem {

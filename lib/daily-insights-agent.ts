@@ -6,25 +6,35 @@ import {
   DailyInsightRadarStatus,
   DailyInsightReport,
   DashboardPayload,
+  MonthPace,
 } from "../types";
+import { INSIGHTS_ENGINE_VERSION } from "./month-pace";
+import { countBusinessDaysInMonth } from "./business-days";
 import { formatCurrencyBRL, formatPercentage, monthLabel } from "./formatters";
 
 type MonthlyPaceContext = {
   analysisMonth: number;
   analysisYear: number;
   isCurrentContextMonth: boolean;
+  asOfDate: string | null;
   elapsedBusinessDays: number | null;
   totalBusinessDays: number | null;
   elapsedRatio: number | null;
   previousMonthTotal: number | null;
-  expectedSoFarFromPrevious: number | null;
   projectedFullMonth: number | null;
   projectedVsPreviousPercent: number | null;
   paceDeltaPercent: number | null;
+  yoyPercent: number | null;
+  anomalyDetected: boolean;
+  anomalyReason: string | null;
+  volatilityPercent: number;
+  annualProjection: number;
+  bestSourceLabel: string | null;
+  bestYield: MonthPace["bestYieldInvestment"];
+  hasActiveFii: boolean;
+  nextMonthForecast: number;
   isEarlyMonth: boolean;
 };
-
-const DAILY_INSIGHTS_ENGINE_VERSION = "2026-04-12-v2";
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -34,110 +44,38 @@ function toFixedNumber(value: number, digits = 2): number {
   return Number(value.toFixed(digits));
 }
 
-function countBusinessDaysInMonth(year: number, month: number): number {
-  const daysInMonth = new Date(year, month, 0).getDate();
-  let count = 0;
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    const weekday = new Date(year, month - 1, day).getDay();
-    if (weekday >= 1 && weekday <= 5) count += 1;
-  }
-  return count;
+function formatShortDate(isoDate: string | null): string {
+  if (!isoDate) return "—";
+  const [, month, day] = isoDate.split("-");
+  return `${day}/${month}`;
 }
 
-function countBusinessDaysElapsedInMonth(year: number, month: number, dayLimit: number): number {
-  let count = 0;
-  for (let day = 1; day <= dayLimit; day += 1) {
-    const weekday = new Date(year, month - 1, day).getDay();
-    if (weekday >= 1 && weekday <= 5) count += 1;
-  }
-  return count;
-}
-
-function parseIsoDateParts(isoDate: string): { year: number; month: number; day: number } | null {
-  const parts = isoDate.split("-");
-  if (parts.length !== 3) return null;
-  const year = Number(parts[0]);
-  const month = Number(parts[1]);
-  const day = Number(parts[2]);
-  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
-  return { year, month, day };
-}
-
-function findMonthTotal(series: DashboardPayload["monthlySeries"], year: number, month: number): number | null {
-  const point = series.find((item) => item.year === year && item.month === month);
-  if (!point) return null;
-  return Number(point.total ?? 0);
-}
-
-function resolveMonthlyPaceContext(
-  data: DashboardPayload,
-  year: number,
-  analysisMonth: number,
-  runDate: string,
-): MonthlyPaceContext {
-  const todayParts = parseIsoDateParts(runDate);
-  const isCurrentContextMonth =
-    todayParts !== null &&
-    year === todayParts.year &&
-    analysisMonth === todayParts.month;
-
-  const elapsedBusinessDays =
-    isCurrentContextMonth && todayParts !== null
-      ? countBusinessDaysElapsedInMonth(year, analysisMonth, todayParts.day)
-      : null;
-  const totalBusinessDays =
-    isCurrentContextMonth ? countBusinessDaysInMonth(year, analysisMonth) : null;
-  const elapsedRatio =
-    elapsedBusinessDays !== null &&
-    totalBusinessDays !== null &&
-    totalBusinessDays > 0
-      ? elapsedBusinessDays / totalBusinessDays
-      : null;
-
-  const previousMonth = analysisMonth > 1 ? analysisMonth - 1 : 12;
-  const previousYear = analysisMonth > 1 ? year : year - 1;
-  const previousMonthTotal = findMonthTotal(data.monthlySeries, previousYear, previousMonth);
-  const currentIncome = Number(data.kpis.totalPassiveIncomeCurrentMonth ?? 0);
-
-  const expectedSoFarFromPrevious =
-    isCurrentContextMonth &&
-    previousMonthTotal !== null &&
-    previousMonthTotal > 0 &&
-    elapsedRatio !== null
-      ? previousMonthTotal * elapsedRatio
-      : null;
-
-  const projectedFullMonth =
-    isCurrentContextMonth && elapsedRatio !== null && elapsedRatio > 0
-      ? currentIncome / elapsedRatio
-      : currentIncome;
-
-  const projectedVsPreviousPercent =
-    previousMonthTotal !== null && previousMonthTotal > 0
-      ? ((projectedFullMonth - previousMonthTotal) / previousMonthTotal) * 100
-      : null;
-
-  const paceDeltaPercent =
-    expectedSoFarFromPrevious !== null && expectedSoFarFromPrevious > 0
-      ? ((currentIncome - expectedSoFarFromPrevious) / expectedSoFarFromPrevious) * 100
-      : null;
-
-  const isEarlyMonth =
-    isCurrentContextMonth && elapsedRatio !== null ? elapsedRatio <= 0.45 : false;
-
+function resolveMonthlyPaceContext(pace: MonthPace): MonthlyPaceContext {
+  const isCurrent = pace.isCurrentMonth;
   return {
-    analysisMonth,
-    analysisYear: year,
-    isCurrentContextMonth,
-    elapsedBusinessDays,
-    totalBusinessDays,
-    elapsedRatio,
-    previousMonthTotal,
-    expectedSoFarFromPrevious,
-    projectedFullMonth,
-    projectedVsPreviousPercent,
-    paceDeltaPercent,
-    isEarlyMonth,
+    analysisMonth: pace.month,
+    analysisYear: pace.year,
+    isCurrentContextMonth: isCurrent,
+    asOfDate: pace.asOfDate,
+    elapsedBusinessDays: isCurrent ? pace.elapsedBusinessDays : null,
+    totalBusinessDays: isCurrent ? pace.totalBusinessDays : null,
+    elapsedRatio: isCurrent ? pace.elapsedRatio : null,
+    previousMonthTotal: pace.previousMonthTotal,
+    projectedFullMonth: pace.projected,
+    projectedVsPreviousPercent: pace.projectedVsPreviousPercent,
+    paceDeltaPercent: pace.paceDeltaPercent,
+    yoyPercent: pace.yoyPercent,
+    anomalyDetected: pace.anomaly.detected,
+    anomalyReason: pace.anomaly.reason,
+    volatilityPercent: pace.volatilityPercent,
+    annualProjection: pace.annualProjection,
+    bestSourceLabel: pace.bestInvestment?.label ?? null,
+    bestYield: pace.bestYieldInvestment,
+    hasActiveFii: pace.hasActiveFii,
+    nextMonthForecast:
+      (pace.projected / pace.totalBusinessDays) *
+      countBusinessDaysInMonth(pace.month === 12 ? pace.year + 1 : pace.year, pace.month === 12 ? 1 : pace.month + 1),
+    isEarlyMonth: isCurrent ? pace.elapsedRatio <= 0.45 : false,
   };
 }
 
@@ -150,27 +88,31 @@ export function getSaoPauloDateISO(reference = new Date()): string {
   }).format(reference);
 }
 
-function mapBestSourceToLabel(bestSource: DashboardPayload["insights"]["bestSource"]): string {
-  if (bestSource === "CDB_ITAU") return "CDB Itaú";
-  if (bestSource === "CDB_OTHER") return "CDB Santander";
-  return "FIIs";
+const REPLACED_DASHBOARD_ALERTS = new Set(["MOM_SHARP_DROP", "YOY_NEGATIVE"]);
+
+function relevantDashboardAlerts(data: DashboardPayload): DashboardPayload["alerts"] {
+  // Queda MoM e YoY do dashboard comparam o mês parcial com meses cheios; o ritmo do mês substitui.
+  return data.alerts.filter((alert) => !REPLACED_DASHBOARD_ALERTS.has(alert.code));
 }
 
 export function buildDailyInsightDataSignature(
   data: DashboardPayload,
+  pace: MonthPace,
   goalContext?: DailyInsightGoalContext | null,
 ): string {
   const latestMonth = data.monthlySeries[data.monthlySeries.length - 1]?.month ?? null;
   return JSON.stringify({
-    engineVersion: DAILY_INSIGHTS_ENGINE_VERSION,
+    engineVersion: INSIGHTS_ENGINE_VERSION,
+    asOfDate: pace.asOfDate,
+    monthProjected: toFixedNumber(pace.projected, 2),
     latestMonth,
     monthIncome: toFixedNumber(data.kpis.totalPassiveIncomeCurrentMonth, 2),
     monthCdb: toFixedNumber(data.kpis.cdbTotalYieldCurrentMonth, 2),
     monthFii: toFixedNumber(data.kpis.fiiDividendsCurrentMonth, 2),
     mom: toFixedNumber(data.kpis.momGrowth ?? 0, 2),
-    yoy: toFixedNumber(data.kpis.yoyGrowth ?? 0, 2),
+    yoy: toFixedNumber(pace.yoyPercent ?? 0, 2),
     ytd: toFixedNumber(data.kpis.ytdPassiveIncome, 2),
-    annualProjection: toFixedNumber(data.kpis.annualProjection, 2),
+    annualProjection: toFixedNumber(pace.annualProjection, 2),
     annualTarget: toFixedNumber(data.goalProgress.annualIncomeTarget, 2),
     gap: toFixedNumber(data.goalProgress.gapToTarget, 2),
     goalMonthlyTarget:
@@ -259,11 +201,7 @@ function computeRiskScore(
   let score = 0;
   const enforceMonthDropSignals = !pace.isCurrentContextMonth || !pace.isEarlyMonth;
 
-  const alertsScore = data.alerts.reduce((acc, alert) => {
-    if (alert.code === "MOM_SHARP_DROP" && pace.isCurrentContextMonth) {
-      if (!enforceMonthDropSignals) return acc;
-      if (pace.paceDeltaPercent !== null && pace.paceDeltaPercent >= -12) return acc;
-    }
+  const alertsScore = relevantDashboardAlerts(data).reduce((acc, alert) => {
     if (alert.severity === "critical") return acc + 2;
     if (alert.severity === "warning") return acc + 1;
     return acc;
@@ -271,14 +209,14 @@ function computeRiskScore(
 
   score += alertsScore;
 
-  if (data.insights.anomalyDetected) score += 2;
+  if (pace.anomalyDetected) score += 2;
   const momReference = normalizedMomDropPercent(data, pace);
   if (enforceMonthDropSignals) {
     if ((momReference ?? 0) <= -20) score += 2;
     if ((momReference ?? 0) < 0) score += 1;
   }
-  if ((data.kpis.yoyGrowth ?? 0) < 0 && (!pace.isCurrentContextMonth || !pace.isEarlyMonth)) score += 1;
-  if (data.insights.volatilityPercent >= 35) score += 2;
+  if ((pace.yoyPercent ?? 0) < 0 && (!pace.isCurrentContextMonth || !pace.isEarlyMonth)) score += 1;
+  if (pace.volatilityPercent >= 35) score += 2;
   if (data.insights.forecastConfidence < 55) score += 1;
   if (!data.goalProgress.onTrack) {
     if (pace.isCurrentContextMonth && pace.isEarlyMonth && (momReference ?? 0) > -8) {
@@ -359,18 +297,22 @@ function buildActionList(
     }
   }
 
-  const bestSource = mapBestSourceToLabel(data.insights.bestSource);
-  actions.push({
-    id: "next-aporte-allocation",
-    title: `Direcionar próximo aporte para ${bestSource}`,
-    rationale:
-      "A melhor fonte recente de rendimento está liderando o desempenho e tende a melhorar eficiência do aporte incremental.",
-    expectedImpact: `Simulação base: aporte de ${formatCurrencyBRL(safeAporte)} focado em ${bestSource}.`,
-    priority: data.goalProgress.onTrack ? "medium" : "high",
-  });
+  if (pace.bestYield) {
+    const target = pace.bestYield.label;
+    actions.push({
+      id: "next-aporte-allocation",
+      title: `Direcionar próximo aporte para ${target}`,
+      rationale: `Maior rendimento sobre o capital aplicado no mês (${formatPercentage(
+        pace.bestYield.monthlyYieldPercent,
+      )} projetado), o que aumenta a renda gerada por real aportado.`,
+      expectedImpact: `Aporte de ${formatCurrencyBRL(safeAporte)} renderia ~${formatCurrencyBRL(
+        (safeAporte * pace.bestYield.monthlyYieldPercent) / 100,
+      )} por mês em ${target}.`,
+      priority: data.goalProgress.onTrack ? "medium" : "high",
+    });
+  }
 
-  const fiiShare = data.distribution.fii;
-  if (fiiShare > 0) {
+  if (pace.hasActiveFii) {
     actions.push({
       id: "fii-reinvestment-mix",
       title: "Reinvestir dividendos FIIs com balanceamento dinâmico",
@@ -384,7 +326,7 @@ function buildActionList(
   }
 
   const shouldInvestigateDrop =
-    data.insights.anomalyDetected ||
+    pace.anomalyDetected ||
     ((momReference ?? 0) < -12 && (!pace.isCurrentContextMonth || !pace.isEarlyMonth));
 
   if (shouldInvestigateDrop) {
@@ -406,24 +348,24 @@ function buildRisks(data: DashboardPayload, pace: MonthlyPaceContext): DailyInsi
   const momReference = normalizedMomDropPercent(data, pace);
   const enforceMonthDropSignals = !pace.isCurrentContextMonth || !pace.isEarlyMonth;
 
-  if (data.insights.anomalyDetected) {
+  if (pace.anomalyDetected) {
     risks.push({
       id: "anomaly",
       title: "Anomalia detectada na série",
       level: "high",
-      description: data.insights.anomalyReason ?? "Oscilação fora do padrão histórico detectada.",
+      description: pace.anomalyReason ?? "Oscilação fora do padrão histórico detectada.",
       trigger: "Insight de anomalia no motor de previsão",
     });
   }
 
-  if (data.insights.volatilityPercent >= 30) {
+  if (pace.volatilityPercent >= 30) {
     risks.push({
       id: "volatility",
       title: "Volatilidade elevada",
       level: "medium",
       description:
         "Variações recentes aumentaram e podem reduzir previsibilidade do fechamento mensal.",
-      trigger: `Volatilidade em ${formatPercentage(data.insights.volatilityPercent)}`,
+      trigger: `Volatilidade em ${formatPercentage(pace.volatilityPercent)}`,
     });
   }
 
@@ -522,26 +464,32 @@ function buildEvidence(
           : "Sem base comparável",
       context:
         pace.elapsedBusinessDays !== null && pace.totalBusinessDays !== null
-          ? `${pace.elapsedBusinessDays}/${pace.totalBusinessDays} dias úteis corridos no mês`
+          ? `${pace.elapsedBusinessDays}/${pace.totalBusinessDays} dias úteis com dados (até ${formatShortDate(
+              pace.asOfDate,
+            )}), por dia útil vs mês anterior`
           : "Comparativo de ritmo disponível somente no mês corrente",
     },
     {
       id: "ev-projected-close",
       label: "Fechamento estimado do mês",
       value: formatCurrencyBRL(projectedValue),
-      context: "Estimado pelo ritmo atual de lançamentos",
+      context: pace.isCurrentContextMonth
+        ? "Realizado + ganho diário recente × dias úteis restantes"
+        : "Valor fechado do mês",
     },
     {
       id: "ev-yoy",
       label: "Crescimento YoY",
-      value: formatPercentage(data.kpis.yoyGrowth ?? 0),
-      context: "Variação versus mesmo mês do ano anterior",
+      value: pace.yoyPercent === null ? "Sem base comparável" : formatPercentage(pace.yoyPercent),
+      context: pace.isCurrentContextMonth
+        ? "Projeção do mês versus mesmo mês do ano anterior"
+        : "Variação versus mesmo mês do ano anterior",
     },
     {
       id: "ev-forecast",
       label: "Previsão próximo mês",
-      value: formatCurrencyBRL(data.insights.forecastNextMonth),
-      context: `Confiança ${formatPercentage(data.insights.forecastConfidence)}`,
+      value: formatCurrencyBRL(pace.nextMonthForecast),
+      context: "Ritmo por dia útil do mês × dias úteis do próximo mês",
     },
     {
       id: "ev-goal",
@@ -552,7 +500,7 @@ function buildEvidence(
     {
       id: "ev-best-source",
       label: "Melhor fonte",
-      value: mapBestSourceToLabel(data.insights.bestSource),
+      value: pace.bestSourceLabel ?? "—",
       context: "Fonte líder no período recente",
     },
   ].slice(0, 6);
@@ -560,15 +508,16 @@ function buildEvidence(
 
 export function buildDailyInsightReport(
   data: DashboardPayload,
-  year: number,
-  analysisMonth: number,
+  monthPace: MonthPace,
   runDate: string,
   goalContext?: DailyInsightGoalContext | null,
 ): DailyInsightReport {
-  const pace = resolveMonthlyPaceContext(data, year, analysisMonth, runDate);
+  const year = monthPace.year;
+  const analysisMonth = monthPace.month;
+  const pace = resolveMonthlyPaceContext(monthPace);
   const riskScore = computeRiskScore(data, pace, goalContext);
   const radarStatus = radarFromRiskScore(riskScore);
-  const alertPenalty = data.alerts.length * 3;
+  const alertPenalty = relevantDashboardAlerts(data).length * 3;
   const riskPenalty = riskScore * 4;
   const confidencePercent = clamp(
     toFixedNumber(data.insights.forecastConfidence - alertPenalty - riskPenalty, 1),
@@ -591,7 +540,7 @@ export function buildDailyInsightReport(
     pace.projectedVsPreviousPercent !== null ? pace.projectedVsPreviousPercent : data.kpis.momGrowth ?? 0;
   const paceSnippet =
     pace.isCurrentContextMonth && pace.elapsedBusinessDays !== null && pace.totalBusinessDays !== null
-      ? `ritmo de ${pace.elapsedBusinessDays}/${pace.totalBusinessDays} dias úteis, projeção mensal em ${formatCurrencyBRL(
+      ? `dados até ${formatShortDate(pace.asOfDate)} (${pace.elapsedBusinessDays}/${pace.totalBusinessDays} dias úteis), projeção mensal em ${formatCurrencyBRL(
           pace.projectedFullMonth ?? data.kpis.totalPassiveIncomeCurrentMonth,
         )} (${formatPercentage(vsPrevReference)} vs mês anterior)`
       : `renda do mês em ${formatCurrencyBRL(data.kpis.totalPassiveIncomeCurrentMonth)} (${formatPercentage(
@@ -600,10 +549,10 @@ export function buildDailyInsightReport(
 
   const summary =
     `Resumo diário ${runDate}: ${paceSnippet}, projeção anual em ${formatCurrencyBRL(
-      data.kpis.annualProjection,
-    )} e ${buildGoalContextSummary(data, goalContext)}. Melhor fonte atual: ${mapBestSourceToLabel(
-      data.insights.bestSource,
-    )}.`;
+      pace.annualProjection,
+    )} e ${buildGoalContextSummary(data, goalContext)}. Melhor fonte atual: ${
+      pace.bestSourceLabel ?? "—"
+    }.`;
 
   const actions = buildActionList(data, analysisMonth, pace);
   const priorityAction =
@@ -616,6 +565,7 @@ export function buildDailyInsightReport(
     generatedAt: new Date().toISOString(),
     generatedBy: "rule",
     model: null,
+    engineVersion: INSIGHTS_ENGINE_VERSION,
     goalContext: goalContext ?? undefined,
     radarStatus,
     confidencePercent,
@@ -625,7 +575,7 @@ export function buildDailyInsightReport(
     actions,
     risks: buildRisks(data, pace),
     evidence: buildEvidence(data, analysisMonth, pace),
-    dataSignature: buildDailyInsightDataSignature(data, goalContext),
+    dataSignature: buildDailyInsightDataSignature(data, monthPace, goalContext),
   };
 }
 
