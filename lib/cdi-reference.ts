@@ -87,3 +87,44 @@ export async function resolveCdiAnnualReferenceWithSource(): Promise<{
 export async function resolveCdiAnnualReference(): Promise<number> {
   return (await resolveCdiAnnualReferenceWithSource()).value;
 }
+
+const CDI_MONTHLY_SERIES_URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.4391/dados";
+const CDI_MONTHLY_FETCH_TIMEOUT_MS = 5000;
+const CDI_MONTHLY_FALLBACK_TTL_MS = 2 * 60 * 1000;
+const cdiMonthlyCache = new Map<number, { value: Map<number, number>; expiresAt: number }>();
+
+// CDI acumulado de cada mês do ano (% no mês), série 4391 do BCB. Mapa vazio se o BCB falhar.
+export async function resolveMonthlyCdiHistory(year: number): Promise<Map<number, number>> {
+  const now = Date.now();
+  const cached = cdiMonthlyCache.get(year);
+  if (cached && cached.expiresAt > now) return cached.value;
+
+  const result = new Map<number, number>();
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  try {
+    const controller = new AbortController();
+    timeout = setTimeout(() => controller.abort(), CDI_MONTHLY_FETCH_TIMEOUT_MS);
+    const url = `${CDI_MONTHLY_SERIES_URL}?formato=json&dataInicial=01/01/${year}&dataFinal=31/12/${year}`;
+    const response = await fetch(url, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`BCB status ${response.status}`);
+    const payload = (await response.json()) as BcbSeriesPoint[];
+    for (const point of Array.isArray(payload) ? payload : []) {
+      const [, month, pointYear] = String(point.data ?? "").split("/").map(Number);
+      const value = Number(String(point.valor ?? "").replace(",", "."));
+      if (pointYear === year && month >= 1 && month <= 12 && Number.isFinite(value)) {
+        result.set(month, value);
+      }
+    }
+    cdiMonthlyCache.set(year, { value: result, expiresAt: now + CDI_CACHE_SUCCESS_TTL_MS });
+  } catch (error) {
+    console.warn("Falha ao obter CDI mensal no BCB; meses passados usam o CDI atual.", error);
+    cdiMonthlyCache.set(year, { value: result, expiresAt: now + CDI_MONTHLY_FALLBACK_TTL_MS });
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+  return result;
+}

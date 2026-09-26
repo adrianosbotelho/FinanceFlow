@@ -67,11 +67,12 @@ export function InvestmentForm({ onSaved, initial, onCancelEdit }: Props) {
         name,
         amount_invested: Number(amountInvested),
       };
-      if (cdiRate) payload.cdi_rate = Number(cdiRate);
-      if (benchmark) payload.benchmark = benchmark.trim();
-      if (startDate) payload.start_date = startDate;
-      if (liquidity) payload.liquidity = liquidity.trim();
-      if (maturityDate) payload.maturity_date = maturityDate;
+      // Campos opcionais sempre enviados: vazio vira null, para permitir limpar na edição.
+      payload.cdi_rate = cdiRate.trim() ? cdiRate.trim() : null;
+      payload.benchmark = benchmark.trim() || null;
+      payload.start_date = startDate || null;
+      payload.liquidity = liquidity.trim() || null;
+      payload.maturity_date = maturityDate || null;
 
       const endpoint = isEditing ? `/api/investments/${initial!.id}` : "/api/investments";
       const method = isEditing ? "PUT" : "POST";
