@@ -325,11 +325,12 @@ export async function GET(req: NextRequest) {
       const previousIncome = previousEntry?.cdb_items.find(
         (entry) => entry.investment_id === item.investment_id,
       )?.income;
+      // momGrowth/momDelta seguem com o realizado; a projeção vai em campos próprios.
       return {
         ...item,
         projectedMonth: projected,
-        momGrowth: pctVs(projected, previousIncome),
-        momDelta: previousEntry ? projected - (previousIncome ?? 0) : null,
+        projectedMomGrowth: pctVs(projected, previousIncome),
+        projectedMomDelta: previousEntry ? projected - (previousIncome ?? 0) : null,
       };
     });
 

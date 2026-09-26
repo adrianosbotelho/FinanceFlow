@@ -129,8 +129,10 @@ export interface CdbKpiEntry {
   currentMonth: number;
   momGrowth: number | null;
   momDelta: number | null;
-  /** Mês em andamento: projeção de fechamento do CDB. */
+  /** Mês em andamento: projeção de fechamento do CDB e sua variação vs mês anterior. */
   projectedMonth?: number;
+  projectedMomGrowth?: number | null;
+  projectedMomDelta?: number | null;
 }
 
 export interface DashboardKPIs {

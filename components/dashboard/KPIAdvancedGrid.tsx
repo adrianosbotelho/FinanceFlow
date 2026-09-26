@@ -117,14 +117,20 @@ export function KPIAdvancedGrid({ kpis }: KPIAdvancedGridProps) {
               <p className={`text-base font-semibold ${colorClass}`}>
                 {formatCurrencyBRL(cdb.currentMonth)}
               </p>
+              <p className={`mt-1 text-xs font-semibold ${toneClass(cdb.momDelta)}`}>
+                Δ M/M: {formatSignedCurrency(cdb.momDelta)}
+              </p>
               {isProjection && cdb.projectedMonth !== undefined ? (
-                <p className="text-xs text-slate-400">
+                <p className="mt-1 text-xs text-slate-400">
                   Projeção: <span className="font-semibold text-slate-200">{formatCurrencyBRL(cdb.projectedMonth)}</span>
+                  {cdb.projectedMomGrowth !== null && cdb.projectedMomGrowth !== undefined ? (
+                    <span className={`ml-1 font-semibold ${toneClass(cdb.projectedMomGrowth)}`}>
+                      ({cdb.projectedMomGrowth > 0 ? "+" : ""}
+                      {formatPercentage(cdb.projectedMomGrowth)} vs mês anterior)
+                    </span>
+                  ) : null}
                 </p>
               ) : null}
-              <p className={`mt-1 text-xs font-semibold ${toneClass(cdb.momDelta)}`}>
-                Δ M/M{isProjection ? " (projeção)" : ""}: {formatSignedCurrency(cdb.momDelta)}
-              </p>
             </article>
           );
         })}
