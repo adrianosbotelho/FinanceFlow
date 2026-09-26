@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { supabase } from "../../../../lib/supabase";
-import { InvestmentType } from "../../../../types";
+import { normalizeInvestmentPayload } from "../../../../lib/investment-payload";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -10,37 +10,10 @@ interface Params {
   params: { id: string };
 }
 
-function normalizePayload(body: any) {
-  const type = body?.type as InvestmentType;
-  const institution = String(body?.institution ?? "").trim();
-  const name = String(body?.name ?? "").trim();
-  const amountInvested = Number(body?.amount_invested);
-
-  if (type !== "CDB" && type !== "FII") {
-    return { error: "Tipo inválido. Use CDB ou FII." };
-  }
-  if (!institution) {
-    return { error: "Instituição é obrigatória." };
-  }
-  if (!name) {
-    return { error: "Nome é obrigatório." };
-  }
-  if (!Number.isFinite(amountInvested) || amountInvested < 0) {
-    return { error: "Valor investido inválido." };
-  }
-  return {
-    data: {
-      type,
-      institution,
-      name,
-      amount_invested: amountInvested,
-    },
-  };
-}
 
 export async function PUT(req: NextRequest, { params }: Params) {
   const body = await req.json();
-  const parsed = normalizePayload(body);
+  const parsed = normalizeInvestmentPayload(body);
   if ("error" in parsed) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
