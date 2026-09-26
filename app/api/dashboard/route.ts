@@ -275,7 +275,7 @@ export async function GET(req: NextRequest) {
   const capitalGainPct = totalInvested > 0 ? (capitalGain / totalInvested) * 100 : 0;
   const totalProfit = capitalGain + kpisBase.rolling12Months;
   const totalProfitPct = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
-  const kpis = {
+  const kpis: DashboardPayload["kpis"] = {
     ...kpisBase,
     investedCapital: totalInvested,
     currentMarketValue,
@@ -283,7 +283,60 @@ export async function GET(req: NextRequest) {
     capitalGainPct,
     totalProfit,
     totalProfitPct,
+    comparisonBasis: "realized",
+    hasActiveFii: monthPace.hasActiveFii,
   };
+
+  // Mês em andamento: as variações comparam a projeção de fechamento (e não o parcial) com meses cheios.
+  const paceEntry = referenceSeries.find(
+    (m) => m.year === monthPace.year && m.month === monthPace.month,
+  );
+  if (monthPace.isCurrentMonth && paceEntry) {
+    const prevRef = monthPace.month > 1
+      ? { year: monthPace.year, month: monthPace.month - 1 }
+      : { year: monthPace.year - 1, month: 12 };
+    const previousEntry = referenceSeries.find(
+      (m) => m.year === prevRef.year && m.month === prevRef.month,
+    );
+    const pctVs = (current: number, previous: number | null | undefined): number | null =>
+      previous !== null && previous !== undefined && previous > 0
+        ? ((current - previous) / previous) * 100
+        : null;
+    const cdbProjected = monthPace.investments
+      .filter((item) => item.type === "CDB")
+      .reduce((acc, item) => acc + item.projected, 0);
+    const fiiProjected = monthPace.investments
+      .filter((item) => item.type === "FII")
+      .reduce((acc, item) => acc + item.projected, 0);
+    const previousCdbTotal = previousEntry
+      ? previousEntry.cdb_items.reduce((acc, item) => acc + item.income, 0)
+      : null;
+
+    kpis.comparisonBasis = "projection";
+    kpis.projectedCurrentMonth = monthPace.projected;
+    kpis.momGrowth = monthPace.projectedVsPreviousPercent;
+    kpis.momDeltaValue =
+      monthPace.previousMonthTotal !== null ? monthPace.projected - monthPace.previousMonthTotal : null;
+    kpis.yoyGrowth = monthPace.yoyPercent;
+    kpis.cdbMomGrowth = pctVs(cdbProjected, previousCdbTotal);
+    kpis.fiiMomGrowth = pctVs(fiiProjected, previousEntry?.fii_dividends);
+    kpis.cdbItems = kpis.cdbItems.map((item) => {
+      const projected = projectedById.get(item.investment_id) ?? item.currentMonth;
+      const previousIncome = previousEntry?.cdb_items.find(
+        (entry) => entry.investment_id === item.investment_id,
+      )?.income;
+      return {
+        ...item,
+        projectedMonth: projected,
+        momGrowth: pctVs(projected, previousIncome),
+        momDelta: previousEntry ? projected - (previousIncome ?? 0) : null,
+      };
+    });
+
+    paceEntry.projected_total = monthPace.projected;
+    paceEntry.mom_growth = monthPace.projectedVsPreviousPercent;
+    paceEntry.yoy_growth = monthPace.yoyPercent;
+  }
 
   const distribution: IncomeDistribution = (() => {
     const yearData = referenceSeries.filter((m) => m.year === year && m.month <= analysisMonth);

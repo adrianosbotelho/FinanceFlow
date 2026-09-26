@@ -7,6 +7,11 @@ import {
   formatPercentage,
   monthLabel,
 } from "../../lib/formatters";
+import {
+  countBusinessDaysElapsedInMonth,
+  countBusinessDaysInMonth,
+  previousBusinessDay,
+} from "../../lib/business-days";
 
 interface Props {
   data: PassiveIncomeByMonth[];
@@ -27,28 +32,16 @@ function toneClass(value: number | null): string {
   return "text-slate-200";
 }
 
-function countBusinessDaysInMonth(year: number, month: number): number {
-  const daysInMonth = new Date(year, month, 0).getDate();
-  let count = 0;
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    const weekDay = new Date(year, month - 1, day).getDay();
-    if (weekDay >= 1 && weekDay <= 5) count += 1;
-  }
-  return count;
-}
-
+// Mês em andamento: lançamentos são o acumulado até o dia útil anterior (D−1).
 function countBusinessDaysElapsed(year: number, month: number): number {
   const now = new Date();
   if (year < now.getFullYear() || (year === now.getFullYear() && month < now.getMonth() + 1)) {
     return countBusinessDaysInMonth(year, month);
   }
   if (year === now.getFullYear() && month === now.getMonth() + 1) {
-    let count = 0;
-    for (let day = 1; day <= now.getDate(); day += 1) {
-      const weekDay = new Date(year, month - 1, day).getDay();
-      if (weekDay >= 1 && weekDay <= 5) count += 1;
-    }
-    return count;
+    const dataDay = previousBusinessDay(now);
+    if (dataDay.getMonth() + 1 !== month) return 0;
+    return countBusinessDaysElapsedInMonth(year, month, dataDay.getDate());
   }
   return 0;
 }
@@ -59,7 +52,7 @@ function buildDailyTooltip(value: number, year: number, month: number): string {
   const days = isCurrentMonth ? countBusinessDaysElapsed(year, month) : countBusinessDaysInMonth(year, month);
   if (days <= 0) return formatCurrencyBRL(value);
   const daily = value / days;
-  const label = isCurrentMonth ? `${days} dias úteis passados` : `${days} dias úteis`;
+  const label = isCurrentMonth ? `${days} dias úteis com dados` : `${days} dias úteis`;
   return `${formatCurrencyBRL(value)} ÷ ${label} = ${formatCurrencyBRL(daily)}/dia`;
 }
 
@@ -91,7 +84,7 @@ export function MonthlyTable({ data }: Props) {
 
   const summary = data.reduce(
     (acc, m) => {
-      const momValue = resolveMonthOverMonthValue(m.total, m.mom_growth);
+      const momValue = resolveMonthOverMonthValue(m.projected_total ?? m.total, m.mom_growth);
       for (let i = 0; i < m.cdb_items.length; i++) {
         if (!acc.cdbTotals[i]) acc.cdbTotals[i] = 0;
         acc.cdbTotals[i] += m.cdb_items[i].income;
@@ -140,7 +133,7 @@ export function MonthlyTable({ data }: Props) {
     ];
 
     const rows = data.map((m) => {
-      const momValue = resolveMonthOverMonthValue(m.total, m.mom_growth);
+      const momValue = resolveMonthOverMonthValue(m.projected_total ?? m.total, m.mom_growth);
       return [
         String(m.month),
         String(m.year),
@@ -215,7 +208,7 @@ export function MonthlyTable({ data }: Props) {
           </thead>
           <tbody className="divide-y divide-slate-700 text-sm">
             {data.map((m) => {
-              const momValue = resolveMonthOverMonthValue(m.total, m.mom_growth);
+              const momValue = resolveMonthOverMonthValue(m.projected_total ?? m.total, m.mom_growth);
               return (
                 <tr
                   key={`${m.year}-${m.month}`}
@@ -250,6 +243,9 @@ export function MonthlyTable({ data }: Props) {
                   />
                   <td className={`px-6 py-4 font-medium ${toneClass(m.mom_growth ?? null)}`}>
                     {formatPercentage(m.mom_growth ?? null)}
+                    {m.projected_total !== undefined ? (
+                      <span className="ml-1 text-[10px] font-normal text-slate-500">(projeção)</span>
+                    ) : null}
                   </td>
                   <td className={`px-6 py-4 font-medium ${toneClass(momValue)}`}>
                     {momValue === null ? "—" : formatCurrencyBRL(momValue)}

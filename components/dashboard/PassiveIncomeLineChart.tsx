@@ -22,13 +22,16 @@ export function PassiveIncomeLineChart({ data }: Props) {
     total: m.total,
   }));
 
-  const currentTotal =
-    data.length > 0 ? data[data.length - 1]?.total ?? 0 : 0;
+  const lastEntry = data.length > 0 ? data[data.length - 1] : null;
+  const currentTotal = lastEntry?.total ?? 0;
+  // Mês em andamento: a variação compara a projeção de fechamento, não o parcial.
+  const comparableTotal = lastEntry?.projected_total ?? currentTotal;
+  const isProjection = lastEntry?.projected_total !== undefined;
   const previousTotal =
     data.length > 1 ? data[data.length - 2]?.total ?? null : null;
   const momGrowth =
     previousTotal !== null && previousTotal > 0
-      ? ((currentTotal - previousTotal) / previousTotal) * 100
+      ? ((comparableTotal - previousTotal) / previousTotal) * 100
       : null;
   const isPositive = momGrowth !== null && momGrowth >= 0;
   const isNegative = momGrowth !== null && momGrowth < 0;
@@ -73,7 +76,9 @@ export function PassiveIncomeLineChart({ data }: Props) {
               {deltaArrow}
               {deltaLabel}
             </span>
-            <span className="text-[11px] text-slate-500">vs mês anterior</span>
+            <span className="text-[11px] text-slate-500">
+              {isProjection ? "projeção vs mês anterior" : "vs mês anterior"}
+            </span>
           </div>
         </div>
       </div>

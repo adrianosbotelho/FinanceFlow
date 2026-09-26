@@ -2,6 +2,10 @@
 
 import { useSearchParams } from "next/navigation";
 import { monthLabel } from "../../lib/formatters";
+import {
+  countBusinessDaysElapsedInMonth,
+  countBusinessDaysInMonth,
+} from "../../lib/business-days";
 
 function clampYear(value: number, fallback: number): number {
   if (!Number.isInteger(value) || value < 2000 || value > fallback) return fallback;
@@ -11,25 +15,6 @@ function clampYear(value: number, fallback: number): number {
 function clampMonth(value: number, fallback: number): number {
   if (!Number.isInteger(value) || value < 1 || value > 12) return fallback;
   return value;
-}
-
-function countBusinessDaysInMonth(year: number, month: number): number {
-  const daysInMonth = new Date(year, month, 0).getDate();
-  let count = 0;
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    const weekDay = new Date(year, month - 1, day).getDay();
-    if (weekDay >= 1 && weekDay <= 5) count += 1;
-  }
-  return count;
-}
-
-function countBusinessDaysElapsedInMonth(year: number, month: number, dayLimit: number): number {
-  let count = 0;
-  for (let day = 1; day <= dayLimit; day += 1) {
-    const weekDay = new Date(year, month - 1, day).getDay();
-    if (weekDay >= 1 && weekDay <= 5) count += 1;
-  }
-  return count;
 }
 
 export function DashboardBusinessDaysBadge() {
