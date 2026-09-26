@@ -4,6 +4,9 @@ import { supabase } from "../../../../lib/supabase";
 import { isMonthClosed } from "../../../../lib/monthly-closures";
 import { logMonthlyReturnRevision } from "../../../../lib/monthly-return-revisions";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 interface Params {
   params: { id: string };
 }
