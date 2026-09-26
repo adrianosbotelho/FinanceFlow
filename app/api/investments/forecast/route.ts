@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "../../../../lib/supabase";
+import {
+  countBusinessDaysElapsedInMonth,
+  countBusinessDaysInMonth,
+  previousBusinessDay,
+} from "../../../../lib/business-days";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -15,25 +20,6 @@ type DayPoint = {
   realizedAccumulated: number | null;
   forecastAccumulated: number;
 };
-
-function countBusinessDaysInMonth(year: number, month: number): number {
-  const daysInMonth = new Date(year, month, 0).getDate();
-  let count = 0;
-  for (let day = 1; day <= daysInMonth; day++) {
-    const weekday = new Date(year, month - 1, day).getDay();
-    if (weekday >= 1 && weekday <= 5) count += 1;
-  }
-  return count;
-}
-
-function countBusinessDaysElapsedInMonth(year: number, month: number, dayLimit: number): number {
-  let count = 0;
-  for (let day = 1; day <= dayLimit; day++) {
-    const weekday = new Date(year, month - 1, day).getDay();
-    if (weekday >= 1 && weekday <= 5) count += 1;
-  }
-  return count;
-}
 
 function monthForecast(amountInvested: number, annualRatePct: number, businessDays: number): number {
   if (amountInvested <= 0 || businessDays <= 0) return 0;
@@ -118,6 +104,10 @@ export async function GET(req: NextRequest) {
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentDay = now.getDate();
+  // Lançamentos são o acumulado até o dia útil anterior (D−1): o realizado vale até esse dia.
+  const dataDate = previousBusinessDay(now);
+  const dataDay =
+    dataDate.getFullYear() === year && dataDate.getMonth() + 1 === currentMonth ? dataDate.getDate() : 0;
   const cdbBreakdown = cdbInvestments.map((inv) => {
     const amount = Number(inv.amount_invested ?? 0);
     const invReturns = realizedByInvestment.get(inv.id) ?? [];
@@ -160,7 +150,7 @@ export async function GET(req: NextRequest) {
   });
 
   const currentPoint = series[currentMonth - 1] ?? { month: currentMonth, realized: 0, forecast: 0 };
-  const elapsedBusinessDays = countBusinessDaysElapsedInMonth(year, currentMonth, currentDay);
+  const elapsedBusinessDays = countBusinessDaysElapsedInMonth(year, currentMonth, dataDay);
   const totalBusinessDays = countBusinessDaysInMonth(year, currentMonth);
   const openingCurrentMonth = cdbInvestments.reduce((acc, inv) => {
     const invReturns = realizedByInvestment.get(inv.id) ?? [];
@@ -189,7 +179,7 @@ export async function GET(req: NextRequest) {
       bDays,
     );
     let realizedAccumulated: number | null = null;
-    if (day <= currentDay && elapsedBusinessDays > 0) {
+    if (day <= dataDay && elapsedBusinessDays > 0) {
       realizedAccumulated = currentPoint.realized * (bDays / elapsedBusinessDays);
     }
     daySeries.push({

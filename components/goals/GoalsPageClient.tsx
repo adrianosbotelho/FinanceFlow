@@ -25,6 +25,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { countBusinessDaysBetween, previousBusinessDay } from "../../lib/business-days";
 
 type GoalRow = {
   investment: Investment;
@@ -67,18 +68,12 @@ type AnnualGoalEtaRow = {
   status: "Atingida" | "No ritmo" | "Após o ano" | "Sem ritmo";
 };
 
+// Dias úteis que ainda vão render no mês: os dados vão até o dia útil anterior (D−1).
 function countBusinessDaysRemainingInMonth(referenceDate: Date): number {
-  const year = referenceDate.getFullYear();
-  const month = referenceDate.getMonth();
-  const lastDay = new Date(year, month + 1, 0).getDate();
-  let count = 0;
-  for (let day = referenceDate.getDate() + 1; day <= lastDay; day += 1) {
-    const weekday = new Date(year, month, day).getDay();
-    if (weekday >= 1 && weekday <= 5) {
-      count += 1;
-    }
-  }
-  return count;
+  const monthEnd = new Date(referenceDate.getFullYear(), referenceDate.getMonth() + 1, 0);
+  const dataDate = previousBusinessDay(referenceDate);
+  const monthStart = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), 0);
+  return countBusinessDaysBetween(dataDate < monthStart ? monthStart : dataDate, monthEnd);
 }
 
 export function GoalsPageClient() {
