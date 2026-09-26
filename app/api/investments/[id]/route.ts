@@ -3,6 +3,9 @@ import { revalidatePath } from "next/cache";
 import { supabase } from "../../../../lib/supabase";
 import { InvestmentType } from "../../../../types";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 interface Params {
   params: { id: string };
 }

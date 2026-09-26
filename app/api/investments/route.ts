@@ -3,6 +3,9 @@ import { revalidatePath } from "next/cache";
 import { supabase } from "../../../lib/supabase";
 import { InvestmentType } from "../../../types";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 function normalizePayload(body: any) {
   const type = body?.type as InvestmentType;
   const institution = String(body?.institution ?? "").trim();

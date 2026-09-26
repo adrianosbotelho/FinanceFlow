@@ -23,4 +23,9 @@ export const supabase = createClient(supabaseUrl ?? "", supabaseServerKey ?? "",
     persistSession: false,
     autoRefreshToken: false,
   },
+  global: {
+    // O Next 14 guarda respostas de fetch no Data Cache por padrão; sem isso,
+    // consultas do Supabase podem ficar congeladas (ex.: revisões de retorno).
+    fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }),
+  },
 });
