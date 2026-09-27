@@ -18,12 +18,13 @@ Três superfícies no mesmo repositório:
 ## Regras críticas
 
 1. **Nunca modificar `financeflow-web-mobile/`** sem instrução explícita. É um subprojeto separado, com dependências e CI próprios.
-2. **Nunca misturar desktop e mobile no mesmo commit/PR** — o Boundary Guard (`npm run guard:boundary`) reprova no CI.
-3. **Buildar ao final de cada alteração** com `node macos-app/build-standalone.js` (não apenas `npm run build` — este não copia `.next/static/` para o standalone, e o Electron quebra).
-4. **Não quebrar o que funciona**: dashboard, gráficos, tabelas e análises precisam continuar operando. Na dúvida, perguntar.
-5. **Tailwind sem classes dinâmicas** — jamais construir nomes de classe por interpolação (`grid-cols-${n}`). Usar strings literais ou adicionar ao `safelist` em `tailwind.config.ts`.
-6. `main` exige PR + status checks; o merge é feito pelo dono do repositório via UI do GitHub.
-7. **Fluxo de entrega de toda alteração desktop**: branch → commit → `npm run lint` + `npm run guard:boundary` + `node macos-app/build-standalone.js` → push + PR → merge (dono) → **compilar o app macOS** (`cd macos-app && npx electron-builder --mac`). Após o merge, voltar para `main` (`git pull --ff-only`) e apagar a branch local. O dono usa sempre o `.app` empacotado.
+2. **Libs financeiras compartilhadas com o mobile**: `financeflow-web-mobile/lib/finance/` contém cópias fiéis de `lib/business-days.ts`, `lib/month-pace.ts`, `lib/balance-history.ts` e `lib/goals-math.ts` (com os mesmos testes em `financeflow-web-mobile/tests/`). Ao mudar uma dessas libs no desktop, abrir em seguida um PR só do mobile replicando a mudança.
+3. **Nunca misturar desktop e mobile no mesmo commit/PR** — o Boundary Guard (`npm run guard:boundary`) reprova no CI.
+4. **Buildar ao final de cada alteração** com `node macos-app/build-standalone.js` (não apenas `npm run build` — este não copia `.next/static/` para o standalone, e o Electron quebra).
+5. **Não quebrar o que funciona**: dashboard, gráficos, tabelas e análises precisam continuar operando. Na dúvida, perguntar.
+6. **Tailwind sem classes dinâmicas** — jamais construir nomes de classe por interpolação (`grid-cols-${n}`). Usar strings literais ou adicionar ao `safelist` em `tailwind.config.ts`.
+7. `main` exige PR + status checks; o merge é feito pelo dono do repositório via UI do GitHub.
+8. **Fluxo de entrega de toda alteração desktop**: branch → commit → `npm run lint` + `npm run guard:boundary` + `node macos-app/build-standalone.js` → push + PR → merge (dono) → **compilar o app macOS** (`cd macos-app && npx electron-builder --mac`). Após o merge, voltar para `main` (`git pull --ff-only`) e apagar a branch local. O dono usa sempre o `.app` empacotado.
 
 ## Comandos
 

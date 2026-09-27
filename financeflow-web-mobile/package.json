@@ -13,7 +13,8 @@
     "ops:check": "node scripts/ops-check.mjs",
     "ops:report": "node scripts/ops-check.mjs --write",
     "release:gate": "node scripts/release-gate.mjs",
-    "qa:preflight": "npm run lint && npm run build && npm run smoke"
+    "qa:preflight": "npm run lint && npm run build && npm run smoke",
+    "test": "vitest run"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.3",
@@ -30,6 +31,7 @@
     "eslint-config-next": "14.2.35",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^2.1.9"
   }
 }

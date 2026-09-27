@@ -90,6 +90,16 @@ function formatSignedCurrency(value: number | null | undefined): string {
   return `${value > 0 ? "+" : "-"}${absValue}`;
 }
 
+function ProjectionLine({ value, pct }: { value: number | null | undefined; pct: number | null | undefined }) {
+  if (value === null || value === undefined) return null;
+  return (
+    <span className="mt-1 block text-[11px] text-slate-400">
+      Projeção: {formatCurrency(value)}
+      {pct !== null && pct !== undefined ? ` (${formatPct(pct)} vs mês anterior)` : ""}
+    </span>
+  );
+}
+
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -141,6 +151,11 @@ export default async function DashboardPage({
       <header>
         <h1 className="text-xl font-bold">Dashboard</h1>
         <p className="text-sm text-slate-400">Visão mobile/web da renda passiva ({year})</p>
+        {data.kpis.isCurrentMonth && data.kpis.asOfDate ? (
+          <p className="text-[11px] text-slate-500">
+            Variações reais em destaque; projeção do mês com dados até {data.kpis.asOfDate.split("-").reverse().slice(0, 2).join("/")}.
+          </p>
+        ) : null}
       </header>
 
       <section className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
@@ -152,6 +167,7 @@ export default async function DashboardPage({
               {trendSymbol(data.kpis.momTotalPct)} {formatPct(data.kpis.momTotalPct)}
             </span>
             vs mês anterior
+            <ProjectionLine value={data.kpis.projectedTotal} pct={data.kpis.projectedMomTotalPct} />
           </p>
         </article>
         <article className={`min-h-[168px] rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.momCdbPct)}`}>
@@ -162,8 +178,10 @@ export default async function DashboardPage({
               {trendSymbol(data.kpis.momCdbPct)} {formatPct(data.kpis.momCdbPct)}
             </span>
             vs mês anterior
+            <ProjectionLine value={data.kpis.projectedCdb} pct={data.kpis.projectedMomCdbPct} />
           </p>
         </article>
+        {data.kpis.hasActiveFii || data.kpis.fiisMonth > 0 ? (
         <article className={`min-h-[168px] rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.momFiisPct)}`}>
           <p className={`card-title ${trendTitleClass(data.kpis.momFiisPct)}`}>Dividendos FIIs</p>
           <p className={`card-value ${trendValueClass(data.kpis.momFiisPct)}`}>{formatCurrency(data.kpis.fiisMonth)}</p>
@@ -174,6 +192,7 @@ export default async function DashboardPage({
             vs mês anterior
           </p>
         </article>
+        ) : null}
         <article className="min-h-[168px] rounded-[1.5rem] border-2 border-slate-700 bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 p-3.5 shadow-lg">
           <p className="card-title">Renda acumulada no ano</p>
           <p className="card-value">{formatCurrency(data.kpis.ytd)}</p>
@@ -207,6 +226,7 @@ export default async function DashboardPage({
                 {trendSymbol(cdb.momGrowth)} Δ {formatSignedCurrency(cdb.momDelta)}
               </span>
               <span className="mt-0.5 block">mês atual: {formatCurrency(cdb.currentMonth)}</span>
+              <ProjectionLine value={cdb.projectedMonth} pct={cdb.projectedMomGrowth} />
             </p>
           </article>
         ))}

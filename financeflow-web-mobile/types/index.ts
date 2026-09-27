@@ -34,6 +34,8 @@ export interface CdbKpiEntry {
   currentMonth: number;
   momGrowth: number | null;
   momDelta: number | null;
+  projectedMonth?: number | null;
+  projectedMomGrowth?: number | null;
 }
 
 export interface DashboardMonth {
@@ -60,6 +62,14 @@ export interface DashboardPayload {
     totalInvested: number;
     rolling12: number;
     portfolioYieldPct: number;
+    // Mês em andamento: projeção de fechamento (data-base D−1, feriados). Real segue em destaque.
+    isCurrentMonth: boolean;
+    asOfDate: string | null;
+    projectedTotal: number | null;
+    projectedMomTotalPct: number | null;
+    projectedCdb: number | null;
+    projectedMomCdbPct: number | null;
+    hasActiveFii: boolean;
   };
   monthlySeries: DashboardMonth[];
 }
@@ -74,4 +84,11 @@ export interface GoalRow {
   progress_pct: number | null;
   gap_value: number | null;
   type: "monthly" | "annual";
+  // Mesmos cálculos da página de Metas do desktop (lib/finance/goals-math e month-pace).
+  status?: "atingida" | "no_ritmo" | "perto" | "abaixo" | "sem_meta";
+  projected_value?: number | null;
+  needed_per_business_day?: number | null;
+  required_monthly_contribution?: number | null;
+  recent_monthly_contribution?: number | null;
+  eta?: { year: number; month: number } | null;
 }
