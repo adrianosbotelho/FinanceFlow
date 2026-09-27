@@ -10,7 +10,15 @@ export function formatPercentage(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return "–";
   }
-  return `${value.toFixed(1)}%`;
+  // pt-BR: vírgula decimal.
+  return `${value.toFixed(1).replace(".", ",")}%`;
+}
+
+export function formatPercentageDigits(value: number | null | undefined, digits: number): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "–";
+  }
+  return `${value.toFixed(digits).replace(".", ",")}%`;
 }
 
 export function monthLabel(month: number): string {

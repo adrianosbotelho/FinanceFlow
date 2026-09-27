@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import {
   DailyInsightApiPayload,
   DashboardPayload,
+  Investment,
   MarketSnapshotPayload,
   ProfessionalInsightsPayload,
 } from "../../types";
@@ -69,6 +70,17 @@ async function fetchProfessionalInsights(
   return res.json();
 }
 
+async function fetchInvestments(baseUrl: string): Promise<Investment[]> {
+  try {
+    const res = await fetch(`${baseUrl}/api/investments`, { cache: "no-store", next: { revalidate: 0 } });
+    if (!res.ok) return [];
+    const payload = await res.json();
+    return Array.isArray(payload) ? (payload as Investment[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export default async function InsightsPage({ searchParams }: PageProps) {
   const now = new Date();
   const yearRaw =
@@ -88,11 +100,12 @@ export default async function InsightsPage({ searchParams }: PageProps) {
   const protocol = requestHeaders.get("x-forwarded-proto") ?? "http";
   const fallbackBase = process.env.NEXT_PUBLIC_BASE_URL ?? "http://127.0.0.1:3000";
   const baseUrl = host ? `${protocol}://${host}` : fallbackBase;
-  const [data, dailyInsights, marketSnapshot, professionalInsights] = await Promise.all([
+  const [data, dailyInsights, marketSnapshot, professionalInsights, investments] = await Promise.all([
     fetchDashboard(year, month, baseUrl),
     fetchDailyInsights(year, month, baseUrl),
     fetchMarketSnapshot(baseUrl),
     fetchProfessionalInsights(year, month, baseUrl),
+    fetchInvestments(baseUrl),
   ]);
 
   if (!data) {
@@ -112,6 +125,7 @@ export default async function InsightsPage({ searchParams }: PageProps) {
       dailyInsights={dailyInsights}
       marketSnapshot={marketSnapshot}
       professionalInsights={professionalInsights}
+      investments={investments}
       year={year}
     />
   );
