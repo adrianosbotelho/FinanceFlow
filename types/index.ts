@@ -824,3 +824,58 @@ export interface GoalsOverviewPayload {
   annualTargets: Record<string, number>;
   warnings: string[];
 }
+
+// Liquidez, vencimentos e tributação no resgate (IR regressivo por lote + IOF).
+export type LiquidityBucketKey = "d0" | "ate30" | "ate90" | "ate365" | "acima365" | "nao_informada";
+
+export interface LiquidityInvestmentItem {
+  investmentId: string;
+  label: string;
+  institution: string;
+  balance: number;
+  principal: number;
+  gain: number;
+  iof: number;
+  incomeTax: number;
+  net: number;
+  effectiveTaxRatePercent: number | null;
+  averageDaysInvested: number | null;
+  nextTaxBracket: { ratePercent: number; inDays: number } | null;
+  hasEstimatedDates: boolean;
+  liquidityLabel: string;
+  liquidityKind: "diaria" | "prazo" | "vencimento" | "nao_informada";
+  availableInDays: number | null;
+  bucket: LiquidityBucketKey;
+  maturityDate: string | null;
+  daysToMaturity: number | null;
+  contractedCdiPercent: number | null;
+  maturityGrossValue: number | null;
+  maturityNetValue: number | null;
+  missing: Array<"start_date" | "maturity_date" | "liquidity">;
+}
+
+export interface LiquidityBucket {
+  key: LiquidityBucketKey;
+  label: string;
+  gross: number;
+  net: number;
+}
+
+export interface LiquidityPayload {
+  generatedAt: string;
+  today: string;
+  cdiAnnualRatePct: number;
+  summary: {
+    gross: number;
+    iof: number;
+    incomeTax: number;
+    net: number;
+    effectiveTaxRatePercent: number | null;
+    availableNowNet: number;
+    maturingIn90DaysGross: number;
+    maturingIn90DaysCount: number;
+  };
+  buckets: LiquidityBucket[];
+  investments: LiquidityInvestmentItem[];
+  warnings: string[];
+}
