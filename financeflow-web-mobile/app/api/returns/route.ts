@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { rejectUntrustedOrigin } from "@/lib/origin-guard";
+import { isMonthClosed, logMonthlyReturnRevision } from "@/lib/month-rules";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
   if (originError) return originError;
 
   const supabase = getSupabaseServerClient();
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
   const investmentId = String(body?.investment_id ?? "");
   const month = Number(body?.month);
   const year = Number(body?.year);
@@ -61,9 +62,26 @@ export async function POST(req: NextRequest) {
   if (!investmentId || !Number.isInteger(month) || month < 1 || month > 12 || !Number.isInteger(year)) {
     return NextResponse.json({ error: "Dados inválidos para lançamento." }, { status: 400 });
   }
-  if (!Number.isFinite(incomeValue)) {
+  if (!Number.isFinite(incomeValue) || incomeValue < 0) {
     return NextResponse.json({ error: "Valor inválido." }, { status: 400 });
   }
+
+  try {
+    if (await isMonthClosed(supabase, year, month)) {
+      return NextResponse.json({ error: `O período ${month}/${year} está fechado para edição.` }, { status: 409 });
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Erro ao validar fechamento mensal.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+
+  const { data: previousRow } = await supabase
+    .from("monthly_returns")
+    .select("id,income_value")
+    .eq("investment_id", investmentId)
+    .eq("year", year)
+    .eq("month", month)
+    .maybeSingle();
 
   const payload = {
     investment_id: investmentId,
@@ -80,6 +98,21 @@ export async function POST(req: NextRequest) {
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  // Trilha de auditoria (mesma regra do desktop): só registra quando o valor muda.
+  const previousValue = previousRow ? Number(previousRow.income_value ?? 0) : null;
+  const nextValue = Number(data.income_value ?? 0);
+  if (previousValue === null || Math.abs(nextValue - previousValue) > 0.0001) {
+    await logMonthlyReturnRevision(supabase, {
+      monthlyReturnId: String(data.id),
+      investmentId,
+      year,
+      month,
+      previousIncomeValue: previousValue,
+      newIncomeValue: nextValue,
+      action: previousRow ? "UPDATE" : "CREATE",
+    });
   }
 
   return NextResponse.json(data, { status: 201 });
