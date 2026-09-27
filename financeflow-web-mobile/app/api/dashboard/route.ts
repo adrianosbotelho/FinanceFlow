@@ -1,9 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { CdbKpiEntry, DashboardMonth, DashboardPayload } from "@/types";
+import { MonthPace, loadMonthPace } from "@/lib/finance/month-pace";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+function getSaoPauloDateISO(reference = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(reference);
+}
+
+function pctVs(current: number, previous: number | null | undefined): number | null {
+  return previous !== null && previous !== undefined && previous > 0 ? ((current - previous) / previous) * 100 : null;
+}
 
 function buildInvestmentLabel(inv: { type: string; institution: string; name: string }): string {
   if (inv.type === "FII") return "Dividendos FIIs";
@@ -94,6 +108,21 @@ export async function GET(req: NextRequest) {
   const cdbCurrent = current ? current.cdb_items.reduce((acc, c) => acc + c.income, 0) : 0;
   const cdbPrev = prev ? prev.cdb_items.reduce((acc, c) => acc + c.income, 0) : 0;
 
+  // Ritmo do mês exibido (mesmo cálculo do desktop): projeção de fechamento por investimento.
+  let pace: MonthPace | null = null;
+  if (current) {
+    try {
+      pace = (await loadMonthPace(current.year, current.month, getSaoPauloDateISO())).pace;
+    } catch (err) {
+      console.warn("[FinanceFlow mobile] Projeção do mês indisponível.", err);
+    }
+  }
+  const isCurrentMonth = Boolean(pace?.isCurrentMonth);
+  const projectedById = new Map((pace?.investments ?? []).map((item) => [item.investmentId, item.projected]));
+  const projectedCdb = isCurrentMonth
+    ? (pace?.investments ?? []).filter((item) => item.type === "CDB").reduce((acc, item) => acc + item.projected, 0)
+    : null;
+
   const cdbItems: CdbKpiEntry[] = cdbInvestments.map((cdb) => {
     const currEntry = current?.cdb_items.find((c) => c.investment_id === cdb.id);
     const prevEntry = prev?.cdb_items.find((c) => c.investment_id === cdb.id);
@@ -105,6 +134,8 @@ export async function GET(req: NextRequest) {
       currentMonth: currIncome,
       momGrowth: prevIncome > 0 ? ((currIncome - prevIncome) / prevIncome) * 100 : null,
       momDelta: prev ? currIncome - prevIncome : null,
+      projectedMonth: isCurrentMonth ? projectedById.get(cdb.id) ?? currIncome : null,
+      projectedMomGrowth: isCurrentMonth ? pctVs(projectedById.get(cdb.id) ?? currIncome, prevIncome) : null,
     };
   });
 
@@ -126,6 +157,13 @@ export async function GET(req: NextRequest) {
       totalInvested,
       rolling12,
       portfolioYieldPct: portfolioYield,
+      isCurrentMonth,
+      asOfDate: isCurrentMonth ? pace?.asOfDate ?? null : null,
+      projectedTotal: isCurrentMonth ? pace?.projected ?? null : null,
+      projectedMomTotalPct: isCurrentMonth && pace ? pctVs(pace.projected, prev?.total) : null,
+      projectedCdb,
+      projectedMomCdbPct: projectedCdb !== null ? pctVs(projectedCdb, cdbPrev) : null,
+      hasActiveFii: pace ? pace.hasActiveFii : (current?.fiis ?? 0) > 0,
     },
     monthlySeries,
   };

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { rejectUntrustedOrigin } from "@/lib/origin-guard";
+import { countBusinessDaysInMonth } from "@/lib/finance/business-days";
+import { buildBalanceContexts, previousYm, ym } from "@/lib/finance/balance-history";
+import { buildAnnualGoalSummary, monthlyGoalStatus } from "@/lib/finance/goals-math";
+import { loadMonthPace } from "@/lib/finance/month-pace";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -84,7 +88,79 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  return NextResponse.json(rows, {
+  // Ritmo do mês e aporte necessário (mesma regra da página de Metas do desktop).
+  const todayIso = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const [todayYear, todayMonth] = todayIso.split("-").map(Number);
+  const paceById = new Map<string, { projected: number; dailyRate: number; remainingBusinessDays: number }>();
+  try {
+    const { pace } = await loadMonthPace(year, month, todayIso);
+    for (const item of pace.investments) {
+      paceById.set(item.investmentId, {
+        projected: item.projected,
+        dailyRate: item.dailyRate,
+        remainingBusinessDays: item.remainingBusinessDays,
+      });
+    }
+  } catch (err) {
+    console.warn("[FinanceFlow mobile] Ritmo do mês indisponível nas metas.", err);
+  }
+
+  const [{ data: allReturns }, { data: events }, { data: fullInvestments }] = await Promise.all([
+    supabase.from("monthly_returns").select("investment_id,year,month,income_value"),
+    supabase.from("investment_cash_events").select("investment_id,year,month,type,amount"),
+    supabase.from("investments").select("id,type,institution,name,amount_invested"),
+  ]);
+  const contexts = new Map(
+    buildBalanceContexts(fullInvestments ?? [], allReturns ?? [], events ?? []).map((ctx) => [ctx.id, ctx]),
+  );
+  const currentYm = ym(todayYear, todayMonth);
+  const recentYms: number[] = [];
+  for (let key = previousYm(currentYm); recentYms.length < 3; key = previousYm(key)) recentYms.push(key);
+  let businessDaysAfterMonth = 0;
+  for (let m = month + 1; m <= 12; m += 1) businessDaysAfterMonth += countBusinessDaysInMonth(year, m);
+
+  const enriched = rows.map((row) => {
+    const pace = paceById.get(row.investment_id);
+    if (row.type === "monthly") {
+      const projected = pace?.projected ?? row.current_value;
+      const remaining = pace?.remainingBusinessDays ?? 0;
+      return {
+        ...row,
+        status: monthlyGoalStatus(row.target > 0 ? row.target : null, row.current_value, projected),
+        projected_value: projected,
+        needed_per_business_day:
+          row.target > 0 && remaining > 0 ? Math.max(0, row.target - row.current_value) / remaining : null,
+      };
+    }
+    const ctx = contexts.get(row.investment_id);
+    const recent = ctx
+      ? recentYms.reduce((acc, key) => acc + (ctx.flowByYm.get(key) ?? 0), 0) / recentYms.length
+      : 0;
+    const summary = buildAnnualGoalSummary({
+      target: row.target > 0 ? row.target : null,
+      balance: row.current_value,
+      expectedIncomeUntilYearEnd: (pace?.dailyRate ?? 0) * ((pace?.remainingBusinessDays ?? 0) + businessDaysAfterMonth),
+      recentMonthlyContribution: recent,
+      monthlyIncome: pace?.projected ?? 0,
+      contributionMonths: 12 - month + 1,
+      year,
+      month,
+    });
+    return {
+      ...row,
+      status: summary.status,
+      required_monthly_contribution: summary.requiredMonthlyContribution,
+      recent_monthly_contribution: summary.recentMonthlyContribution,
+      eta: summary.eta,
+    };
+  });
+
+  return NextResponse.json(enriched, {
     headers: { "Cache-Control": "no-store, no-cache, must-revalidate" },
   });
 }

@@ -17,6 +17,23 @@ function progressTone(progress: number | null): string {
   return "text-rose-300";
 }
 
+const STATUS_BADGE: Record<string, { label: string; className: string }> = {
+  atingida: { label: "Atingida", className: "border-emerald-700 text-emerald-300" },
+  no_ritmo: { label: "No ritmo", className: "border-cyan-700 text-cyan-300" },
+  perto: { label: "Perto da meta", className: "border-amber-700 text-amber-300" },
+  abaixo: { label: "Abaixo do ritmo", className: "border-rose-700 text-rose-300" },
+};
+
+function StatusBadge({ status }: { status?: string }) {
+  const badge = status ? STATUS_BADGE[status] : undefined;
+  if (!badge) return null;
+  return (
+    <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badge.className}`}>
+      {badge.label}
+    </span>
+  );
+}
+
 export function MetasClient({ initialYear, envReady }: { initialYear: number; envReady: boolean }) {
   const [year, setYear] = useState(initialYear);
   const [month, setMonth] = useState(new Date().getMonth() + 1);
@@ -181,6 +198,15 @@ export function MetasClient({ initialYear, envReady }: { initialYear: number; en
                   <div className="min-w-0">
                     <p className="font-semibold text-slate-100">{g.investment_label}</p>
                     <p className="text-cyan-300">Meta: {formatCurrency(g.target)}</p>
+                    {g.projected_value !== undefined && g.projected_value !== null ? (
+                      <p className="text-xs text-slate-400">Projeção do mês: {formatCurrency(g.projected_value)}</p>
+                    ) : null}
+                    {g.needed_per_business_day ? (
+                      <p className="text-xs text-amber-300">
+                        Necessário: {formatCurrency(g.needed_per_business_day)}/dia útil
+                      </p>
+                    ) : null}
+                    <StatusBadge status={g.status} />
                   </div>
                   <div className="shrink-0 text-right">
                     <p className="text-xs text-slate-400">Atual</p>
@@ -216,6 +242,22 @@ export function MetasClient({ initialYear, envReady }: { initialYear: number; en
                   <div className="min-w-0">
                     <p className="font-semibold text-slate-100">{g.investment_label}</p>
                     <p className="text-cyan-300">Meta anual: {formatCurrency(g.target)}</p>
+                    {g.required_monthly_contribution !== undefined && g.required_monthly_contribution !== null ? (
+                      <p className="text-xs text-amber-300">
+                        Aporte necessário: {formatCurrency(g.required_monthly_contribution)}/mês até dez
+                      </p>
+                    ) : null}
+                    {g.recent_monthly_contribution !== undefined && g.recent_monthly_contribution !== null ? (
+                      <p className="text-xs text-slate-400">
+                        Aportes recentes: {formatCurrency(g.recent_monthly_contribution)}/mês
+                      </p>
+                    ) : null}
+                    {g.eta ? (
+                      <p className="text-xs text-slate-400">
+                        No ritmo atual, atinge em {String(g.eta.month).padStart(2, "0")}/{g.eta.year}
+                      </p>
+                    ) : null}
+                    <StatusBadge status={g.status} />
                   </div>
                   <div className="shrink-0 text-right">
                     <p className="text-xs text-slate-400">Atual</p>
