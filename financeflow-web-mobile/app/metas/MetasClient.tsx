@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { GoalRow, Investment } from "@/types";
 import { formatCurrency, monthName } from "@/lib/format";
+import { GoalsPlanning } from "@/components/GoalsPlanning";
 
 function formatProgress(value: number | null): string {
   if (value === null || Number.isNaN(value)) return "-";
@@ -45,6 +46,7 @@ export function MetasClient({ initialYear, envReady }: { initialYear: number; en
   const [formType, setFormType] = useState<"monthly" | "annual">("monthly");
   const [formTarget, setFormTarget] = useState("");
   const [saving, setSaving] = useState(false);
+  const [planningReload, setPlanningReload] = useState(0);
 
   async function loadAll() {
     setLoading(true);
@@ -58,6 +60,7 @@ export function MetasClient({ initialYear, envReady }: { initialYear: number; en
     setInvestments(inv);
     if (!formInvestmentId && inv.length > 0) setFormInvestmentId(inv[0].id);
     setLoading(false);
+    setPlanningReload((value) => value + 1);
   }
 
   useEffect(() => {
@@ -124,6 +127,8 @@ export function MetasClient({ initialYear, envReady }: { initialYear: number; en
         <h1 className="text-xl font-bold">Metas</h1>
         <p className="text-sm text-slate-400">Gerencie metas mensais e anuais.</p>
       </header>
+
+      <GoalsPlanning reloadToken={planningReload} onChanged={() => void loadAll()} />
 
       <section className="card">
         <div className="mb-3 flex flex-wrap items-end gap-3">
