@@ -14,6 +14,7 @@ export const DEFAULT_NAV_ITEMS: NavItem[] = [
   { href: "/performance", label: "Performance", shortLabel: "Perf" },
   { href: "/goals", label: "Metas", shortLabel: "Metas" },
   { href: "/investments", label: "Investimentos", shortLabel: "Assets" },
+  { href: "/liquidity", label: "Liquidez e Vencimentos", shortLabel: "Liq" },
   { href: "/returns", label: "Retornos Mensais", shortLabel: "Ret" },
 ];
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "../../../lib/supabase";
 import { resolveMonthlyCdiHistory } from "../../../lib/cdi-reference";
 import { formatCurrencyBRL } from "../../../lib/formatters";
+import { CashFlow, estimateInvestmentRedemption } from "../../../lib/redemption-tax";
 import {
   BalanceContext,
   buildBalanceContexts,
@@ -21,8 +22,6 @@ export const revalidate = 0;
 
 const BCB_IPCA_MONTHLY_SERIES_CODE = 433;
 const IPCA_FETCH_TIMEOUT_MS = 5000;
-// IR estimado com a alíquota mínima da tabela regressiva (aplicações com mais de 720 dias).
-const ESTIMATED_TAX_RATE_PERCENT = 15;
 // Garantia do FGC por CPF e por instituição (conglomerado).
 const FGC_LIMIT = 250_000;
 
@@ -33,12 +32,25 @@ type InvestmentRow = {
   name: string;
   amount_invested: number | string | null;
   cdi_rate: number | string | null;
+  start_date?: string | null;
 };
 
 type ReturnRow = { investment_id: string; year: number; month: number; income_value: number | string | null };
-type CashEventRow = { investment_id: string; year: number; month: number; type: string; amount: number | string | null };
+type CashEventRow = {
+  investment_id: string;
+  year: number;
+  month: number;
+  type: string;
+  amount: number | string | null;
+  event_date: string | null;
+};
 type MacroRow = { month: number; inflation_rate: number | string | null };
 type BcbSeriesPoint = { data?: string; valor?: string };
+
+function parseIsoDate(value: string | null | undefined): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value ?? ""));
+  return match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : null;
+}
 
 function toNumber(value: unknown): number {
   const n = Number(value);
@@ -124,15 +136,23 @@ function compound(percents: Array<number | null>): number | null {
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const now = getSaoPauloYearMonth();
+  const todayDate = parseIsoDate(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date()),
+  )!;
   const yearParam = Number(searchParams.get("year") ?? now.year);
   const year = Number.isInteger(yearParam) && yearParam >= 2000 && yearParam <= now.year ? yearParam : now.year;
   const currentYm = ym(now.year, now.month);
   const warnings: string[] = [];
 
   const [investmentsRes, returnsRes, cashEventsRes, macroRes, cdiHistory, ipcaRes] = await Promise.all([
-    supabase.from("investments").select("id,type,institution,name,amount_invested,cdi_rate"),
+    supabase.from("investments").select("id,type,institution,name,amount_invested,cdi_rate,start_date"),
     supabase.from("monthly_returns").select("investment_id,year,month,income_value"),
-    supabase.from("investment_cash_events").select("investment_id,year,month,type,amount"),
+    supabase.from("investment_cash_events").select("investment_id,year,month,type,amount,event_date"),
     supabase.from("monthly_macro").select("month,inflation_rate").eq("year", year),
     resolveMonthlyCdiHistory(year),
     fetchBcbMonthlyInflation(year),
@@ -284,14 +304,44 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // IR estimado sobre toda a renda acumulada ainda aplicada (alíquota fixa de 15%).
-  const taxFactor = ESTIMATED_TAX_RATE_PERCENT / 100;
+  // IR + IOF estimados num resgate na data de referência: tabela regressiva por aplicação (lote).
+  const taxDate = year === now.year ? todayDate : new Date(year, 11, 31);
   const accumulatedIncomeUntil = (ctx: BalanceContext) =>
     Array.from(ctx.incomeByYm.entries()).reduce((sum, [key, value]) => sum + (key <= yearEndYm ? value : 0), 0);
-  const estimatedTaxOnRedemption = activeContexts.reduce(
-    (acc, ctx) => acc + accumulatedIncomeUntil(ctx) * taxFactor,
-    0,
+  const taxById = new Map(
+    activeContexts.map((ctx) => {
+      const inv = byId.get(ctx.id);
+      const flows: CashFlow[] = cashEvents
+        .filter((event) => event.investment_id === ctx.id)
+        .map((event) => {
+          const type = String(event.type ?? "").toUpperCase();
+          const date = parseIsoDate(event.event_date);
+          if (!date || (type !== "APORTE" && type !== "RESGATE")) return null;
+          return { date, amount: type === "APORTE" ? toNumber(event.amount) : -toNumber(event.amount) };
+        })
+        .filter((flow): flow is CashFlow => flow !== null);
+      const redemption = estimateInvestmentRedemption({
+        balance: year === now.year ? ctx.balanceNow : closingBalance(ctx, yearEndYm),
+        totalIncome: accumulatedIncomeUntil(ctx),
+        firstIncomeDate:
+          ctx.firstIncomeYm !== null
+            ? new Date(Math.floor(ctx.firstIncomeYm / 100), (ctx.firstIncomeYm % 100) - 1, 1)
+            : null,
+        startDate: parseIsoDate(inv?.start_date ?? null),
+        flows,
+        at: taxDate,
+      });
+      return [ctx.id, redemption.tax] as const;
+    }),
   );
+  const estimatedTaxOnRedemption = Array.from(taxById.values()).reduce((acc, tax) => acc + tax.totalTax, 0);
+  const accumulatedGain = Array.from(taxById.values()).reduce((acc, tax) => acc + tax.gain, 0);
+  const effectiveTaxRatePercent = accumulatedGain > 0 ? (estimatedTaxOnRedemption / accumulatedGain) * 100 : 0;
+  if (Array.from(taxById.values()).some((tax) => tax.hasEstimatedDates)) {
+    warnings.push(
+      "IR estimado com datas de aplicação aproximadas (sem data de início cadastrada); preencha a data de início em Investimentos.",
+    );
+  }
 
   // Por investimento.
   const investmentItems: PerformanceInvestmentItem[] = activeContexts
@@ -321,7 +371,7 @@ export async function GET(req: NextRequest) {
         percentOfCdi:
           itemReturn !== null && itemCdi !== null && itemCdi > 0 ? (itemReturn / itemCdi) * 100 : null,
         contractedCdiPercent: ctx.contractedCdiPercent,
-        estimatedTax: accumulatedIncomeUntil(ctx) * taxFactor,
+        estimatedTax: taxById.get(ctx.id)?.totalTax ?? 0,
         returnMonths: monthly.length,
       };
     })
@@ -368,8 +418,8 @@ export async function GET(req: NextRequest) {
       netContributions,
       unrecordedApplications: Math.max(0, unrecordedApplications),
       grossIncome,
-      netIncomeAfterTax: grossIncome * (1 - taxFactor),
-      estimatedTaxRatePercent: ESTIMATED_TAX_RATE_PERCENT,
+      netIncomeAfterTax: grossIncome * (1 - effectiveTaxRatePercent / 100),
+      estimatedTaxRatePercent: effectiveTaxRatePercent,
       estimatedTaxOnRedemption,
       balanceAfterTax: currentBalance - estimatedTaxOnRedemption,
       returnPercent,

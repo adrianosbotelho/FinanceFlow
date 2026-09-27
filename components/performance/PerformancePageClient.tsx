@@ -174,7 +174,7 @@ export function PerformancePageClient({ initialYear }: Props) {
             <p className="text-xs text-slate-400">Rendimento bruto no ano</p>
             <p className="text-2xl font-bold text-emerald-300">{formatCurrencyBRL(kpis.grossIncome)}</p>
             <p className="mt-1 text-xs text-slate-400">
-              Líquido estimado: {formatCurrencyBRL(kpis.netIncomeAfterTax)} (IR {kpis.estimatedTaxRatePercent}%)
+              Líquido estimado: {formatCurrencyBRL(kpis.netIncomeAfterTax)} (IR efetivo {kpis.estimatedTaxRatePercent.toFixed(1)}%)
             </p>
           </Card>
           <Card>
@@ -212,7 +212,8 @@ export function PerformancePageClient({ initialYear }: Props) {
               Patrimônio líquido de IR: {formatCurrencyBRL(kpis.balanceAfterTax)}
             </p>
             <p className="text-[11px] text-slate-500">
-              Premissa: {kpis.estimatedTaxRatePercent}% sobre todo o rendimento acumulado (aplicações com mais de 2 anos).
+              Tabela regressiva de IR (22,5% a 15%) por aplicação + IOF abaixo de 30 dias; alíquota efetiva{" "}
+              {kpis.estimatedTaxRatePercent.toFixed(1)}%.
             </p>
           </Card>
         </div>

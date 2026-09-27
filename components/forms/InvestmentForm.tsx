@@ -3,6 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { Investment, InvestmentType } from "../../types";
 
+// Valores gravados em investments.liquidity e interpretados por parseLiquidity (lib/redemption-tax.ts).
+const LIQUIDITY_OPTIONS = [
+  { value: "Diária", label: "Diária (D+0)" },
+  { value: "D+1", label: "D+1" },
+  { value: "D+30", label: "D+30" },
+  { value: "D+90", label: "D+90" },
+  { value: "No vencimento", label: "Só no vencimento" },
+];
+
 interface Props {
   onSaved?: (investment: Investment) => void;
   initial?: Investment | null;
@@ -215,13 +224,22 @@ export function InvestmentForm({ onSaved, initial, onCancelEdit }: Props) {
             </div>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-slate-300">Liquidez</label>
-            <input
+            <label className="text-xs text-slate-300">Liquidez (prazo para ter o dinheiro)</label>
+            <select
               className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
               value={liquidity}
               onChange={(e) => setLiquidity(e.target.value)}
-              placeholder="Ex: diária, no vencimento, D+30"
-            />
+            >
+              <option value="">Não informada</option>
+              {LIQUIDITY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+              {liquidity && !LIQUIDITY_OPTIONS.some((option) => option.value === liquidity) ? (
+                <option value={liquidity}>Atual: {liquidity}</option>
+              ) : null}
+            </select>
           </div>
         </>
       )}
