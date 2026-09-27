@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ReturnRow, Investment } from "@/types";
 import { formatCurrency, monthName } from "@/lib/format";
+import { QuickEntryPanel } from "@/components/QuickEntryPanel";
+import { parseBrNumber } from "@/lib/finance/br-number";
 
 export function ReturnsClient({ initialYear, envReady }: { initialYear: number; envReady: boolean }) {
   const [year, setYear] = useState(initialYear);
@@ -27,17 +29,9 @@ export function ReturnsClient({ initialYear, envReady }: { initialYear: number; 
   const [eventNotes, setEventNotes] = useState("");
   const [eventSaving, setEventSaving] = useState(false);
 
+  // Aceita "1.504,07", "86,95" e "86.95"; ponto só é milhar em grupos de 3 dígitos (ex.: 1.504).
   function parseIncomeInput(raw: string): number | null {
-    const cleaned = raw.trim().replace(/^R\$\s*/i, "").replace(/\s+/g, "");
-    if (!cleaned) return null;
-    let normalized = cleaned;
-    if (normalized.includes(",") && normalized.includes(".")) {
-      normalized = normalized.replace(/\./g, "").replace(",", ".");
-    } else if (normalized.includes(",")) {
-      normalized = normalized.replace(",", ".");
-    }
-    const value = Number(normalized);
-    return Number.isFinite(value) ? value : null;
+    return parseBrNumber(raw);
   }
 
   async function loadAll(selectedYear: number) {
@@ -178,7 +172,7 @@ export function ReturnsClient({ initialYear, envReady }: { initialYear: number; 
     <div className="space-y-5">
       <header>
         <h1 className="text-xl font-bold">Retornos Mensais</h1>
-        <p className="text-sm text-slate-400">Atualize rendimentos pelo celular.</p>
+        <p className="text-sm text-slate-400">Atualize o acumulado do mês de cada investimento.</p>
       </header>
 
       {!envReady ? (
@@ -188,6 +182,8 @@ export function ReturnsClient({ initialYear, envReady }: { initialYear: number; 
           </p>
         </section>
       ) : null}
+
+      {envReady ? <QuickEntryPanel onSaved={() => loadAll(year)} /> : null}
 
       <section ref={formRef} className="card">
         <div className="grid gap-3 md:grid-cols-4">
