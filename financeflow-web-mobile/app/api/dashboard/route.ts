@@ -123,6 +123,19 @@ export async function GET(req: NextRequest) {
     ? (pace?.investments ?? []).filter((item) => item.type === "CDB").reduce((acc, item) => acc + item.projected, 0)
     : null;
 
+  // Projeção por investimento no mês em andamento, para a tabela do histórico (como no desktop).
+  if (isCurrentMonth && current && pace) {
+    current.cdb_items = current.cdb_items.map((item) => ({
+      ...item,
+      projected: projectedById.get(item.investment_id) ?? item.income,
+    }));
+    current.projected_total = pace.projected;
+    const fiiProjected = pace.investments
+      .filter((item) => item.type === "FII")
+      .reduce((acc, item) => acc + item.projected, 0);
+    if (fiiProjected > 0 || current.fiis > 0) current.projected_fii = fiiProjected;
+  }
+
   const cdbItems: CdbKpiEntry[] = cdbInvestments.map((cdb) => {
     const currEntry = current?.cdb_items.find((c) => c.investment_id === cdb.id);
     const prevEntry = prev?.cdb_items.find((c) => c.investment_id === cdb.id);

@@ -113,6 +113,16 @@ function ProjectionLine({ value, pct }: { value: number | null | undefined; pct:
   );
 }
 
+// Mês em andamento: projeção de fechamento abaixo do realizado (tabela do histórico).
+function ProjectionCell({ value }: { value: number | undefined }) {
+  if (value === undefined || value <= 0) return null;
+  return (
+    <span className="mt-0.5 block whitespace-nowrap text-[10px] font-normal text-slate-400">
+      Projeção {formatCurrency(value)}
+    </span>
+  );
+}
+
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -268,14 +278,26 @@ export default async function DashboardPage({
           <tbody>
             {data.monthlySeries.map((m) => (
               <tr key={`${m.year}-${m.month}`} className="border-b border-slate-800/70 last:border-0">
-                <td className="px-2 py-2 text-slate-200">{monthName(m.month)}</td>
+                <td className="px-2 py-2 text-slate-200">
+                  {monthName(m.month)}
+                  {m.projected_total !== undefined ? (
+                    <span className="block text-[10px] text-indigo-300">em andamento</span>
+                  ) : null}
+                </td>
                 {m.cdb_items.map((cdb) => (
                   <td key={cdb.investment_id} className={`px-2 py-2 ${getCdbColor(cdb.label)}`}>
                     {formatCurrency(cdb.income)}
+                    <ProjectionCell value={cdb.projected} />
                   </td>
                 ))}
-                <td className="px-2 py-2 text-emerald-300">{formatCurrency(m.fiis)}</td>
-                <td className="px-2 py-2 font-semibold text-slate-100">{formatCurrency(m.total)}</td>
+                <td className="px-2 py-2 text-emerald-300">
+                  {formatCurrency(m.fiis)}
+                  <ProjectionCell value={m.projected_fii} />
+                </td>
+                <td className="px-2 py-2 font-semibold text-slate-100">
+                  {formatCurrency(m.total)}
+                  <ProjectionCell value={m.projected_total} />
+                </td>
                 <td className={`min-w-[124px] px-2 py-2 font-semibold whitespace-nowrap ${trendPctClass(m.mom_pct)}`}>
                   {formatPct(m.mom_pct)}
                 </td>
