@@ -41,7 +41,7 @@ Três superfícies no mesmo repositório:
 | `npm run smoke:macos` | smoke test do build macOS |
 | `npm run release:check` | checklist de release (web + macOS) |
 
-Verificação: `npm test` (Vitest) + `npm run lint` + build + smoke tests. Os testes cobrem as libs de cálculo (`business-days`, `redemption-tax`, `balance-history`, `goals-math`, `month-pace`, `daily-income`, `quick-entry`, `compare-offers`, importação) com **dados fictícios**; o CI roda `npm test` em todo PR do desktop (`.github/workflows/desktop-tests.yml`). Lógica de cálculo nova vai para `lib/` (função pura) com teste, não para dentro da rota.
+Verificação: `npm test` (Vitest) + `npm run lint` + build + smoke tests. Os testes cobrem as libs de cálculo (`business-days`, `redemption-tax`, `balance-history`, `goals-math`, `month-pace`, `daily-income`, `quick-entry`, `insights-actions`, `compare-offers`, importação) com **dados fictícios**; o CI roda `npm test` em todo PR do desktop (`.github/workflows/desktop-tests.yml`). Lógica de cálculo nova vai para `lib/` (função pura) com teste, não para dentro da rota.
 
 O `.app` empacotado em `macos-app/dist/mac-arm64/` é um artefato **separado**: só incorpora código novo após `cd macos-app && npx electron-builder --mac`. Para o dia a dia, `npm run desktop` é mais rápido.
 
@@ -92,8 +92,9 @@ Mutations chamam `revalidatePath()` nas rotas afetadas e o cliente publica um ev
 - **Taxas contratadas** — ficam em `investments.cdi_rate` (% do CDI); têm prioridade sobre o % efetivo estimado pelo histórico.
 - **Meta anual de renda (Dashboard/Insights)** — é a **soma das metas mensais** do ano (`investment_goals_monthly`), comparada com a projeção dos mesmos meses; `FINANCEFLOW_ANNUAL_INCOME_TARGET` só vale sem metas cadastradas. A tabela `investment_goals` (metas fixas) é legado.
 - **Investimentos sem posição** — investimento com valor aplicado 0 e sem renda no mês (ex.: FIIs encerrados) fica fora do motor de insights e das telas (cards, stress test, reinvestimento); o histórico de renda continua valendo nos totais passados.
+- **Página de Insights** (`/insights`) — ordem: resumo do mês (números do `lib/month-pace.ts`, uma vez só) → o que fazer agora (`lib/insights-actions.ts`: próximo aporte pela taxa contratada/realizada com folga no FGC e liquidez; verificações de taxa abaixo do contratado, lançamento atrasado e FGC) → metas → rentabilidade vs CDI → o que mudou no mês (projeção vs mês fechado, também por dia útil) → detalhes técnicos recolhidos (risco, stress, qualidade, motor de recomendação e backtest). Sem cripto.
 - **Motor de insights** — `INSIGHTS_ENGINE_VERSION` (`lib/month-pace.ts`) é gravado em `insight_daily_runs` e `insight_professional_runs`, e o histórico exibido é filtrado pela versão. **Ao mudar qualquer cálculo dos insights, incrementar a versão.**
-- **Dados de mercado** — `lib/cdi-reference.ts` (SGS 12 = CDI diário, 4391 = CDI mensal) e as rotas de insights (13522 = IPCA 12m, Yahoo para IBOV/IFIX) usam cache em memória com TTLs distintos para sucesso e fallback. Sempre prever fallback quando a API externa falhar.
+- **Dados de mercado** — `lib/cdi-reference.ts` (SGS 12 = CDI diário, 4391 = CDI mensal) e as rotas de insights (13522 = IPCA 12m, Yahoo para IBOV/IFIX; sem cripto) usam cache em memória com TTLs distintos para sucesso e fallback. Sempre prever fallback quando a API externa falhar.
 
 ### Apresentação de números
 
@@ -106,7 +107,7 @@ Mutations chamam `revalidatePath()` nas rotas afetadas e o cliente publica um ev
 
 - **Imports relativos** (`../../lib/supabase`) em todo o código; o alias `@/*` existe no `tsconfig.json` mas não é usado — seguir o padrão vigente.
 - Server components por padrão; `"use client"` só quando há estado, efeitos ou Recharts.
-- Valores monetários via `formatCurrencyBRL()` e percentuais via `formatPercentage()`; nunca formatar à mão.
+- Valores monetários via `formatCurrencyBRL()` e percentuais via `formatPercentage()` / `formatPercentageDigits()` (vírgula decimal); nunca formatar à mão.
 - Textos visíveis sempre em português. Comentários acompanham o arquivo (a maioria em português).
 - Rotas de API validam as entradas e retornam `{ error: "mensagem em pt-BR" }` com o status adequado (400 inválido, 404 não encontrado, 409 período fechado, 500 erro). **Nunca** gravar o corpo cru (`insert(body)`, `update(body)`, `upsert(body)`): montar o objeto só com as colunas permitidas.
 - Paleta de cores no `tailwind.config.ts`: `background`, `surface`, `accent`, `success`, `danger`. Tema escuro.

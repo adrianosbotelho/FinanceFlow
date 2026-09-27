@@ -11,6 +11,11 @@ import {
 } from "../../../../lib/month-pace";
 import { MonthPace, ProfessionalInsightsPayload } from "../../../../types";
 
+// Número com vírgula decimal (pt-BR) para os textos exibidos.
+function br(value: number, digits: number): string {
+  return value.toFixed(digits).replace(".", ",");
+}
+
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
@@ -269,10 +274,8 @@ function buildDiagnosticAlerts(
       id: "hit-rate-down-3d",
       severity: drop >= 15 ? "high" : "medium",
       title: "Hit rate em queda por 3 dias",
-      message: `Taxa de acerto caiu ${drop.toFixed(1)} p.p. na sequência diária recente.`,
-      trigger: `${d2.hitRatePercent.toFixed(1)}% → ${d1.hitRatePercent.toFixed(
-        1,
-      )}% → ${d0.hitRatePercent.toFixed(1)}%`,
+      message: `Taxa de acerto caiu ${br(drop, 1)} p.p. na sequência diária recente.`,
+      trigger: `${br(d2.hitRatePercent, 1)}% → ${br(d1.hitRatePercent, 1)}% → ${br(d0.hitRatePercent, 1)}%`,
     });
   }
 
@@ -282,10 +285,8 @@ function buildDiagnosticAlerts(
       id: "risk-up-3d",
       severity: d0.riskScore >= 60 ? "high" : "medium",
       title: "Risco em alta por 3 dias",
-      message: `Score de risco subiu ${rise.toFixed(1)} pontos na série diária.`,
-      trigger: `${d2.riskScore.toFixed(1)} → ${d1.riskScore.toFixed(1)} → ${d0.riskScore.toFixed(
-        1,
-      )}`,
+      message: `Score de risco subiu ${br(rise, 1)} pontos na série diária.`,
+      trigger: `${br(d2.riskScore, 1)} → ${br(d1.riskScore, 1)} → ${br(d0.riskScore, 1)}`,
     });
   }
 
@@ -314,9 +315,7 @@ function buildDiagnosticAlerts(
         severity: "low",
         title: "Motor estável no curto prazo",
         message: "Sem deterioração sequencial detectada nos principais sinais diários.",
-        trigger: `Hit rate ${latest.hitRatePercent.toFixed(1)}% | risco ${latest.riskScore.toFixed(
-          1,
-        )}`,
+        trigger: `Hit rate ${br(latest.hitRatePercent, 1)}% | risco ${br(latest.riskScore, 1)}`,
       });
     }
   }
@@ -585,10 +584,10 @@ function buildRecommendation(
       const score = yieldScore * 0.6 + stabilityPercent * 0.25 + momentumScore * 0.15;
 
       const rationale = `Rendimento ${
-        monthlyYield === null ? "n/d" : `${monthlyYield.toFixed(2)}%`
-      } no mês${percentOfCdi === null ? "" : ` (${percentOfCdi.toFixed(0)}% do CDI)`}, variação ${
-        momentum === null ? "indefinida" : `${momentum >= 0 ? "+" : ""}${momentum.toFixed(1)}%`
-      } vs mês anterior e estabilidade ${stabilityPercent.toFixed(0)}%.`;
+        monthlyYield === null ? "n/d" : `${br(monthlyYield, 2)}%`
+      } no mês${percentOfCdi === null ? "" : ` (${br(percentOfCdi, 0)}% do CDI)`}, variação ${
+        momentum === null ? "indefinida" : `${momentum >= 0 ? "+" : ""}${br(momentum, 1)}%`
+      } vs mês anterior e estabilidade ${br(stabilityPercent, 0)}%.`;
 
       return {
         key: item.investmentId,
@@ -652,7 +651,7 @@ function buildRecommendation(
     bestAssetKey: best?.key ?? "",
     bestAssetLabel: best?.label ?? "—",
     action: best
-      ? `Próximo aporte tático: priorizar ${best.label} (score ${best.score.toFixed(1)}).`
+      ? `Próximo aporte tático: priorizar ${best.label} (score ${br(best.score, 1)}).`
       : "Sem investimentos ativos para recomendar aporte.",
     items,
     backtest: {
@@ -711,7 +710,7 @@ function buildBacktestDiagnosis(
           : "Motor com aderência baixa; precisa de ajuste tático.";
 
   const strengths: string[] = [
-    `Taxa de acerto em ${hitRatePercent === null ? "—" : `${hitRatePercent.toFixed(1)}%`} e ganho acima da média em ${edgeHitRate.toFixed(1)}% dos meses.`,
+    `Taxa de acerto em ${hitRatePercent === null ? "—" : `${br(hitRatePercent, 1)}%`} e ganho acima da média em ${br(edgeHitRate, 1)}% dos meses.`,
   ];
   if (cumulativeEdgeValue >= 0) {
     strengths.push(

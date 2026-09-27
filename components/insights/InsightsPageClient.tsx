@@ -15,22 +15,36 @@ import {
 import {
   DailyInsightApiPayload,
   DashboardPayload,
+  Investment,
   MarketSnapshotPayload,
   ProfessionalInsightsPayload,
 } from "../../types";
+import { countBusinessDaysInMonth, previousBusinessDay } from "../../lib/business-days";
 import {
-  countBusinessDaysElapsedInMonth,
-  countBusinessDaysInMonth,
-} from "../../lib/business-days";
-import { formatCurrencyBRL, formatPercentage, monthLabel } from "../../lib/formatters";
-import { InsightsPanel } from "../dashboard/InsightsPanel";
+  formatCurrencyBRL,
+  formatPercentage,
+  formatPercentageDigits,
+  monthLabel,
+  monthNameFull,
+} from "../../lib/formatters";
+import { buildInsightChecks, rankAporteCandidates } from "../../lib/insights-actions";
 
 interface Props {
   data: DashboardPayload;
   dailyInsights: DailyInsightApiPayload | null;
   marketSnapshot: MarketSnapshotPayload | null;
   professionalInsights: ProfessionalInsightsPayload | null;
+  investments: Investment[];
   year: number;
+}
+
+function toIsoDay(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function signedTone(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value) || Math.abs(value) < 0.005) return "text-slate-400";
+  return value > 0 ? "text-emerald-300" : "text-rose-300";
 }
 
 function buildForecastSeries(data: DashboardPayload) {
@@ -117,21 +131,9 @@ function radarStyle(status: "VERDE" | "AMARELO" | "VERMELHO") {
   return "bg-rose-900/40 text-rose-300 border-rose-700/70";
 }
 
-function priorityLabel(priority: "high" | "medium" | "low") {
-  if (priority === "high") return "Alta";
-  if (priority === "medium") return "Média";
-  return "Baixa";
-}
-
-function priorityStyle(priority: "high" | "medium" | "low") {
-  if (priority === "high") return "text-rose-300";
-  if (priority === "medium") return "text-amber-300";
-  return "text-emerald-300";
-}
-
 function formatTrendPp(value: number | null): string {
   if (value === null || Number.isNaN(value)) return "estável";
-  return `${value >= 0 ? "+" : ""}${value.toFixed(2)} p.p.`;
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2).replace(".", ",")} p.p.`;
 }
 
 function formatPoints(value: number | null): string {
@@ -140,27 +142,6 @@ function formatPoints(value: number | null): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value)} pts`;
-}
-
-function formatUsd(value: number | null): string {
-  if (value === null || Number.isNaN(value)) return "—";
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-}
-
-function formatSnapshotDate(value: string | null): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
 }
 
 function normalizeTinyPercent(value: number): number {
@@ -172,7 +153,7 @@ function signedDayVariation(value: number | null): string {
   const normalized = normalizeTinyPercent(value);
   const signal = normalized > 0 ? "▲ " : normalized < 0 ? "▼ " : "• ";
   const signed =
-    normalized > 0 ? `+${normalized.toFixed(2)}%` : `${normalized.toFixed(2)}%`;
+    normalized > 0 ? `+${formatPercentageDigits(normalized, 2)}` : formatPercentageDigits(normalized, 2);
   return `${signal}${signed}`;
 }
 
@@ -182,36 +163,6 @@ function dayVariationTone(value: number | null): string {
   if (normalized > 0) return "text-emerald-300";
   if (normalized < 0) return "text-rose-300";
   return "text-slate-300";
-}
-
-function marketCardTone(value: number | null): string {
-  if (value === null || Number.isNaN(value)) return "border-slate-700 bg-slate-800/40";
-  const normalized = normalizeTinyPercent(value);
-  if (normalized > 0) return "border-emerald-500/60 bg-emerald-950/20";
-  if (normalized < 0) return "border-rose-500/60 bg-rose-950/20";
-  return "border-slate-700 bg-slate-800/40";
-}
-
-function marketValueTone(value: number | null): string {
-  if (value === null || Number.isNaN(value)) return "text-slate-100";
-  const normalized = normalizeTinyPercent(value);
-  if (normalized > 0) return "text-emerald-300";
-  if (normalized < 0) return "text-rose-300";
-  return "text-slate-100";
-}
-
-function goalProgressTone(value: number | null): string {
-  if (value === null || Number.isNaN(value)) return "text-slate-300";
-  if (value >= 100) return "text-emerald-300";
-  if (value >= 80) return "text-amber-300";
-  return "text-rose-300";
-}
-
-function goalCardTone(progress: number | null): string {
-  if (progress === null || Number.isNaN(progress)) return "border-slate-700 bg-slate-800/40";
-  if (progress >= 100) return "border-emerald-600/50 bg-emerald-950/20";
-  if (progress >= 80) return "border-amber-600/50 bg-amber-950/20";
-  return "border-rose-600/50 bg-rose-950/20";
 }
 
 function qualityGradeTone(grade: "A" | "B" | "C"): string {
@@ -227,24 +178,18 @@ function signedCurrency(value: number): string {
 function signedPercentage(value: number | null): string {
   if (value === null || Number.isNaN(value)) return "—";
   const signal = value > 0 ? "+" : "";
-  return `${signal}${value.toFixed(1)}%`;
+  return `${signal}${formatPercentage(value)}`;
 }
 
 function percentTwoDecimals(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
-  return `${value.toFixed(2)}%`;
+  return formatPercentageDigits(value, 2);
 }
 
 function riskRegimeTone(regime: "ESTAVEL" | "ATENCAO" | "ESTRESSADO"): string {
   if (regime === "ESTAVEL") return "text-emerald-300";
   if (regime === "ATENCAO") return "text-amber-300";
   return "text-rose-300";
-}
-
-function diagnosticAlertTone(severity: "low" | "medium" | "high"): string {
-  if (severity === "high") return "border-rose-700/70 bg-rose-950/30 text-rose-200";
-  if (severity === "medium") return "border-amber-700/70 bg-amber-950/30 text-amber-200";
-  return "border-emerald-700/70 bg-emerald-950/30 text-emerald-200";
 }
 
 function shortDate(value: string): string {
@@ -345,12 +290,12 @@ function deriveOperationalInsights(data: DashboardPayload, year: number): Operat
 
   const stressScenarios = [
     {
-      label: `CDI -1pp (${cdiReference.toFixed(2)}% -> ${(cdiReference - 1).toFixed(2)}%)`,
+      label: `CDI −1 p.p. (${formatPercentageDigits(cdiReference, 2)} → ${formatPercentageDigits(cdiReference - 1, 2)})`,
       impact: -cdbImpactPer1pp,
       simulatedTotal: projectedClose - cdbImpactPer1pp,
     },
     {
-      label: `CDI +1pp (${cdiReference.toFixed(2)}% -> ${(cdiReference + 1).toFixed(2)}%)`,
+      label: `CDI +1 p.p. (${formatPercentageDigits(cdiReference, 2)} → ${formatPercentageDigits(cdiReference + 1, 2)})`,
       impact: cdbImpactPer1pp,
       simulatedTotal: projectedClose + cdbImpactPer1pp,
     },
@@ -427,6 +372,7 @@ export function InsightsPageClient({
   dailyInsights,
   marketSnapshot,
   professionalInsights,
+  investments,
   year,
 }: Props) {
   const forecastSeries = buildForecastSeries(data);
@@ -434,15 +380,7 @@ export function InsightsPageClient({
   const operational = deriveOperationalInsights(data, year);
   const fiiSuggestion = data.insights.fiiReinvestment;
   const dailyReport = dailyInsights?.report ?? null;
-  const cryptoQuotesByPair = new Map(
-    (marketSnapshot?.cryptoQuotes ?? []).map((quote) => [quote.pair, quote]),
-  );
-  const cryptoCardsOrder: Array<"BTC-USD" | "ETH-USD" | "SOL-USD" | "XLM-USD"> = [
-    "BTC-USD",
-    "ETH-USD",
-    "SOL-USD",
-    "XLM-USD",
-  ];
+  const pace = data.monthPace ?? null;
   const diagnosisHistorySeries = (professionalInsights?.diagnosisHistory ?? [])
     .slice()
     .reverse()
@@ -455,434 +393,287 @@ export function InsightsPageClient({
       regime: item.riskRegime,
     }));
 
+  // ── O que fazer agora ──
+  const benchmarkItems = professionalInsights?.benchmark.items ?? [];
+  const realizedById = new Map(benchmarkItems.map((item) => [item.key, item.percentOfCdi]));
+  const activeCdbs = investments.filter((inv) => inv.type === "CDB" && Number(inv.amount_invested) > 0);
+  const ranked = rankAporteCandidates(
+    activeCdbs.map((inv) => ({
+      id: inv.id,
+      label: inv.name || `CDB ${inv.institution}`,
+      institution: inv.institution,
+      balance: Number(inv.amount_invested),
+      contractedCdiPercent: Number(inv.cdi_rate) > 0 ? Number(inv.cdi_rate) : null,
+      realizedPercentOfCdi: realizedById.get(inv.id) ?? null,
+      liquidity: inv.liquidity ?? null,
+    })),
+  );
+  const bestAporte = ranked.find((item) => item.eligible) ?? null;
+  const alternatives = ranked.filter((item) => item !== bestAporte).slice(0, 3);
+  const checks = buildInsightChecks({
+    benchmark: benchmarkItems,
+    pace: (pace?.investments ?? []).map((item) => ({
+      investmentId: item.investmentId,
+      label: item.label,
+      realized: item.realized,
+      asOfDate: item.asOfDate,
+    })),
+    dataBaseIso: pace?.isCurrentMonth ? toIsoDay(previousBusinessDay(new Date())) : null,
+    institutions: activeCdbs.map((inv) => ({ institution: inv.institution, balance: Number(inv.amount_invested) })),
+  });
+  const extraRisks = [
+    ...(dailyReport?.risks ?? [])
+      .filter((risk) => risk.level !== "low")
+      .map((risk) => ({ id: `risk-${risk.id}`, severity: risk.level === "high" ? "high" : "medium", title: risk.title, detail: risk.description })),
+    ...(professionalInsights?.diagnosticAlerts ?? [])
+      .filter((alert) => alert.severity !== "low")
+      .map((alert) => ({ id: `alert-${alert.id}`, severity: alert.severity, title: alert.title, detail: alert.message })),
+  ] as Array<{ id: string; severity: "high" | "medium"; title: string; detail: string }>;
+  const seenTitles = new Set<string>();
+  const allChecks = [...checks, ...extraRisks].filter((check) => {
+    const key = check.title.toLowerCase();
+    if (seenTitles.has(key)) return false;
+    seenTitles.add(key);
+    return true;
+  });
+
+  // ── Metas ──
+  const monthlyGoal = professionalInsights?.goalProbabilities.monthlyIncome ?? null;
+  const capitalGoal = professionalInsights?.goalProbabilities.annualCapital ?? null;
+  const goal = data.goalProgress;
+  const monthlyGap = monthlyGoal?.targetValue ? Math.max(0, monthlyGoal.targetValue - monthlyGoal.realizedValue) : null;
+  const neededPerDay =
+    monthlyGap !== null && pace && pace.isCurrentMonth && pace.remainingBusinessDays > 0
+      ? monthlyGap / pace.remainingBusinessDays
+      : null;
+
+  // ── O que mudou no mês ──
+  const attribution = professionalInsights?.attribution ?? null;
+  const attributionMonth = professionalInsights ? { year: professionalInsights.year, month: professionalInsights.month } : null;
+  const currentDays = attributionMonth ? countBusinessDaysInMonth(attributionMonth.year, attributionMonth.month) : 0;
+  const previousRef = attributionMonth
+    ? attributionMonth.month === 1
+      ? { year: attributionMonth.year - 1, month: 12 }
+      : { year: attributionMonth.year, month: attributionMonth.month - 1 }
+    : null;
+  const previousDays = previousRef ? countBusinessDaysInMonth(previousRef.year, previousRef.month) : 0;
+  const maxAbsDelta = Math.max(1, ...(attribution?.items ?? []).map((item) => Math.abs(item.deltaValue)));
+  const perDayChange = (current: number, previous: number): number | null =>
+    previous > 0 && currentDays > 0 && previousDays > 0
+      ? ((current / currentDays) / (previous / previousDays) - 1) * 100
+      : null;
+  const monthName = pace ? monthNameFull(pace.month) : "";
+  const describeLiquidity = (item: { liquidity: string | null; liquidityLabel: string }) =>
+    item.liquidity ? ` · ${item.liquidityLabel}` : "";
+
   return (
     <div className="space-y-6">
-      <section className="rounded-xl border border-slate-700 bg-slate-800 p-5">
-        <h2 className="text-lg font-bold text-slate-50">Insights Financeiros Nível 3</h2>
-        <p className="text-sm text-slate-400">
-          Painel avançado com previsão, risco e direção da renda passiva ({year}).
-        </p>
-      </section>
+      <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-slate-50">Insights</h2>
+          <p className="text-sm text-slate-400">Leitura do mês, próximos passos e metas ({year}).</p>
+        </div>
+        {marketSnapshot ? (
+          <div className="flex flex-wrap gap-2 text-xs">
+            <span className="rounded-full border border-slate-700 bg-slate-800/60 px-3 py-1 text-slate-300">
+              Selic <strong className="text-slate-100">{formatPercentageDigits(marketSnapshot.selicPercent, 2)}</strong>
+            </span>
+            <span className="rounded-full border border-slate-700 bg-slate-800/60 px-3 py-1 text-slate-300">
+              CDI <strong className="text-slate-100">{formatPercentageDigits(marketSnapshot.cdiAnnualizedPercent, 2)}</strong> a.a.
+            </span>
+            <span className="rounded-full border border-slate-700 bg-slate-800/60 px-3 py-1 text-slate-300">
+              Ibovespa <strong className="text-slate-100">{formatPoints(marketSnapshot.ibovespaPreviousClose)}</strong>{" "}
+              <span className={dayVariationTone(marketSnapshot.ibovespaDayChangePercent)}>
+                {signedDayVariation(marketSnapshot.ibovespaDayChangePercent)}
+              </span>
+            </span>
+            <span className="rounded-full border border-slate-700 bg-slate-800/60 px-3 py-1 text-slate-300">
+              IFIX <strong className="text-slate-100">{formatPoints(marketSnapshot.ifixPreviousClose)}</strong>{" "}
+              <span className={dayVariationTone(marketSnapshot.ifixDayChangePercent)}>
+                {signedDayVariation(marketSnapshot.ifixDayChangePercent)}
+              </span>
+            </span>
+          </div>
+        ) : null}
+      </header>
 
+      {/* 1. Resumo do mês */}
       <section className="rounded-xl border border-slate-700 bg-slate-800 p-5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-slate-100">
-            Snapshot de mercado (atual e D-1)
-          </h3>
-          <span className="text-[11px] text-slate-500">
-            Atualizado em{" "}
-            {marketSnapshot?.generatedAt
-              ? new Date(marketSnapshot.generatedAt).toLocaleString("pt-BR")
-              : "—"}
-          </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-sm font-semibold text-slate-100">Resumo de {monthName}</h3>
+          {dailyReport ? (
+            <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${radarStyle(dailyReport.radarStatus)}`}>
+              {dailyReport.radarStatus === "VERDE" ? "No ritmo" : dailyReport.radarStatus === "AMARELO" ? "Atenção" : "Alerta"}
+            </span>
+          ) : null}
+          {pace?.isCurrentMonth && pace.asOfDate ? (
+            <span className="text-[11px] text-slate-500">
+              dados até {shortDate(pace.asOfDate)} · {pace.elapsedBusinessDays}/{pace.totalBusinessDays} dias úteis
+            </span>
+          ) : null}
         </div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-md border border-slate-700 p-3">
-            <p className="text-[11px] text-slate-400">Selic atual</p>
-            <p className="text-lg font-bold text-cyan-300">
-              {marketSnapshot?.selicPercent !== null && marketSnapshot?.selicPercent !== undefined
-                ? `${marketSnapshot.selicPercent.toFixed(2)}% a.a.`
-                : "—"}
-            </p>
+        {dailyReport ? <p className="mt-2 text-base font-semibold text-slate-50">{dailyReport.headline}</p> : null}
+        {pace ? (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-lg border border-slate-700 bg-slate-900/40 p-3">
+              <p className="text-[11px] uppercase tracking-wide text-slate-500">Realizado no mês</p>
+              <p className="text-xl font-bold text-slate-50">{formatCurrencyBRL(pace.realized)}</p>
+              <p className="text-[11px] text-slate-500">
+                ritmo {pace.expectedToDate ? formatPercentage((pace.realized / pace.expectedToDate) * 100) : "—"} do mês anterior
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-700 bg-slate-900/40 p-3">
+              <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                {pace.isCurrentMonth ? "Fechamento projetado" : "Fechamento"}
+              </p>
+              <p className="text-xl font-bold text-cyan-300">{formatCurrencyBRL(pace.projected)}</p>
+              <p className={`text-[11px] ${signedTone(pace.projectedVsPreviousPercent)}`}>
+                {signedPercentage(pace.projectedVsPreviousPercent)} vs mês anterior
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-700 bg-slate-900/40 p-3">
+              <p className="text-[11px] uppercase tracking-wide text-slate-500">Rentabilidade vs CDI</p>
+              <p
+                className={`text-xl font-bold ${
+                  (professionalInsights?.benchmark.portfolioPercentOfCdi ?? 100) >= 100 ? "text-emerald-300" : "text-amber-300"
+                }`}
+              >
+                {formatPercentage(professionalInsights?.benchmark.portfolioPercentOfCdi ?? null)} do CDI
+              </p>
+              <p className="text-[11px] text-slate-500">
+                carteira {percentTwoDecimals(professionalInsights?.benchmark.portfolioMomPercent)} · CDI{" "}
+                {percentTwoDecimals(professionalInsights?.benchmark.cdiMomPercent)}
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-700 bg-slate-900/40 p-3">
+              <p className="text-[11px] uppercase tracking-wide text-slate-500">Projeção do ano</p>
+              <p className="text-xl font-bold text-slate-50">{formatCurrencyBRL(pace.annualProjection)}</p>
+              <p className={`text-[11px] ${signedTone(pace.yoyPercent)}`}>
+                mês {signedPercentage(pace.yoyPercent)} vs mesmo mês do ano anterior
+              </p>
+            </div>
           </div>
-          <div className="rounded-md border border-slate-700 p-3">
-            <p className="text-[11px] text-slate-400">CDI atual</p>
-            <p className="text-lg font-bold text-emerald-300">
-              {marketSnapshot?.cdiAnnualizedPercent !== null &&
-              marketSnapshot?.cdiAnnualizedPercent !== undefined
-                ? `${marketSnapshot.cdiAnnualizedPercent.toFixed(2)}% a.a.`
-                : "—"}
-            </p>
-            <p className="text-[11px] text-slate-500">
-              Diário:{" "}
-              {marketSnapshot?.cdiDailyPercent !== null &&
-              marketSnapshot?.cdiDailyPercent !== undefined
-                ? `${marketSnapshot.cdiDailyPercent.toFixed(4)}%`
-                : "—"}
-            </p>
-          </div>
-          <div
-            className={`rounded-md border p-3 ${marketCardTone(
-              marketSnapshot?.ibovespaDayChangePercent ?? null,
-            )}`}
-          >
-            <p className="text-[11px] text-slate-400">Ibovespa (fechamento D-1)</p>
-            <p
-              className={`text-lg font-bold ${marketValueTone(
-                marketSnapshot?.ibovespaDayChangePercent ?? null,
-              )}`}
-            >
-              {formatPoints(marketSnapshot?.ibovespaPreviousClose ?? null)}
-            </p>
-            <p
-              className={`text-[11px] font-semibold ${dayVariationTone(
-                marketSnapshot?.ibovespaDayChangePercent ?? null,
-              )}`}
-            >
-              Dia: {signedDayVariation(marketSnapshot?.ibovespaDayChangePercent ?? null)}
-            </p>
-            <p className="text-[11px] text-slate-500">
-              Data: {formatSnapshotDate(marketSnapshot?.ibovespaDate ?? null)}
-            </p>
-          </div>
-          <div
-            className={`rounded-md border p-3 ${marketCardTone(
-              marketSnapshot?.ifixDayChangePercent ?? null,
-            )}`}
-          >
-            <p className="text-[11px] text-slate-400">IFIX (fechamento D-1)</p>
-            <p
-              className={`text-lg font-bold ${marketValueTone(
-                marketSnapshot?.ifixDayChangePercent ?? null,
-              )}`}
-            >
-              {formatPoints(marketSnapshot?.ifixPreviousClose ?? null)}
-            </p>
-            <p
-              className={`text-[11px] font-semibold ${dayVariationTone(
-                marketSnapshot?.ifixDayChangePercent ?? null,
-              )}`}
-            >
-              Dia: {signedDayVariation(marketSnapshot?.ifixDayChangePercent ?? null)}
-            </p>
-            <p className="text-[11px] text-slate-500">
-              Data: {formatSnapshotDate(marketSnapshot?.ifixDate ?? null)}
-            </p>
-          </div>
-        </div>
-        {marketSnapshot?.warnings?.length ? (
-          <p className="mt-3 text-xs text-amber-300">
-            {marketSnapshot.warnings.join(" | ")}
-          </p>
         ) : null}
       </section>
 
+      {/* 2. O que fazer agora */}
+      <section className="grid gap-4 xl:grid-cols-2">
+        <article className="rounded-xl border border-indigo-500/40 bg-slate-800 p-5">
+          <h3 className="text-sm font-semibold text-slate-100">Próximo aporte</h3>
+          {bestAporte ? (
+            <>
+              <p className="mt-2 text-base font-semibold text-slate-50">Priorizar {bestAporte.label}</p>
+              <p className="mt-1 text-xs text-slate-400">
+                {bestAporte.rate !== null ? `${Math.round(bestAporte.rate)}% do CDI ${bestAporte.rateSource}` : "sem taxa"}
+                {describeLiquidity(bestAporte)} · folga no FGC de {formatCurrencyBRL(bestAporte.fgcHeadroom)}
+              </p>
+              {alternatives.length > 0 ? (
+                <ul className="mt-3 space-y-1 text-xs text-slate-400">
+                  {alternatives.map((item) => (
+                    <li key={item.id}>
+                      <span className="text-slate-200">{item.label}</span>:{" "}
+                      {item.rate !== null ? `${Math.round(item.rate)}% do CDI ${item.rateSource}` : "sem taxa"}
+                      {describeLiquidity(item)}
+                      {item.notes.length > 0 ? <span className="text-amber-300"> · {item.notes.join(", ")}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </>
+          ) : (
+            <p className="mt-2 text-xs text-slate-400">
+              Nenhum CDB da carteira com taxa conhecida e folga no FGC. Compare ofertas novas.
+            </p>
+          )}
+          <a href="/compare" className="mt-3 inline-block text-xs font-semibold text-indigo-300 hover:text-indigo-200">
+            Comparar com ofertas do mercado em Onde Aportar →
+          </a>
+        </article>
+
+        <article className="rounded-xl border border-slate-700 bg-slate-800 p-5">
+          <h3 className="text-sm font-semibold text-slate-100">O que conferir</h3>
+          {allChecks.length === 0 ? (
+            <p className="mt-2 text-xs text-emerald-300">Nada a conferir: taxas, lançamentos e limites do FGC em ordem.</p>
+          ) : (
+            <ul className="mt-2 space-y-2">
+              {allChecks.map((check) => (
+                <li
+                  key={check.id}
+                  className={`rounded-md border px-3 py-2 text-xs ${
+                    check.severity === "high"
+                      ? "border-rose-700/60 bg-rose-950/30 text-rose-100"
+                      : "border-amber-700/60 bg-amber-950/20 text-amber-100"
+                  }`}
+                >
+                  <p className="font-semibold">{check.title}</p>
+                  <p className="mt-0.5 opacity-90">{check.detail}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </article>
+      </section>
+
+      {/* 3. Metas */}
       <section className="rounded-xl border border-slate-700 bg-slate-800 p-5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-slate-100">
-            Snapshot de cripto (USD, tempo real)
-          </h3>
-          <span className="text-[11px] text-slate-500">
-            BTC, ETH, SOL e XLM
-          </span>
-        </div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {cryptoCardsOrder.map((pair) => {
-            const quote = cryptoQuotesByPair.get(pair);
-            const symbol = pair.replace("-USD", "");
-            return (
-              <div
-                key={pair}
-                className={`rounded-md border p-3 ${marketCardTone(quote?.dayChangePercent ?? null)}`}
-              >
-                <p className="text-[11px] text-slate-400">{symbol}/USD</p>
-                <p className={`text-lg font-bold ${marketValueTone(quote?.dayChangePercent ?? null)}`}>
-                  {formatUsd(quote?.priceUsd ?? null)}
-                </p>
-                <p className={`text-[11px] font-semibold ${dayVariationTone(quote?.dayChangePercent ?? null)}`}>
-                  Dia: {signedDayVariation(quote?.dayChangePercent ?? null)}
-                </p>
-                <p className="text-[11px] text-slate-500">
-                  Data: {formatSnapshotDate(quote?.updatedAt ?? null)}
-                </p>
-              </div>
-            );
-          })}
+        <h3 className="text-sm font-semibold text-slate-100">Metas</h3>
+        <div className="mt-3 grid gap-3 lg:grid-cols-3">
+          {monthlyGoal && monthlyGoal.targetValue ? (
+            <GoalCard
+              title={`Renda de ${monthName} (CDBs)`}
+              realized={monthlyGoal.realizedValue}
+              projected={monthlyGoal.projectedValue}
+              target={monthlyGoal.targetValue}
+              probability={monthlyGoal.probabilityPercent}
+              footer={
+                monthlyGap !== null && monthlyGap > 0 && neededPerDay !== null
+                  ? `Faltam ${formatCurrencyBRL(monthlyGap)}: ${formatCurrencyBRL(neededPerDay)} por dia útil (ritmo atual ${formatCurrencyBRL(
+                      pace?.dailyRate ?? 0,
+                    )}).`
+                  : monthlyGap === 0
+                    ? "Meta do mês atingida."
+                    : null
+              }
+            />
+          ) : null}
+          {goal.annualIncomeTarget > 0 ? (
+            <GoalCard
+              title={`Renda do ano (${operational.goalLabel})`}
+              realized={null}
+              projected={goal.annualProjection}
+              target={goal.annualIncomeTarget}
+              probability={null}
+              footer={
+                goal.gapToTarget > 0
+                  ? `Faltam ${formatCurrencyBRL(goal.gapToTarget)}: ${formatCurrencyBRL(operational.requiredPerMonth)}/mês nos meses com meta.`
+                  : `No ritmo: projeção ${formatPercentage(goal.progressPercent)} da meta.`
+              }
+            />
+          ) : null}
+          {capitalGoal && capitalGoal.targetValue ? (
+            <GoalCard
+              title="Patrimônio no fim do ano"
+              realized={capitalGoal.realizedValue}
+              projected={capitalGoal.projectedValue}
+              target={capitalGoal.targetValue}
+              probability={capitalGoal.probabilityPercent}
+              footer={
+                capitalGoal.targetValue > capitalGoal.projectedValue
+                  ? `Projeção fica ${formatCurrencyBRL(capitalGoal.targetValue - capitalGoal.projectedValue)} abaixo. Veja o aporte necessário em Metas.`
+                  : "Projeção alcança a meta."
+              }
+              realizedLabel="Atual"
+            />
+          ) : null}
         </div>
       </section>
 
-      {dailyReport ? (
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-          <article className="rounded-xl border border-slate-700 bg-slate-800 p-5">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-sm font-semibold text-slate-100">
-                Agente Financeiro Diário (Nível 4)
-              </h3>
-              <span
-                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${radarStyle(
-                  dailyReport.radarStatus,
-                )}`}
-              >
-                Radar {dailyReport.radarStatus}
-              </span>
-              <span className="text-[11px] text-slate-400">
-                Confiança {formatPercentage(dailyReport.confidencePercent)}
-              </span>
-              <span className="text-[11px] text-slate-500">
-                {dailyReport.generatedBy === "llm"
-                  ? `LLM ${dailyReport.model ?? ""}`.trim()
-                  : "Motor quantitativo"}
-              </span>
-            </div>
-            <p className="mt-2 text-sm font-semibold text-slate-100">{dailyReport.headline}</p>
-            <p className="mt-1 text-xs text-slate-300">{dailyReport.summary}</p>
-            <p className="mt-2 text-xs text-cyan-300">
-              Prioridade do dia: <span className="font-semibold">{dailyReport.priorityAction}</span>
-            </p>
-            {dailyReport.goalContext ? (
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <div
-                  className={`rounded-md border px-3 py-2 text-xs ${goalCardTone(
-                    dailyReport.goalContext.monthlyIncomeProgressPercent,
-                  )}`}
-                >
-                  <p className="text-slate-400">Meta mensal CDB</p>
-                  <p className={`font-semibold ${goalProgressTone(dailyReport.goalContext.monthlyIncomeProgressPercent)}`}>
-                    {dailyReport.goalContext.monthlyIncomeTarget !== null
-                      ? `${formatCurrencyBRL(dailyReport.goalContext.monthlyIncomeRealized)} / ${formatCurrencyBRL(
-                          dailyReport.goalContext.monthlyIncomeTarget,
-                        )}`
-                      : "Não configurada"}
-                  </p>
-                  <p className="text-slate-400">
-                    {dailyReport.goalContext.monthlyIncomeTarget !== null
-                      ? dailyReport.goalContext.monthlyIncomeGap !== null &&
-                        dailyReport.goalContext.monthlyIncomeGap > 0
-                        ? `Gap ${formatCurrencyBRL(dailyReport.goalContext.monthlyIncomeGap)}`
-                        : "Meta atingida"
-                      : "Defina meta em Metas"}
-                  </p>
-                </div>
-                <div
-                  className={`rounded-md border px-3 py-2 text-xs ${goalCardTone(
-                    dailyReport.goalContext.annualCapitalProgressPercent,
-                  )}`}
-                >
-                  <p className="text-slate-400">Meta anual patrimônio</p>
-                  <p className={`font-semibold ${goalProgressTone(dailyReport.goalContext.annualCapitalProgressPercent)}`}>
-                    {dailyReport.goalContext.annualCapitalTarget !== null
-                      ? `${formatCurrencyBRL(dailyReport.goalContext.annualCapitalCurrent)} / ${formatCurrencyBRL(
-                          dailyReport.goalContext.annualCapitalTarget,
-                        )}`
-                      : "Não configurada"}
-                  </p>
-                  <p className="text-slate-400">
-                    {dailyReport.goalContext.annualCapitalTarget !== null
-                      ? dailyReport.goalContext.annualCapitalGap !== null &&
-                        dailyReport.goalContext.annualCapitalGap > 0
-                        ? `Gap ${formatCurrencyBRL(dailyReport.goalContext.annualCapitalGap)}`
-                        : "Meta atingida"
-                      : "Defina meta em Metas"}
-                  </p>
-                </div>
-              </div>
-            ) : null}
-            {dailyInsights?.warnings?.length ? (
-              <div className="mt-3 rounded-md border border-amber-700/60 bg-amber-950/30 p-2 text-[11px] text-amber-300">
-                {dailyInsights.warnings.join(" | ")}
-              </div>
-            ) : null}
-          </article>
-
-          <article className="rounded-xl border border-slate-700 bg-slate-800 p-5">
-            <h3 className="text-sm font-semibold text-slate-100">Ações sugeridas (hoje)</h3>
-            <div className="mt-3 space-y-2">
-              {dailyReport.actions.slice(0, 3).map((action) => (
-                <div key={action.id} className="rounded-md border border-slate-700 p-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-semibold text-slate-100">{action.title}</p>
-                    <span
-                      className={`text-[11px] font-semibold ${priorityStyle(action.priority)}`}
-                    >
-                      {priorityLabel(action.priority)}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-[11px] text-slate-300">{action.rationale}</p>
-                  <p className="mt-1 text-[11px] text-cyan-300">{action.expectedImpact}</p>
-                </div>
-              ))}
-            </div>
-          </article>
-        </section>
-      ) : null}
-
-      {dailyReport ? (
-        <section className="grid gap-4 xl:grid-cols-3">
-          <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-            <h3 className="text-sm font-semibold text-slate-100">Riscos monitorados</h3>
-            <ul className="mt-3 space-y-2 text-xs">
-              {dailyReport.risks.slice(0, 3).map((risk) => (
-                <li key={risk.id} className="rounded-md border border-slate-700 p-2">
-                  <p className="font-semibold text-slate-100">{risk.title}</p>
-                  <p className="mt-1 text-slate-300">{risk.description}</p>
-                  <p className="mt-1 text-[11px] text-slate-500">Gatilho: {risk.trigger}</p>
-                </li>
-              ))}
-            </ul>
-          </article>
-
-          <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-            <h3 className="text-sm font-semibold text-slate-100">Evidências do diagnóstico</h3>
-            <ul className="mt-3 space-y-2 text-xs">
-              {dailyReport.evidence.slice(0, 5).map((item) => (
-                <li key={item.id} className="rounded-md border border-slate-700 p-2">
-                  <p className="text-slate-400">{item.label}</p>
-                  <p className="font-semibold text-slate-100">{item.value}</p>
-                  <p className="text-[11px] text-slate-500">{item.context}</p>
-                </li>
-              ))}
-            </ul>
-          </article>
-
-          <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-            <h3 className="text-sm font-semibold text-slate-100">Histórico diário recente</h3>
-            <ul className="mt-3 space-y-2 text-xs">
-              {(dailyInsights?.history ?? []).slice(0, 7).map((item) => (
-                <li key={`${item.runDate}-${item.headline}`} className="rounded-md border border-slate-700 p-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-slate-400">{item.runDate}</span>
-                    <span
-                      className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${radarStyle(
-                        item.radarStatus,
-                      )}`}
-                    >
-                      {item.radarStatus}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-slate-300">{item.headline}</p>
-                </li>
-              ))}
-            </ul>
-          </article>
-        </section>
-      ) : null}
-
+      {/* 4. Rentabilidade vs CDI por investimento */}
       {professionalInsights ? (
-        <section className="space-y-4 rounded-xl border border-cyan-900/70 bg-slate-900/30 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h3 className="text-sm font-semibold text-cyan-200">
-                Insights Financeiros Nível 5 (Analista)
-              </h3>
-              <p className="text-xs text-slate-400">
-                Qualidade preditiva, probabilidade de metas, atribuição e governança de dados.
-              </p>
-            </div>
-            <span className="text-[11px] text-slate-500">
-              Atualizado em {new Date(professionalInsights.generatedAt).toLocaleString("pt-BR")}
-            </span>
-          </div>
-          {professionalInsights.warnings.length > 0 ? (
-            <div className="rounded-md border border-amber-700/60 bg-amber-950/30 p-2 text-[11px] text-amber-300">
-              {professionalInsights.warnings.join(" | ")}
-            </div>
-          ) : null}
-          {professionalInsights.diagnosticAlerts.length > 0 ? (
-            <div className="grid gap-2 xl:grid-cols-3">
-              {professionalInsights.diagnosticAlerts.map((alert) => (
-                <article
-                  key={alert.id}
-                  className={`rounded-md border p-3 text-xs ${diagnosticAlertTone(alert.severity)}`}
-                >
-                  <p className="font-semibold">{alert.title}</p>
-                  <p className="mt-1">{alert.message}</p>
-                  <p className="mt-1 text-[11px] opacity-90">Trigger: {alert.trigger}</p>
-                </article>
-              ))}
-            </div>
-          ) : null}
-
-          <div className="grid gap-4 xl:grid-cols-2">
-            <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-              <h4 className="text-sm font-semibold text-slate-100">Qualidade da previsão</h4>
-              <div className="mt-3 overflow-x-auto">
-                <table className="w-full min-w-[620px] text-left text-xs">
-                  <thead className="text-slate-400">
-                    <tr>
-                      <th className="py-2">Série</th>
-                      <th className="py-2">MAPE</th>
-                      <th className="py-2">MAE</th>
-                      <th className="py-2">Viés</th>
-                      <th className="py-2">Direção</th>
-                      <th className="py-2">Amostra</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {professionalInsights.forecastQuality.metrics.map((metric) => (
-                      <tr key={metric.key} className="border-t border-slate-700/70 text-slate-200">
-                        <td className="py-2">{metric.label}</td>
-                        <td className="py-2 text-cyan-300">
-                          {metric.mapePercent === null ? "—" : formatPercentage(metric.mapePercent)}
-                        </td>
-                        <td className="py-2">{metric.maeValue === null ? "—" : formatCurrencyBRL(metric.maeValue)}</td>
-                        <td
-                          className={`py-2 font-semibold ${
-                            metric.biasValue === null
-                              ? "text-slate-400"
-                              : metric.biasValue > 0
-                                ? "text-emerald-300"
-                                : metric.biasValue < 0
-                                  ? "text-rose-300"
-                                  : "text-slate-300"
-                          }`}
-                        >
-                          {metric.biasValue === null ? "—" : signedCurrency(metric.biasValue)}
-                        </td>
-                        <td className="py-2 text-amber-300">
-                          {metric.directionAccuracyPercent === null
-                            ? "—"
-                            : formatPercentage(metric.directionAccuracyPercent)}
-                        </td>
-                        <td className="py-2 text-slate-400">{metric.sampleSize}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </article>
-
-            <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-              <h4 className="text-sm font-semibold text-slate-100">Probabilidade de metas</h4>
-              <div className="mt-3 grid gap-3">
-                {[
-                  professionalInsights.goalProbabilities.monthlyIncome,
-                  professionalInsights.goalProbabilities.annualCapital,
-                ].map((goal) => (
-                  <div key={goal.label} className="rounded-md border border-slate-700 p-3 text-xs">
-                    <p className="text-slate-400">{goal.label}</p>
-                    <p className="mt-1 text-slate-100">
-                      Realizado: <span className="font-semibold">{formatCurrencyBRL(goal.realizedValue)}</span>
-                    </p>
-                    <p className="text-slate-100">
-                      Projeção: <span className="font-semibold text-cyan-300">{formatCurrencyBRL(goal.projectedValue)}</span>
-                    </p>
-                    <p className="text-slate-100">
-                      Alvo:{" "}
-                      <span className="font-semibold">
-                        {goal.targetValue === null ? "Não configurado" : formatCurrencyBRL(goal.targetValue)}
-                      </span>
-                    </p>
-                    <p
-                      className={`mt-1 font-semibold ${
-                        goal.probabilityPercent === null
-                          ? "text-slate-400"
-                          : goal.probabilityPercent >= 70
-                            ? "text-emerald-300"
-                            : goal.probabilityPercent >= 40
-                              ? "text-amber-300"
-                              : "text-rose-300"
-                      }`}
-                    >
-                      Probabilidade:{" "}
-                      {goal.probabilityPercent === null ? "—" : formatPercentage(goal.probabilityPercent)}
-                    </p>
-                    {goal.confidenceBand ? (
-                      <p className="text-[11px] text-slate-500">
-                        Faixa: {formatCurrencyBRL(goal.confidenceBand.pessimistic)} •{" "}
-                        {formatCurrencyBRL(goal.confidenceBand.base)} •{" "}
-                        {formatCurrencyBRL(goal.confidenceBand.optimistic)}
-                      </p>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            </article>
-          </div>
-
-          <div className="grid gap-4 xl:grid-cols-3">
+        <section className="grid gap-4">
             <article className="rounded-xl border border-slate-700 bg-slate-800 p-4 xl:col-span-2">
               <h4 className="text-sm font-semibold text-slate-100">
-                Benchmark profissional ({professionalInsights.benchmark.referenceMonthLabel})
+                Rentabilidade vs CDI por investimento ({professionalInsights.benchmark.referenceMonthLabel})
               </h4>
               <p className="mt-1 text-[11px] text-slate-400">
                 Rendimento do mês sobre o capital aplicado versus o CDI acumulado nos dias úteis do mês.
@@ -926,7 +717,7 @@ export function InsightsPageClient({
                   <span className="font-semibold">
                     {professionalInsights.benchmark.excessVsCdiPercent === null
                       ? "—"
-                      : `${professionalInsights.benchmark.excessVsCdiPercent >= 0 ? "+" : ""}${professionalInsights.benchmark.excessVsCdiPercent.toFixed(2)} p.p.`}
+                      : `${professionalInsights.benchmark.excessVsCdiPercent >= 0 ? "+" : ""}${professionalInsights.benchmark.excessVsCdiPercent.toFixed(2).replace(".", ",")} p.p.`}
                   </span>
                 </p>
               </div>
@@ -979,7 +770,110 @@ export function InsightsPageClient({
                 </ul>
               ) : null}
             </article>
+        </section>
+      ) : null}
 
+      {/* 5. O que mudou no mês */}
+      {attribution && attribution.items.length > 0 ? (
+        <section className="rounded-xl border border-slate-700 bg-slate-800 p-5">
+          <h3 className="text-sm font-semibold text-slate-100">O que mudou no mês</h3>
+          <p className="mt-1 text-[11px] text-slate-400">
+            {attribution.monthLabel}
+            {" "}vs {attribution.previousMonthLabel ?? "mês anterior"}.
+            &quot;Por dia útil&quot; desconta a diferença de dias úteis entre os meses.
+          </p>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[620px] text-left text-xs md:text-sm">
+              <thead className="text-[11px] uppercase tracking-wide text-slate-400">
+                <tr>
+                  <th className="py-2">Investimento</th>
+                  <th className="py-2 text-right">{attribution.monthLabel}</th>
+                  <th className="py-2 text-right">{attribution.previousMonthLabel ?? "Anterior"}</th>
+                  <th className="py-2 text-right">Δ R$</th>
+                  <th className="py-2 text-right">Por dia útil</th>
+                  <th className="w-40 py-2" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-700/70">
+                {attribution.items.map((item) => {
+                  const perDay = perDayChange(item.currentValue, item.previousValue);
+                  return (
+                    <tr key={item.key}>
+                      <td className="py-2 text-slate-200">{item.label}</td>
+                      <td className="whitespace-nowrap py-2 text-right tabular-nums text-slate-100">
+                        {formatCurrencyBRL(item.currentValue)}
+                      </td>
+                      <td className="whitespace-nowrap py-2 text-right tabular-nums text-slate-400">
+                        {formatCurrencyBRL(item.previousValue)}
+                      </td>
+                      <td className={`whitespace-nowrap py-2 text-right tabular-nums font-semibold ${signedTone(item.deltaValue)}`}>
+                        {signedCurrency(item.deltaValue)}
+                      </td>
+                      <td className={`whitespace-nowrap py-2 text-right tabular-nums ${signedTone(perDay)}`}>
+                        {signedPercentage(perDay)}
+                      </td>
+                      <td className="py-2 pl-3">
+                        <div className="flex h-2 w-full">
+                          <div className="flex w-1/2 justify-end">
+                            {item.deltaValue < 0 ? (
+                              <div
+                                className="h-2 rounded-l bg-rose-400"
+                                style={{ width: `${(Math.abs(item.deltaValue) / maxAbsDelta) * 100}%` }}
+                              />
+                            ) : null}
+                          </div>
+                          <div className="w-1/2">
+                            {item.deltaValue > 0 ? (
+                              <div
+                                className="h-2 rounded-r bg-emerald-400"
+                                style={{ width: `${(item.deltaValue / maxAbsDelta) * 100}%` }}
+                              />
+                            ) : null}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-slate-600 font-semibold">
+                  <td className="py-2 text-slate-300">Total</td>
+                  <td className="whitespace-nowrap py-2 text-right tabular-nums text-slate-50">
+                    {formatCurrencyBRL(attribution.totalCurrent)}
+                  </td>
+                  <td className="whitespace-nowrap py-2 text-right tabular-nums text-slate-400">
+                    {formatCurrencyBRL(attribution.totalPrevious)}
+                  </td>
+                  <td className={`whitespace-nowrap py-2 text-right tabular-nums ${signedTone(attribution.totalDelta)}`}>
+                    {signedCurrency(attribution.totalDelta)}
+                  </td>
+                  <td
+                    className={`whitespace-nowrap py-2 text-right tabular-nums ${signedTone(
+                      perDayChange(attribution.totalCurrent, attribution.totalPrevious),
+                    )}`}
+                  >
+                    {signedPercentage(perDayChange(attribution.totalCurrent, attribution.totalPrevious))}
+                  </td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </section>
+      ) : null}
+
+      {/* 6. Detalhes técnicos */}
+      <details className="rounded-xl border border-slate-700 bg-slate-800/60 p-5">
+        <summary className="cursor-pointer select-none text-sm font-semibold text-slate-200">
+          Detalhes técnicos
+          <span className="ml-2 text-xs font-normal text-slate-500">
+            risco, stress test, qualidade da previsão e dos dados, motor de recomendação e backtest
+          </span>
+        </summary>
+        <div className="mt-4 space-y-4">
+          {professionalInsights ? (
+            <div className="grid gap-4 xl:grid-cols-2">
             <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
               <h4 className="text-sm font-semibold text-slate-100">Radar de risco (renda passiva)</h4>
               <div className="mt-3 space-y-2 text-xs">
@@ -992,7 +886,7 @@ export function InsightsPageClient({
                 <p>
                   Score risco:{" "}
                   <span className="font-semibold text-cyan-300">
-                    {professionalInsights.riskRadar.score.toFixed(1)}/100
+                    {professionalInsights.riskRadar.score.toFixed(1).replace(".", ",")}/100
                   </span>
                 </p>
                 <p>
@@ -1027,8 +921,248 @@ export function InsightsPageClient({
                 </p>
               </div>
             </article>
+        <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
+          <h3 className="text-sm font-semibold text-slate-100">Stress test rápido</h3>
+          <p className="mt-1 text-[11px] text-slate-400">
+            Base CDI: {formatPercentageDigits(operational.cdiReference, 2)} a.a. · sobre a projeção do mês
+          </p>
+          <ul className="mt-3 space-y-2 text-xs">
+            {operational.stressScenarios.map((scenario) => (
+              <li key={scenario.label} className="rounded-md border border-slate-700 p-2">
+                <p className="text-slate-300">{scenario.label}</p>
+                <p
+                  className={`font-semibold ${
+                    scenario.impact >= 0 ? "text-emerald-300" : "text-rose-300"
+                  }`}
+                >
+                  Impacto: {scenario.impact >= 0 ? "+" : ""}
+                  {formatCurrencyBRL(scenario.impact)}
+                </p>
+                <p className="text-slate-400">
+                  Total simulado: {formatCurrencyBRL(scenario.simulatedTotal)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </article>
+            </div>
+          ) : (
+            <div className="grid gap-4 xl:grid-cols-2">
+        <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
+          <h3 className="text-sm font-semibold text-slate-100">Stress test rápido</h3>
+          <p className="mt-1 text-[11px] text-slate-400">
+            Base CDI: {formatPercentageDigits(operational.cdiReference, 2)} a.a. · sobre a projeção do mês
+          </p>
+          <ul className="mt-3 space-y-2 text-xs">
+            {operational.stressScenarios.map((scenario) => (
+              <li key={scenario.label} className="rounded-md border border-slate-700 p-2">
+                <p className="text-slate-300">{scenario.label}</p>
+                <p
+                  className={`font-semibold ${
+                    scenario.impact >= 0 ? "text-emerald-300" : "text-rose-300"
+                  }`}
+                >
+                  Impacto: {scenario.impact >= 0 ? "+" : ""}
+                  {formatCurrencyBRL(scenario.impact)}
+                </p>
+                <p className="text-slate-400">
+                  Total simulado: {formatCurrencyBRL(scenario.simulatedTotal)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </article>
+            </div>
+          )}
+          {professionalInsights ? (
+            <div className="grid gap-4 xl:grid-cols-2">
+            <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
+              <h4 className="text-sm font-semibold text-slate-100">Qualidade da previsão</h4>
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full min-w-[620px] text-left text-xs">
+                  <thead className="text-slate-400">
+                    <tr>
+                      <th className="py-2">Série</th>
+                      <th className="py-2">MAPE</th>
+                      <th className="py-2">MAE</th>
+                      <th className="py-2">Viés</th>
+                      <th className="py-2">Direção</th>
+                      <th className="py-2">Amostra</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {professionalInsights.forecastQuality.metrics.map((metric) => (
+                      <tr key={metric.key} className="border-t border-slate-700/70 text-slate-200">
+                        <td className="py-2">{metric.label}</td>
+                        <td className="py-2 text-cyan-300">
+                          {metric.mapePercent === null ? "—" : formatPercentage(metric.mapePercent)}
+                        </td>
+                        <td className="py-2">{metric.maeValue === null ? "—" : formatCurrencyBRL(metric.maeValue)}</td>
+                        <td
+                          className={`py-2 font-semibold ${
+                            metric.biasValue === null
+                              ? "text-slate-400"
+                              : metric.biasValue > 0
+                                ? "text-emerald-300"
+                                : metric.biasValue < 0
+                                  ? "text-rose-300"
+                                  : "text-slate-300"
+                          }`}
+                        >
+                          {metric.biasValue === null ? "—" : signedCurrency(metric.biasValue)}
+                        </td>
+                        <td className="py-2 text-amber-300">
+                          {metric.directionAccuracyPercent === null
+                            ? "—"
+                            : formatPercentage(metric.directionAccuracyPercent)}
+                        </td>
+                        <td className="py-2 text-slate-400">{metric.sampleSize}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+            <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
+              <h4 className="text-sm font-semibold text-slate-100">Qualidade dos dados</h4>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 text-xs">
+                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
+                  Nota:{" "}
+                  <span className={`font-semibold ${qualityGradeTone(professionalInsights.dataQuality.grade)}`}>
+                    {professionalInsights.dataQuality.grade}
+                  </span>
+                </p>
+                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
+                  Cobertura:{" "}
+                  <span className="font-semibold text-cyan-300">
+                    {formatPercentage(professionalInsights.dataQuality.completenessPercent)}
+                  </span>
+                </p>
+                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
+                  Meses com dado:{" "}
+                  <span className="font-semibold text-slate-100">
+                    {professionalInsights.dataQuality.monthsWithData}/
+                    {professionalInsights.dataQuality.expectedMonths}
+                  </span>
+                </p>
+                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
+                  Último lançamento:{" "}
+                  <span className="font-semibold text-slate-100">
+                    {professionalInsights.dataQuality.latestEntryAt
+                      ? new Date(professionalInsights.dataQuality.latestEntryAt).toLocaleDateString("pt-BR")
+                      : "—"}
+                  </span>
+                </p>
+                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
+                  Outliers:{" "}
+                  <span className="font-semibold text-amber-300">
+                    {professionalInsights.dataQuality.outlierCount}
+                  </span>
+                </p>
+                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
+                  Duplicidades:{" "}
+                  <span className="font-semibold text-rose-300">
+                    {professionalInsights.dataQuality.duplicateRows}
+                  </span>
+                </p>
+              </div>
+              {professionalInsights.dataQuality.warnings.length > 0 ? (
+                <ul className="mt-3 space-y-1 text-xs text-amber-300">
+                  {professionalInsights.dataQuality.warnings.map((warning, idx) => (
+                    <li key={`${warning}-${idx}`}>• {warning}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-3 text-xs text-emerald-300">Sem alertas de qualidade no período.</p>
+              )}
+            </article>
+            </div>
+          ) : null}
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <section className="rounded-xl border border-slate-700 bg-slate-800 p-5">
+          <h3 className="text-sm font-semibold text-slate-100">
+            Realizado vs previsão (mês seguinte)
+          </h3>
+          <p className="mb-4 text-xs text-slate-400">
+            * último ponto representa a previsão do próximo mês.
+          </p>
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={forecastSeries} margin={{ top: 8, right: 18, left: 22, bottom: 8 }}>
+                <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" />
+                <XAxis dataKey="label" stroke="#94a3b8" />
+                <YAxis
+                  stroke="#94a3b8"
+                  tickFormatter={(value) => formatCurrencyBRL(Number(value))}
+                  width={100}
+                />
+                <Tooltip
+                  labelFormatter={(label) => `Mês: ${label}`}
+                  formatter={(value: number | string) =>
+                    formatCurrencyBRL(Number(value))
+                  }
+                  contentStyle={{
+                    backgroundColor: "#020617",
+                    borderColor: "#1f2937",
+                    borderRadius: 8,
+                  }}
+                  labelStyle={{ color: "#e2e8f0", fontWeight: 600 }}
+                  itemStyle={{ color: "#a5b4fc", fontWeight: 600 }}
+                />
+                <Legend />
+                <Line
+                  type="linear"
+                  dataKey="realized"
+                  name="Realizado"
+                  stroke="#22c55e"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  connectNulls={false}
+                />
+                <Line
+                  type="linear"
+                  dataKey="forecastBridge"
+                  name="Previsto (ponte)"
+                  stroke="#22d3ee"
+                  strokeWidth={2}
+                  strokeDasharray="6 3"
+                  dot={{ r: 3 }}
+                  connectNulls
+                />
+              </LineChart>
+            </ResponsiveContainer>
           </div>
-
+        </section>
+        <section className="rounded-xl border border-slate-700 bg-slate-800 p-5">
+          <h3 className="mb-4 text-sm font-semibold text-slate-100">
+            Composição da renda no ano
+          </h3>
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={distributionSeries}>
+                <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" />
+                <XAxis dataKey="source" stroke="#94a3b8" />
+                <YAxis stroke="#94a3b8" tickFormatter={formatCurrencyBRL} />
+                <Tooltip
+                  formatter={(value: number | string) =>
+                    formatCurrencyBRL(Number(value))
+                  }
+                  contentStyle={{
+                    backgroundColor: "#020617",
+                    borderColor: "#1f2937",
+                    borderRadius: 8,
+                  }}
+                  labelStyle={{ color: "#e2e8f0", fontWeight: 600 }}
+                  itemStyle={{ color: "#818cf8", fontWeight: 600 }}
+                />
+                <Bar dataKey="value" fill="#6366f1" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+          </div>
+          {professionalInsights ? (
+            <>
           <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
             <h4 className="text-sm font-semibold text-slate-100">Motor de recomendação de aporte</h4>
             <p className="mt-1 text-xs text-cyan-300">{professionalInsights.recommendation.action}</p>
@@ -1089,7 +1223,7 @@ export function InsightsPageClient({
                           </span>
                         ) : null}
                       </td>
-                      <td className="py-2 font-semibold text-cyan-300">{item.score.toFixed(1)}</td>
+                      <td className="py-2 font-semibold text-cyan-300">{item.score.toFixed(1).replace(".", ",")}</td>
                       <td className="py-2">{signedPercentage(item.momentumPercent)}</td>
                       <td className="py-2">
                         {item.monthlyYieldPercent === null
@@ -1173,7 +1307,6 @@ export function InsightsPageClient({
               </p>
             </div>
           </article>
-
           <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
             <h4 className="text-sm font-semibold text-slate-100">
               Evolução diária do diagnóstico (mês atual)
@@ -1240,7 +1373,7 @@ export function InsightsPageClient({
                         labelStyle={{ color: "#e2e8f0", fontWeight: 600 }}
                         formatter={(value: number | string, key: string) => {
                           const numeric = Number(value ?? 0);
-                          if (key === "hitRate") return [`${numeric.toFixed(1)}%`, "Hit rate (%)"];
+                          if (key === "hitRate") return [formatPercentage(numeric), "Taxa de acerto (%)"];
                           if (key === "risk") return [numeric.toFixed(1), "Risk score (0-100)"];
                           return [signedCurrency(numeric), "Edge acumulado (R$)"];
                         }}
@@ -1305,7 +1438,7 @@ export function InsightsPageClient({
                             {signedCurrency(item.cumulativeEdgeValue)}
                           </td>
                           <td className={`py-2 ${riskRegimeTone(item.riskRegime)}`}>
-                            {item.riskScore.toFixed(1)} ({item.riskRegime})
+                            {item.riskScore.toFixed(1).replace(".", ",")} ({item.riskRegime})
                           </td>
                           <td className="py-2 text-slate-400">{item.headline}</td>
                         </tr>
@@ -1316,322 +1449,10 @@ export function InsightsPageClient({
               </>
             )}
           </article>
-
-          <div className="grid gap-4 xl:grid-cols-2">
-            <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-              <h4 className="text-sm font-semibold text-slate-100">Atribuição do resultado M/M</h4>
-              <p className="mt-1 text-[11px] text-slate-400">
-                {professionalInsights.attribution.monthLabel}
-                {professionalInsights.attribution.previousMonthLabel
-                  ? ` vs ${professionalInsights.attribution.previousMonthLabel}`
-                  : ""}
-              </p>
-              <div className="mt-3 overflow-x-auto">
-                <table className="w-full min-w-[620px] text-left text-xs">
-                  <thead className="text-slate-400">
-                    <tr>
-                      <th className="py-2">Tema</th>
-                      <th className="py-2">Atual</th>
-                      <th className="py-2">Anterior</th>
-                      <th className="py-2">Δ R$</th>
-                      <th className="py-2">Peso atual</th>
-                      <th className="py-2">Contrib. Δ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {professionalInsights.attribution.items.map((item) => (
-                      <tr key={item.key} className="border-t border-slate-700/70 text-slate-200">
-                        <td className="py-2">{item.label}</td>
-                        <td className="py-2">{formatCurrencyBRL(item.currentValue)}</td>
-                        <td className="py-2">{formatCurrencyBRL(item.previousValue)}</td>
-                        <td
-                          className={`py-2 font-semibold ${
-                            item.deltaValue > 0
-                              ? "text-emerald-300"
-                              : item.deltaValue < 0
-                                ? "text-rose-300"
-                                : "text-slate-300"
-                          }`}
-                        >
-                          {signedCurrency(item.deltaValue)}
-                        </td>
-                        <td className="py-2 text-cyan-300">{formatPercentage(item.shareCurrentPercent)}</td>
-                        <td className="py-2 text-amber-300">
-                          {item.contributionToDeltaPercent === null
-                            ? "—"
-                            : formatPercentage(item.contributionToDeltaPercent)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-3 text-xs">
-                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
-                  Total atual:{" "}
-                  <span className="font-semibold text-slate-100">
-                    {formatCurrencyBRL(professionalInsights.attribution.totalCurrent)}
-                  </span>
-                </p>
-                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
-                  Total anterior:{" "}
-                  <span className="font-semibold text-slate-100">
-                    {formatCurrencyBRL(professionalInsights.attribution.totalPrevious)}
-                  </span>
-                </p>
-                <p
-                  className={`rounded-md border border-slate-700 px-2 py-1 ${
-                    professionalInsights.attribution.totalDelta >= 0
-                      ? "text-emerald-300"
-                      : "text-rose-300"
-                  }`}
-                >
-                  Δ total:{" "}
-                  <span className="font-semibold">
-                    {signedCurrency(professionalInsights.attribution.totalDelta)}
-                  </span>
-                </p>
-              </div>
-            </article>
-
-            <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-              <h4 className="text-sm font-semibold text-slate-100">Qualidade dos dados</h4>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2 text-xs">
-                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
-                  Nota:{" "}
-                  <span className={`font-semibold ${qualityGradeTone(professionalInsights.dataQuality.grade)}`}>
-                    {professionalInsights.dataQuality.grade}
-                  </span>
-                </p>
-                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
-                  Cobertura:{" "}
-                  <span className="font-semibold text-cyan-300">
-                    {formatPercentage(professionalInsights.dataQuality.completenessPercent)}
-                  </span>
-                </p>
-                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
-                  Meses com dado:{" "}
-                  <span className="font-semibold text-slate-100">
-                    {professionalInsights.dataQuality.monthsWithData}/
-                    {professionalInsights.dataQuality.expectedMonths}
-                  </span>
-                </p>
-                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
-                  Último lançamento:{" "}
-                  <span className="font-semibold text-slate-100">
-                    {professionalInsights.dataQuality.latestEntryAt
-                      ? new Date(professionalInsights.dataQuality.latestEntryAt).toLocaleDateString("pt-BR")
-                      : "—"}
-                  </span>
-                </p>
-                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
-                  Outliers:{" "}
-                  <span className="font-semibold text-amber-300">
-                    {professionalInsights.dataQuality.outlierCount}
-                  </span>
-                </p>
-                <p className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
-                  Duplicidades:{" "}
-                  <span className="font-semibold text-rose-300">
-                    {professionalInsights.dataQuality.duplicateRows}
-                  </span>
-                </p>
-              </div>
-              {professionalInsights.dataQuality.warnings.length > 0 ? (
-                <ul className="mt-3 space-y-1 text-xs text-amber-300">
-                  {professionalInsights.dataQuality.warnings.map((warning, idx) => (
-                    <li key={`${warning}-${idx}`}>• {warning}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mt-3 text-xs text-emerald-300">Sem alertas de qualidade no período.</p>
-              )}
-            </article>
-          </div>
-        </section>
-      ) : null}
-
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-          <p className="text-xs text-slate-400">Previsão próximo mês</p>
-          <p className="text-2xl font-extrabold text-cyan-300">
-            {formatCurrencyBRL(data.insights.forecastNextMonth)}
-          </p>
-        </article>
-        <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-          <p className="text-xs text-slate-400">Faixa prevista</p>
-          <p className="text-sm font-semibold text-slate-100">
-            {formatCurrencyBRL(data.insights.forecastRangeMin)} a{" "}
-            {formatCurrencyBRL(data.insights.forecastRangeMax)}
-          </p>
-        </article>
-        <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-          <p className="text-xs text-slate-400">Confiança</p>
-          <p className="text-2xl font-extrabold text-emerald-300">
-            {formatPercentage(data.insights.forecastConfidence)}
-          </p>
-        </article>
-        <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-          <p className="text-xs text-slate-400">Volatilidade recente</p>
-          <p className="text-2xl font-extrabold text-amber-300">
-            {formatPercentage(data.insights.volatilityPercent)}
-          </p>
-        </article>
-      </section>
-
-      <section
-        className={`grid gap-4 lg:grid-cols-2 ${operational.hasActiveFii ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}
-      >
-        <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-          <h3 className="text-sm font-semibold text-slate-100">
-            Drivers do mês ({monthLabel(operational.currentMonth)})
-          </h3>
-          <div className="mt-3 space-y-2 text-xs">
-            {operational.drivers.map((driver) => (
-              <div key={driver.label} className="rounded-md border border-slate-700 p-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-300">{driver.label}</span>
-                  <span className="font-semibold text-slate-100">
-                    {formatCurrencyBRL(driver.current)}
-                  </span>
-                </div>
-                <div className="mt-1 flex items-center justify-between">
-                  <span
-                    className={`font-semibold ${
-                      driver.delta > 0
-                        ? "text-emerald-300"
-                        : driver.delta < 0
-                          ? "text-rose-300"
-                          : "text-slate-400"
-                    }`}
-                  >
-                    {driver.delta >= 0 ? "+" : ""}
-                    {formatCurrencyBRL(driver.delta)}{" "}
-                    {driver.deltaPct !== null ? `(${formatPercentage(driver.deltaPct)})` : ""}
-                  </span>
-                  <span className="text-slate-400">
-                    peso: {formatPercentage(driver.sharePct)}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </article>
-
-        <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-          <h3 className="text-sm font-semibold text-slate-100">Ritmo do mês (dias úteis)</h3>
-          <div className="mt-3 space-y-2 text-xs text-slate-300">
-            <p>
-              Realizado:{" "}
-              <span className="font-semibold text-slate-100">
-                {formatCurrencyBRL(operational.currentTotal)}
-              </span>
-            </p>
-            <p>
-              Esperado (ritmo do mês anterior):{" "}
-              <span className="font-semibold text-slate-100">
-                {formatCurrencyBRL(operational.expectedToDate)}
-              </span>
-            </p>
-            <p>
-              Ritmo:{" "}
-              <span
-                className={`font-semibold ${
-                  (operational.pacePercent ?? 0) >= 100
-                    ? "text-emerald-300"
-                    : "text-amber-300"
-                }`}
-              >
-                {operational.pacePercent === null
-                  ? "—"
-                  : formatPercentage(operational.pacePercent)}
-              </span>
-            </p>
-            <p>
-              Projeção de fechamento:{" "}
-              <span className="font-semibold text-cyan-300">
-                {formatCurrencyBRL(operational.projectedClose)}
-              </span>
-            </p>
-            <p className="text-slate-400">
-              {operational.elapsedBusinessDays}/{operational.totalBusinessDays} dias úteis com dados
-              {operational.asOfDate ? ` (até ${shortDate(operational.asOfDate)})` : ""}.
-            </p>
-          </div>
-        </article>
-
-        <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-          <h3 className="text-sm font-semibold text-slate-100">Meta anual (run-rate)</h3>
-          <div className="mt-3 space-y-2 text-xs text-slate-300">
-            <p>
-              Meta anual:{" "}
-              <span className="font-semibold text-slate-100">
-                {formatCurrencyBRL(operational.targetAnnual)}
-              </span>
-              <span className="text-slate-500"> ({operational.goalLabel})</span>
-            </p>
-            <p>
-              Projeção nesses meses:{" "}
-              <span className="font-semibold text-cyan-300">
-                {formatCurrencyBRL(data.goalProgress.annualProjection)}
-              </span>
-            </p>
-            <p>
-              Realizado YTD:{" "}
-              <span className="font-semibold text-slate-100">
-                {formatCurrencyBRL(operational.ytd)}
-              </span>
-            </p>
-            <p>
-              Gap anual:{" "}
-              <span
-                className={`font-semibold ${
-                  operational.remainingToTarget > 0 ? "text-amber-300" : "text-emerald-300"
-                }`}
-              >
-                {formatCurrencyBRL(operational.remainingToTarget)}
-              </span>
-            </p>
-            <p>
-              Necessário por mês ({operational.monthsRemaining} meses):{" "}
-              <span className="font-semibold text-cyan-300">
-                {formatCurrencyBRL(operational.requiredPerMonth)}
-              </span>
-            </p>
-            <p>
-              Média recente (3 meses fechados):{" "}
-              <span className="font-semibold text-slate-100">
-                {formatCurrencyBRL(operational.recentAverage)}
-              </span>
-            </p>
-          </div>
-        </article>
-
-        <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-          <h3 className="text-sm font-semibold text-slate-100">Stress test rápido</h3>
-          <p className="mt-1 text-[11px] text-slate-400">
-            Base CDI: {operational.cdiReference.toFixed(2)}% a.a. · sobre a projeção do mês
-          </p>
-          <ul className="mt-3 space-y-2 text-xs">
-            {operational.stressScenarios.map((scenario) => (
-              <li key={scenario.label} className="rounded-md border border-slate-700 p-2">
-                <p className="text-slate-300">{scenario.label}</p>
-                <p
-                  className={`font-semibold ${
-                    scenario.impact >= 0 ? "text-emerald-300" : "text-rose-300"
-                  }`}
-                >
-                  Impacto: {scenario.impact >= 0 ? "+" : ""}
-                  {formatCurrencyBRL(scenario.impact)}
-                </p>
-                <p className="text-slate-400">
-                  Total simulado: {formatCurrencyBRL(scenario.simulatedTotal)}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </article>
-
+            </>
+          ) : null}
+          {operational.hasActiveFii ? (
+            <div className="grid gap-4">
         {operational.hasActiveFii ? (
           <article className="rounded-xl border border-cyan-800 bg-slate-800 p-4">
             <h3 className="text-sm font-semibold text-slate-100">
@@ -1691,162 +1512,75 @@ export function InsightsPageClient({
             </div>
           </article>
         ) : null}
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-          <h3 className="text-sm font-semibold text-slate-100">Ação prioritária do mês</h3>
-          <p className="mt-2 text-sm text-slate-300">{operational.priorityAction}</p>
-        </article>
-        <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-          <h3 className="text-sm font-semibold text-slate-100">Saúde de dados</h3>
-          {data.alerts.length === 0 ? (
-            <p className="mt-2 text-sm text-emerald-300">
-              Sem alertas críticos no período.
-            </p>
-          ) : (
-            <ul className="mt-2 space-y-1 text-xs text-slate-300">
-              {data.alerts.map((alert) => (
-                <li
-                  key={alert.code}
-                  className={
-                    alert.severity === "critical"
-                      ? "text-rose-300"
-                      : alert.severity === "warning"
-                        ? "text-amber-300"
-                        : "text-slate-300"
-                  }
-                >
-                  • {alert.message}
-                </li>
-              ))}
-            </ul>
-          )}
-        </article>
-      </section>
-
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <section className="rounded-xl border border-slate-700 bg-slate-800 p-5">
-          <h3 className="text-sm font-semibold text-slate-100">
-            Realizado vs previsão (mês seguinte)
-          </h3>
-          <p className="mb-4 text-xs text-slate-400">
-            * último ponto representa a previsão do próximo mês.
-          </p>
-          <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={forecastSeries} margin={{ top: 8, right: 18, left: 22, bottom: 8 }}>
-                <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" />
-                <XAxis dataKey="label" stroke="#94a3b8" />
-                <YAxis
-                  stroke="#94a3b8"
-                  tickFormatter={(value) => formatCurrencyBRL(Number(value))}
-                  width={100}
-                />
-                <Tooltip
-                  labelFormatter={(label) => `Mês: ${label}`}
-                  formatter={(value: number | string) =>
-                    formatCurrencyBRL(Number(value))
-                  }
-                  contentStyle={{
-                    backgroundColor: "#020617",
-                    borderColor: "#1f2937",
-                    borderRadius: 8,
-                  }}
-                  labelStyle={{ color: "#e2e8f0", fontWeight: 600 }}
-                  itemStyle={{ color: "#a5b4fc", fontWeight: 600 }}
-                />
-                <Legend />
-                <Line
-                  type="linear"
-                  dataKey="realized"
-                  name="Realizado"
-                  stroke="#22c55e"
-                  strokeWidth={2}
-                  dot={{ r: 3 }}
-                  connectNulls={false}
-                />
-                <Line
-                  type="linear"
-                  dataKey="forecastBridge"
-                  name="Previsto (ponte)"
-                  stroke="#22d3ee"
-                  strokeWidth={2}
-                  strokeDasharray="6 3"
-                  dot={{ r: 3 }}
-                  connectNulls
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-
-        <section className="rounded-xl border border-slate-700 bg-slate-800 p-5">
-          <h3 className="mb-4 text-sm font-semibold text-slate-100">
-            Composição da renda no ano
-          </h3>
-          <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={distributionSeries}>
-                <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" />
-                <XAxis dataKey="source" stroke="#94a3b8" />
-                <YAxis stroke="#94a3b8" tickFormatter={formatCurrencyBRL} />
-                <Tooltip
-                  formatter={(value: number | string) =>
-                    formatCurrencyBRL(Number(value))
-                  }
-                  contentStyle={{
-                    backgroundColor: "#020617",
-                    borderColor: "#1f2937",
-                    borderRadius: 8,
-                  }}
-                  labelStyle={{ color: "#e2e8f0", fontWeight: 600 }}
-                  itemStyle={{ color: "#818cf8", fontWeight: 600 }}
-                />
-                <Bar dataKey="value" fill="#6366f1" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <InsightsPanel
-          kpis={data.kpis}
-          insights={data.insights}
-          goalProgress={data.goalProgress}
-          alerts={data.alerts}
-        />
-        <section className="rounded-xl border border-slate-700 bg-slate-800 p-5">
-          <h3 className="mb-2 text-sm font-semibold text-slate-100">Sinais acionáveis</h3>
-          <ul className="space-y-2 text-sm text-slate-300">
-            <li>
-              Sazonalidade atual:{" "}
-              <span className="font-semibold text-cyan-300">
-                {data.insights.seasonalityFactor.toFixed(2)}x
-              </span>
-            </li>
-            <li>
-              Estado de anomalia:{" "}
-              <span
-                className={
-                  data.insights.anomalyDetected
-                    ? "font-semibold text-amber-300"
-                    : "font-semibold text-emerald-300"
-                }
-              >
-                {data.insights.anomalyDetected
-                  ? `Detectada (${data.insights.anomalyReason})`
-                  : "Sem anomalia relevante"}
-              </span>
-            </li>
-            <li>
-              Leitura rápida:
-              <p className="mt-1 text-xs text-slate-400">{data.insights.commentary}</p>
-            </li>
-          </ul>
-        </section>
-      </div>
+            </div>
+          ) : null}
+          {dailyInsights && dailyInsights.history.length > 0 ? (
+            <article className="rounded-xl border border-slate-700 bg-slate-800 p-4">
+              <h4 className="text-sm font-semibold text-slate-100">Histórico diário do diagnóstico</h4>
+              <ul className="mt-2 space-y-1 text-xs text-slate-300">
+                {dailyInsights.history.slice(0, 10).map((item) => (
+                  <li key={item.runDate}>
+                    <span className="text-slate-500">{shortDate(item.runDate)}</span> ·{" "}
+                    <span className={radarStyle(item.radarStatus).split(" ").find((c) => c.startsWith("text-"))}>
+                      {item.radarStatus}
+                    </span>{" "}
+                    · {item.headline}
+                  </li>
+                ))}
+              </ul>
+            </article>
+          ) : null}
+        </div>
+      </details>
     </div>
+  );
+}
+
+function GoalCard({
+  title,
+  realized,
+  projected,
+  target,
+  probability,
+  footer,
+  realizedLabel = "Realizado",
+}: {
+  title: string;
+  /** null: só a projeção (ex.: meta anual de renda, que cobre apenas os meses com meta). */
+  realized: number | null;
+  projected: number;
+  target: number;
+  probability: number | null;
+  footer: string | null;
+  realizedLabel?: string;
+}) {
+  const realizedPct = target > 0 && realized !== null ? Math.min(100, (realized / target) * 100) : 0;
+  const projectedPct = target > 0 ? Math.min(100, (projected / target) * 100) : 0;
+  const reached = projected >= target;
+  return (
+    <article
+      className={`rounded-lg border p-4 ${reached ? "border-emerald-600/50 bg-emerald-950/15" : "border-slate-700 bg-slate-900/40"}`}
+    >
+      <p className="text-xs font-semibold text-slate-200">{title}</p>
+      <p className="mt-2 text-sm text-slate-300">
+        {realized !== null ? (
+          <>
+            {realizedLabel} <strong className="text-slate-50">{formatCurrencyBRL(realized)}</strong> de{" "}
+          </>
+        ) : (
+          <>Meta </>
+        )}
+        {formatCurrencyBRL(target)}
+      </p>
+      <div className="relative mt-2 h-2 rounded-full bg-slate-700/60">
+        <div className="absolute inset-y-0 left-0 rounded-full bg-cyan-400/30" style={{ width: `${projectedPct}%` }} />
+        <div className="absolute inset-y-0 left-0 rounded-full bg-cyan-400" style={{ width: `${realizedPct}%` }} />
+      </div>
+      <p className="mt-2 text-[11px] text-slate-400">
+        Projeção <span className={reached ? "text-emerald-300" : "text-amber-300"}>{formatCurrencyBRL(projected)}</span>
+        {probability !== null ? ` · chance de atingir ${formatPercentage(probability)}` : ""}
+      </p>
+      {footer ? <p className="mt-1 text-[11px] text-slate-500">{footer}</p> : null}
+    </article>
   );
 }
