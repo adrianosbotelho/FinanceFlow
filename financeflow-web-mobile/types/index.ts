@@ -92,3 +92,72 @@ export interface GoalRow {
   recent_monthly_contribution?: number | null;
   eta?: { year: number; month: number } | null;
 }
+
+// Performance (cópia dos tipos do desktop, types/index.ts).
+export interface PerformanceKPIs {
+  currentBalance: number;
+  openingBalance: number;
+  netContributions: number;
+  unrecordedApplications: number;
+  grossIncome: number;
+  netIncomeAfterTax: number;
+  estimatedTaxRatePercent: number;
+  estimatedTaxOnRedemption: number;
+  balanceAfterTax: number;
+  returnPercent: number | null;
+  cdiPercent: number | null;
+  percentOfCdi: number | null;
+  ipcaPercent: number | null;
+  realReturnPercent: number | null;
+  closedThroughMonth: number | null;
+  fiiDividends: number;
+}
+
+export interface PerformanceMonthPoint {
+  month: number;
+  year: number;
+  status: "closed" | "in_progress" | "future";
+  closingBalance: number | null;
+  netContributions: number;
+  grossIncome: number;
+  returnPercent: number | null;
+  cdiPercent: number | null;
+  percentOfCdi: number | null;
+  ipcaPercent: number | null;
+  accumulatedReturnPercent: number | null;
+  accumulatedCdiPercent: number | null;
+  accumulatedIpcaPercent: number | null;
+}
+
+export interface PerformanceInvestmentItem {
+  investmentId: string;
+  label: string;
+  institution: string;
+  balance: number;
+  sharePercent: number;
+  grossIncome: number;
+  returnPercent: number | null;
+  percentOfCdi: number | null;
+  contractedCdiPercent: number | null;
+  estimatedTax: number;
+  returnMonths: number;
+}
+
+export interface PerformanceInstitutionItem {
+  institution: string;
+  balance: number;
+  sharePercent: number;
+  fgcLimit: number;
+  fgcUsagePercent: number;
+  fgcStatus: "ok" | "atencao" | "acima";
+}
+
+export interface PerformancePayload {
+  year: number;
+  kpis: PerformanceKPIs;
+  monthlySeries: PerformanceMonthPoint[];
+  investments: PerformanceInvestmentItem[];
+  institutions: PerformanceInstitutionItem[];
+  inflationSource: "bcb" | "manual" | "none";
+  warnings: string[];
+}
