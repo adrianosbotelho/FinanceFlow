@@ -107,6 +107,8 @@ export interface CdbMonthlyEntry {
   investment_id: string;
   label: string;
   income: number;
+  /** Mês em andamento: projeção de fechamento do investimento. */
+  projected?: number;
 }
 
 export interface PassiveIncomeByMonth {
@@ -120,6 +122,8 @@ export interface PassiveIncomeByMonth {
   yoy_growth?: number | null;
   /** Mês em andamento: projeção de fechamento usada como base das variações. */
   projected_total?: number;
+  /** Mês em andamento: projeção de fechamento dos dividendos de FIIs. */
+  projected_fii?: number;
 }
 
 /** Per-CDB KPI entry */

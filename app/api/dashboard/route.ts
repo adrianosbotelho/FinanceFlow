@@ -333,6 +333,12 @@ export async function GET(req: NextRequest) {
     });
 
     paceEntry.projected_total = monthPace.projected;
+    // Projeção por investimento, para o rótulo "Projeção" de cada coluna na tabela histórica.
+    paceEntry.cdb_items = paceEntry.cdb_items.map((item) => ({
+      ...item,
+      projected: projectedById.get(item.investment_id) ?? item.income,
+    }));
+    if (fiiProjected > 0 || paceEntry.fii_dividends > 0) paceEntry.projected_fii = fiiProjected;
   }
 
   const distribution: IncomeDistribution = (() => {

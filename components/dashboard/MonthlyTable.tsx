@@ -77,15 +77,19 @@ function ValueCell({
   month,
   inProgress,
   className,
+  projected,
 }: {
   value: number;
   year: number;
   month: number;
   inProgress: boolean;
   className: string;
+  /** Mês em andamento: projeção de fechamento do investimento. */
+  projected?: number;
 }) {
   const [show, setShow] = useState(false);
-  if (value === 0) {
+  const showProjection = inProgress && projected !== undefined && projected > 0;
+  if (value === 0 && !showProjection) {
     return <td className="whitespace-nowrap px-3 py-3 text-right text-slate-600">—</td>;
   }
   return (
@@ -94,7 +98,12 @@ function ValueCell({
       onMouseEnter={() => setShow(true)}
       onMouseLeave={() => setShow(false)}
     >
-      {formatCurrencyBRL(value)}
+      {value === 0 ? <span className="text-slate-600">—</span> : formatCurrencyBRL(value)}
+      {showProjection ? (
+        <div className="mt-1 whitespace-nowrap text-[11px] font-normal text-slate-400">
+          Projeção {formatCurrencyBRL(projected)}
+        </div>
+      ) : null}
       {show && (
         <div className="absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded-md border border-slate-600 bg-slate-950 px-3 py-1.5 text-xs font-normal text-slate-100 shadow-lg">
           {buildDailyTooltip(value, year, month, inProgress)}
@@ -279,6 +288,7 @@ export function MonthlyTable({ data }: Props) {
                       year={m.year}
                       month={m.month}
                       inProgress={inProgress}
+                      projected={cdb.projected}
                       className={`font-medium ${CDB_TEXT_COLORS[idx % CDB_TEXT_COLORS.length]}`}
                     />
                   ))}
@@ -287,6 +297,7 @@ export function MonthlyTable({ data }: Props) {
                     year={m.year}
                     month={m.month}
                     inProgress={inProgress}
+                    projected={m.projected_fii}
                     className="font-medium text-emerald-300"
                   />
                   <td className="px-3 py-3 text-right">
