@@ -1,4 +1,4 @@
-// Tributação no resgate de renda fixa tributada (CDB, Caixinha etc.): IR pela tabela regressiva
+// Tributação no resgate de renda fixa tributada (CDBs e similares): IR pela tabela regressiva
 // sobre o rendimento de cada aplicação (lote) e IOF regressivo nos primeiros 29 dias.
 // O IR incide sobre o rendimento, não sobre o principal; o IOF incide antes do IR.
 
