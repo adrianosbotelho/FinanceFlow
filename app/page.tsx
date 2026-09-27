@@ -1,4 +1,4 @@
-import { DashboardPayload } from "../types";
+import { DailyIncomePayload, DashboardPayload } from "../types";
 import { headers } from "next/headers";
 import { KPIGrid } from "../components/dashboard/KPIGrid";
 import { KPIAdvancedGrid } from "../components/dashboard/KPIAdvancedGrid";
@@ -9,6 +9,7 @@ import { IncomeDistributionPie } from "../components/dashboard/IncomeDistributio
 import { MonthlyTable } from "../components/dashboard/MonthlyTable";
 import { MonthOverMonthChart } from "../components/dashboard/MonthOverMonthChart";
 import { MonthlyYieldSummaryCard } from "../components/dashboard/MonthlyYieldSummaryCard";
+import { DailyIncomeCard } from "../components/dashboard/DailyIncomeCard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -26,6 +27,18 @@ async function fetchDashboard(
     return null;
   }
   return res.json();
+}
+
+async function fetchDailyIncome(year: number, baseUrl: string): Promise<DailyIncomePayload | null> {
+  try {
+    const res = await fetch(`${baseUrl}/api/dashboard/daily-income?year=${year}`, {
+      cache: "no-store",
+      next: { revalidate: 0 },
+    });
+    return res.ok ? res.json() : null;
+  } catch {
+    return null;
+  }
 }
 
 interface PageProps {
@@ -58,7 +71,10 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   const protocol = requestHeaders.get("x-forwarded-proto") ?? "http";
   const fallbackBase = process.env.NEXT_PUBLIC_BASE_URL ?? "http://127.0.0.1:3000";
   const baseUrl = host ? `${protocol}://${host}` : fallbackBase;
-  const data = await fetchDashboard(year, month, baseUrl);
+  const [data, dailyIncome] = await Promise.all([
+    fetchDashboard(year, month, baseUrl),
+    fetchDailyIncome(year, baseUrl),
+  ]);
 
   if (!data) {
     return (
@@ -93,6 +109,10 @@ export default async function DashboardPage({ searchParams }: PageProps) {
       </div>
 
       <MonthlyYieldSummaryCard summary={data.monthlyYieldSummary} />
+      <DailyIncomeCard
+        data={dailyIncome}
+        cdbLabels={data.monthlySeries[0]?.cdb_items.map((item) => item.label) ?? []}
+      />
       <MonthlyTable data={data.monthlySeries} />
     </div>
   );
