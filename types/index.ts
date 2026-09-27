@@ -778,6 +778,18 @@ export interface GoalsAnnualSummary {
   status: GoalAnnualStatus;
 }
 
+export interface GoalsMonthCell {
+  month: number;
+  status: "closed" | "in_progress" | "future";
+  target: number | null;
+  /** Renda lançada (meses fechados e o atual); null no futuro. */
+  realized: number | null;
+  /** Projeção de fechamento (só no mês atual). */
+  projected: number | null;
+  /** Renda possível com o saldo e a taxa contratada, sem novos aportes (mês atual e futuros). */
+  possible: number | null;
+}
+
 export interface GoalsInvestmentRow {
   investmentId: string;
   label: string;
@@ -786,6 +798,17 @@ export interface GoalsInvestmentRow {
   annual: GoalsAnnualSummary;
   monthlyHits: number;
   monthlyGoalMonths: number;
+  /** % do CDI contratado (null: sem cadastro; a renda possível usa 100%). */
+  contractedCdiPercent: number | null;
+  /** Renda possível no mês atual com o saldo e a taxa contratada. */
+  possibleMonthlyIncome: number;
+  /** Saldo necessário para a meta do mês render sozinha. */
+  balanceForMonthlyTarget: number | null;
+  /** A meta do mês cabe no que o saldo rende? null sem meta. */
+  monthlyTargetReachable: boolean | null;
+  /** Folga no FGC da instituição (R$ 250 mil por CPF). */
+  fgcHeadroom: number;
+  months: GoalsMonthCell[];
 }
 
 export interface GoalsMonthlyHistoryPoint {
@@ -815,6 +838,9 @@ export interface GoalsOverviewPayload {
   monthlyHistory: GoalsMonthlyHistoryPoint[];
   balanceHistory: GoalsBalancePoint[];
   annualTargets: Record<string, number>;
+  /** Meta anual de renda: mesmo cálculo do Dashboard e dos Insights (lib/goal-progress). */
+  annualIncome: GoalProgress | null;
+  cdiAnnualReference: number;
   warnings: string[];
 }
 

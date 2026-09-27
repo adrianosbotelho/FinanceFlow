@@ -13,7 +13,13 @@ import {
   ym,
 } from "../../../../lib/balance-history";
 import { buildAnnualGoalSummary, monthlyGoalStatus } from "../../../../lib/goals-math";
+import { balanceForMonthlyIncome, possibleMonthlyIncome } from "../../../../lib/goals-plan";
+import { buildGoalProgress } from "../../../../lib/goal-progress";
+import { FGC_LIMIT, institutionBalances, normalizeInstitution } from "../../../../lib/insights-actions";
+import { resolveCdiAnnualReference } from "../../../../lib/cdi-reference";
 import {
+  GoalProgress,
+  GoalsMonthCell,
   GoalsAnnualSummary,
   GoalsBalancePoint,
   GoalsInvestmentRow,
@@ -29,6 +35,7 @@ export const revalidate = 0;
 const RECENT_CONTRIBUTION_MONTHS = 3;
 
 type MonthlyGoalRow = { investment_id: string; month: number; monthly_target: number | string | null };
+type ReturnRow = { investment_id: string; year: number; month: number; income_value: number | string | null };
 type AnnualGoalRow = { investment_id: string; annual_target: number | string | null };
 
 function toNumber(value: unknown): number {
@@ -51,12 +58,13 @@ export async function GET() {
   const currentYm = ym(year, month);
   const warnings: string[] = [];
 
-  const [investmentsRes, returnsRes, eventsRes, monthlyGoalsRes, annualGoalsRes] = await Promise.all([
+  const [investmentsRes, returnsRes, eventsRes, monthlyGoalsRes, annualGoalsRes, cdiAnnualReference] = await Promise.all([
     supabase.from("investments").select("id,type,institution,name,amount_invested,cdi_rate"),
     supabase.from("monthly_returns").select("investment_id,year,month,income_value"),
     supabase.from("investment_cash_events").select("investment_id,year,month,type,amount"),
     supabase.from("investment_goals_monthly").select("investment_id,month,monthly_target").eq("year", year),
     supabase.from("investment_goals_annual").select("investment_id,annual_target").eq("year", year),
+    resolveCdiAnnualReference(),
   ]);
   const failed = [investmentsRes, returnsRes, eventsRes, monthlyGoalsRes, annualGoalsRes].find((res) => res.error);
   if (failed?.error) {
@@ -85,9 +93,22 @@ export async function GET() {
   const paceById = new Map<string, { projected: number; dailyRate: number; remainingBusinessDays: number }>();
   let asOfDate: string | null = null;
   let businessDaysRemaining = 0;
+  let annualIncome: GoalProgress | null = null;
   try {
     const { pace, warnings: paceWarnings } = await loadMonthPace(year, month, todayIso);
     warnings.push(...paceWarnings);
+    // Meta anual de renda: todas as fontes, igual ao Dashboard.
+    const totalByMonth = new Map<number, number>();
+    for (const row of (returnsRes.data ?? []) as ReturnRow[]) {
+      if (Number(row.year) !== year) continue;
+      totalByMonth.set(Number(row.month), (totalByMonth.get(Number(row.month)) ?? 0) + toNumber(row.income_value));
+    }
+    annualIncome = buildGoalProgress(
+      pace,
+      (monthlyGoalsRes.data ?? []) as MonthlyGoalRow[],
+      totalByMonth,
+      Number(process.env.FINANCEFLOW_ANNUAL_INCOME_TARGET ?? 12000),
+    );
     asOfDate = pace.asOfDate;
     businessDaysRemaining = pace.remainingBusinessDays;
     for (const item of pace.investments) {
@@ -109,6 +130,11 @@ export async function GET() {
   for (let key = previousYm(currentYm); recentYms.length < RECENT_CONTRIBUTION_MONTHS; key = previousYm(key)) {
     recentYms.push(key);
   }
+
+  const balancesByInstitution = institutionBalances(
+    contexts.map((ctx) => ({ institution: ctx.institution, balance: ctx.balanceNow })),
+  );
+  const currentBusinessDays = countBusinessDaysInMonth(year, month);
 
   const rows: GoalsInvestmentRow[] = contexts.map((ctx) => {
     const realized = ctx.incomeByYm.get(currentYm) ?? 0;
@@ -151,6 +177,38 @@ export async function GET() {
       if ((ctx.incomeByYm.get(ym(year, m)) ?? 0) >= target) monthlyHits += 1;
     }
 
+    // Renda possível: saldo que rende no mês × taxa contratada (sem cadastro, 100% do CDI).
+    const percentOfCdi = ctx.contractedCdiPercent ?? 100;
+    const currentBase = closingBalance(ctx, previousYm(currentYm)) + (ctx.flowByYm.get(currentYm) ?? 0) / 2;
+    const possibleNow = possibleMonthlyIncome({
+      balance: currentBase > 0 ? currentBase : ctx.balanceNow,
+      cdiAnnualPercent: cdiAnnualReference,
+      percentOfCdi,
+      businessDays: currentBusinessDays,
+    });
+    const months: GoalsMonthCell[] = [];
+    for (let m = 1; m <= 12; m += 1) {
+      const status: GoalsMonthCell["status"] = m < month ? "closed" : m === month ? "in_progress" : "future";
+      months.push({
+        month: m,
+        status,
+        target: goalFor(ctx.id, m),
+        realized: status === "future" ? null : ctx.incomeByYm.get(ym(year, m)) ?? 0,
+        projected: status === "in_progress" ? projected : null,
+        possible:
+          status === "closed"
+            ? null
+            : status === "in_progress"
+              ? possibleNow
+              : possibleMonthlyIncome({
+                  balance: ctx.balanceNow,
+                  cdiAnnualPercent: cdiAnnualReference,
+                  percentOfCdi,
+                  businessDays: countBusinessDaysInMonth(year, m),
+                }),
+      });
+    }
+
     return {
       investmentId: ctx.id,
       label: ctx.label,
@@ -159,6 +217,20 @@ export async function GET() {
       annual,
       monthlyHits,
       monthlyGoalMonths,
+      contractedCdiPercent: ctx.contractedCdiPercent,
+      possibleMonthlyIncome: possibleNow,
+      balanceForMonthlyTarget:
+        monthlyTarget !== null
+          ? balanceForMonthlyIncome({
+              target: monthlyTarget,
+              cdiAnnualPercent: cdiAnnualReference,
+              percentOfCdi,
+              businessDays: currentBusinessDays,
+            })
+          : null,
+      monthlyTargetReachable: monthlyTarget !== null ? possibleNow >= monthlyTarget * 0.995 : null,
+      fgcHeadroom: FGC_LIMIT - (balancesByInstitution.get(normalizeInstitution(ctx.institution)) ?? 0),
+      months,
     };
   });
 
@@ -259,6 +331,8 @@ export async function GET() {
     monthlyHistory,
     balanceHistory,
     annualTargets: Object.fromEntries(Array.from(annualGoals.entries())),
+    annualIncome,
+    cdiAnnualReference,
     warnings,
   };
 
