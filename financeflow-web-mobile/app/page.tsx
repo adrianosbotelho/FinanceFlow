@@ -1,7 +1,8 @@
 import { headers } from "next/headers";
-import { DashboardPayload } from "@/types";
+import { DailyIncomePayload, DashboardPayload } from "@/types";
 import { formatCurrency, formatPct, monthName } from "@/lib/format";
 import { hasSupabaseServerEnv } from "@/lib/env";
+import { DailyIncomeCard } from "@/components/DailyIncomeCard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -32,6 +33,18 @@ async function loadDashboard(year: number, base: string, cookieHeader: string | 
   });
   if (!res.ok) return null;
   return res.json();
+}
+
+async function loadDailyIncome(year: number, base: string, cookieHeader: string | null): Promise<DailyIncomePayload | null> {
+  try {
+    const res = await fetch(`${base}/api/dashboard/daily-income?year=${year}`, {
+      cache: "no-store",
+      headers: cookieHeader ? { cookie: cookieHeader } : undefined,
+    });
+    return res.ok ? res.json() : null;
+  } catch {
+    return null;
+  }
 }
 
 function trendTone(value: number | null | undefined): TrendTone {
@@ -123,7 +136,10 @@ export default async function DashboardPage({
   const proto = h.get("x-forwarded-proto") ?? "http";
   const cookieHeader = h.get("cookie");
   const base = host ? `${proto}://${host}` : process.env.NEXT_PUBLIC_BASE_URL ?? "http://127.0.0.1:3000";
-  const data = await loadDashboard(year, base, cookieHeader);
+  const [data, dailyIncome] = await Promise.all([
+    loadDashboard(year, base, cookieHeader),
+    loadDailyIncome(year, base, cookieHeader),
+  ]);
 
   if (!data) {
     return <p className="text-sm text-rose-300">Falha ao carregar dashboard.</p>;
@@ -231,6 +247,8 @@ export default async function DashboardPage({
           </article>
         ))}
       </section>
+
+      <DailyIncomeCard data={dailyIncome} />
 
       <section className="card overflow-x-auto">
         <h2 className="mb-3 text-sm font-semibold text-slate-100">Histórico mensal</h2>
