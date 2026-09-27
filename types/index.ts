@@ -958,3 +958,13 @@ export type DailyIncomePayload = {
   series: DailyIncomeSeries[];
   total: Array<{ month: number; dailyIncome: number; dailyPer10k: number | null; status: "closed" | "in_progress" } | null>;
 };
+
+// ─── Retornos: ritmo do mês e lançamento rápido ─── ver app/api/returns/pace
+
+export interface ReturnsPacePayload {
+  pace: MonthPace;
+  warnings: string[];
+  closed: boolean;
+  /** Hoje em São Paulo (aaaa-mm-dd). */
+  today: string;
+}

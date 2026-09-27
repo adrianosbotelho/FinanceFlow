@@ -8,10 +8,12 @@ import {
   MonthlyClosure,
   MonthlyReturn,
   MonthlyReturnRevision,
+  ReturnsPacePayload,
 } from "../../types";
 import { formatCurrencyBRL, monthNameFull } from "../../lib/formatters";
 import { publishDataSyncUpdate } from "../../lib/client-data-sync";
 import { ReturnForm } from "../forms/ReturnForm";
+import { QuickEntryPanel } from "./QuickEntryPanel";
 import {
   Bar,
   CartesianGrid,
@@ -25,11 +27,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import {
-  countBusinessDaysElapsedInMonth,
-  countBusinessDaysInMonth,
-  previousBusinessDay,
-} from "../../lib/business-days";
+import { previousBusinessDay } from "../../lib/business-days";
 
 type ReturnRow = {
   year: number;
@@ -52,34 +50,13 @@ const EVENT_TYPE_OPTIONS: Array<{ value: CashEventType; label: string }> = [
   { value: "TAXA", label: "Taxa" },
 ];
 
-const CDB_INSTITUTION_COLORS: Record<string, string> = {
-  "Itaú": "text-amber-400",
-  "Santander": "text-rose-400",
-  "Nubank": "text-violet-400",
-  "XP": "text-sky-400",
-  "Banco do Brasil": "text-blue-400",
-  "Inter": "text-orange-400",
-  "BTG Pactual": "text-cyan-400",
-};
-const DEFAULT_CDB_COLOR = "text-amber-400";
+// Cores por investimento (posição na lista de CDBs), para não repetir cor entre produtos do mesmo banco.
+const INVESTMENT_TEXT_COLORS = ["text-amber-400", "text-rose-400", "text-violet-400", "text-sky-400", "text-orange-400", "text-cyan-400"];
+const INVESTMENT_HEX = ["#f59e0b", "#f43f5e", "#a78bfa", "#38bdf8", "#fb923c", "#22d3ee"];
+const FII_HEX = "#34d399";
 
-const CDB_INSTITUTION_HEX: Record<string, string> = {
-  "Itaú": "#f59e0b",
-  "Santander": "#f43f5e",
-  "Nubank": "#a78bfa",
-  "XP": "#38bdf8",
-  "Banco do Brasil": "#60a5fa",
-  "Inter": "#fb923c",
-  "BTG Pactual": "#22d3ee",
-};
-const DEFAULT_CDB_HEX = "#f59e0b";
-
-function getCdbHex(institution: string): string {
-  return CDB_INSTITUTION_HEX[institution] ?? DEFAULT_CDB_HEX;
-}
-
-function getCdbColor(institution: string): string {
-  return CDB_INSTITUTION_COLORS[institution] ?? DEFAULT_CDB_COLOR;
+function investmentTextColor(index: number): string {
+  return INVESTMENT_TEXT_COLORS[index % INVESTMENT_TEXT_COLORS.length];
 }
 
 const EVENT_TYPE_COLORS: Record<CashEventType, string> = {
@@ -143,6 +120,9 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
   const [revisionInvestmentFilter, setRevisionInvestmentFilter] = useState<string>("all");
   const [returnRevisions, setReturnRevisions] = useState<MonthlyReturnRevision[]>([]);
   const [revisionsLoading, setRevisionsLoading] = useState(false);
+  const [quickEntryReload, setQuickEntryReload] = useState(0);
+  const [closingPast, setClosingPast] = useState(false);
+  const [forecastPace, setForecastPace] = useState<ReturnsPacePayload | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -328,11 +308,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
   const revisionRows = useMemo(() => {
     return returnRevisions.map((revision) => {
       const inv = investmentById.get(revision.investment_id);
-      const label = inv
-        ? inv.type === "FII"
-          ? inv.name
-          : `CDB ${inv.institution}`
-        : revision.investment_id;
+      const label = inv ? inv.name || `${inv.type} ${inv.institution}` : revision.investment_id;
       return {
         ...revision,
         investmentLabel: label,
@@ -406,6 +382,8 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
       .map((row, idx) => ({
         seq: idx + 1,
         timestamp: parseBrDateTime(row.created_at),
+        day: row.created_at ? new Date(row.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "",
+        investmentId: row.investment_id,
         investmentLabel: row.investmentLabel,
         investmentInstitution: row.investmentInstitution,
         delta: Number(row.delta_income_value ?? 0),
@@ -413,86 +391,58 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
       }));
   }, [filteredRevisionRows, selectedRevisionMonth]);
 
-  const monthlyForecast = useMemo(() => {
-    if (!selectedRevisionMonth) return null;
-    const { year, month } = selectedRevisionMonth;
-    const now = new Date();
-    const isCurrentContext =
-      year === now.getFullYear() && month === now.getMonth() + 1;
-    const monthRows = revisionRows
-      .filter((row) => Number(row.year) === year && Number(row.month) === month)
-      .sort((a, b) => {
-        const aTime = new Date(a.created_at ?? "").getTime();
-        const bTime = new Date(b.created_at ?? "").getTime();
-        return aTime - bTime;
+  // Previsão de fechamento: mesmo cálculo do Dashboard (lib/month-pace), via /api/returns/pace.
+  useEffect(() => {
+    if (!selectedRevisionMonth) {
+      setForecastPace(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/returns/pace?year=${selectedRevisionMonth.year}&month=${selectedRevisionMonth.month}`, {
+      cache: "no-store",
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload: ReturnsPacePayload | null) => {
+        if (!cancelled) setForecastPace(payload);
+      })
+      .catch(() => {
+        if (!cancelled) setForecastPace(null);
       });
-    if (monthRows.length === 0) return null;
-
-    // Cada investimento tem sua própria data-base; com filtro "todos" a previsão é a soma deles.
-    const rowsByInvestment = new Map<string, typeof monthRows>();
-    for (const row of monthRows) {
-      const list = rowsByInvestment.get(row.investment_id) ?? [];
-      list.push(row);
-      rowsByInvestment.set(row.investment_id, list);
-    }
-
-    const totalDays = countBusinessDaysInMonth(year, month);
-    let latestValue = 0;
-    let startValue = 0;
-    let dailyPace = 0;
-    let projectedClose = 0;
-    let daysElapsed = 0;
-    for (const investmentRows of Array.from(rowsByInvestment.values())) {
-      const oldest = investmentRows[0];
-      const latest = investmentRows[investmentRows.length - 1];
-      const invLatestValue = Number(latest.new_income_value ?? 0);
-      const invStartValue = Number(
-        oldest.previous_income_value ?? (oldest.new_income_value - oldest.delta_income_value),
-      );
-      // O último lançamento vale até o dia útil anterior à data em que foi feito (D−1).
-      const latestDataDate = previousBusinessDay(new Date(latest.created_at ?? now.toISOString()));
-      const latestDataDay =
-        latestDataDate.getFullYear() === year && latestDataDate.getMonth() + 1 === month
-          ? latestDataDate.getDate()
-          : 0;
-      const invDaysElapsed = isCurrentContext
-        ? countBusinessDaysElapsedInMonth(year, month, latestDataDay)
-        : totalDays;
-      const invDaysRemaining = isCurrentContext ? Math.max(totalDays - invDaysElapsed, 0) : 0;
-      const invDailyPace = invDaysElapsed > 0 ? (invLatestValue - invStartValue) / invDaysElapsed : 0;
-
-      latestValue += invLatestValue;
-      startValue += invStartValue;
-      dailyPace += invDailyPace;
-      projectedClose += invLatestValue + invDailyPace * invDaysRemaining;
-      daysElapsed = Math.max(daysElapsed, invDaysElapsed);
-    }
-    const growthSoFar = latestValue - startValue;
-    const daysRemaining = isCurrentContext ? Math.max(totalDays - daysElapsed, 0) : 0;
-
-    const confidence =
-      !isCurrentContext
-        ? "Fechado"
-        : monthRows.length >= 6
-          ? "Alta"
-          : monthRows.length >= 3
-            ? "Média"
-            : "Baixa";
-
-    return {
-      year,
-      month,
-      latestValue,
-      startValue,
-      growthSoFar,
-      dailyPace,
-      projectedClose,
-      updatesCount: monthRows.length,
-      daysElapsed,
-      daysRemaining,
-      confidence,
+    return () => {
+      cancelled = true;
     };
-  }, [revisionRows, selectedRevisionMonth]);
+  }, [selectedRevisionMonth, quickEntryReload]);
+
+  const monthlyForecast = useMemo(() => {
+    if (!forecastPace || !selectedRevisionMonth) return null;
+    const { pace } = forecastPace;
+    if (pace.year !== selectedRevisionMonth.year || pace.month !== selectedRevisionMonth.month) return null;
+    const items =
+      revisionInvestmentFilter === "all"
+        ? pace.investments
+        : pace.investments.filter((item) => item.investmentId === revisionInvestmentFilter);
+    if (items.length === 0) return null;
+    const realized = items.reduce((acc, item) => acc + item.realized, 0);
+    const projected = items.reduce((acc, item) => acc + item.projected, 0);
+    const dailyRate = items.reduce((acc, item) => acc + item.dailyRate, 0);
+    const previousTotal = revisionInvestmentFilter === "all" ? pace.previousMonthTotal : null;
+    return {
+      year: pace.year,
+      month: pace.month,
+      isCurrent: pace.isCurrentMonth,
+      asOfDate: pace.asOfDate,
+      realized,
+      projected,
+      dailyRate,
+      elapsed: pace.elapsedBusinessDays,
+      remaining: pace.remainingBusinessDays,
+      total: pace.totalBusinessDays,
+      previousTotal,
+      projectedVsPrevious:
+        previousTotal !== null && previousTotal > 0 ? ((projected - previousTotal) / previousTotal) * 100 : null,
+      items,
+    };
+  }, [forecastPace, revisionInvestmentFilter, selectedRevisionMonth]);
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
@@ -668,6 +618,31 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
   const isPeriodClosed = (year: number, month: number) =>
     closedPeriods.has(`${year}-${month}`);
 
+  const investmentHex = (investmentId: string): string => {
+    if (investmentById.get(investmentId)?.type === "FII") return FII_HEX;
+    const index = cdbInvestments.findIndex((inv) => inv.id === investmentId);
+    return INVESTMENT_HEX[Math.max(0, index) % INVESTMENT_HEX.length];
+  };
+
+  // Só colunas de CDBs com renda no período exibido.
+  const summaryCdbColumns = cdbInvestments.filter((inv) =>
+    monthlySummary.some((row) => (row.cdbValues.get(inv.id) ?? 0) > 0),
+  );
+  const summaryHasFii = monthlySummary.some((row) => row.fiis > 0);
+
+  // Mês da data-base (D−1) em diante ainda está em andamento.
+  const dataBaseDate = previousBusinessDay(new Date());
+  const dataBaseKey = dataBaseDate.getFullYear() * 100 + dataBaseDate.getMonth() + 1;
+  const isInProgressMonth = (year: number, month: number) => year * 100 + month >= dataBaseKey;
+
+  const openPastMonths = Array.from(
+    new Map(
+      rows
+        .filter((row) => row.year * 100 + row.month < dataBaseKey && !isPeriodClosed(row.year, row.month))
+        .map((row) => [`${row.year}-${row.month}`, { year: row.year, month: row.month }]),
+    ).values(),
+  ).sort((a, b) => a.year - b.year || a.month - b.month);
+
   const handleSaved = async () => {
     setEditing(null);
     try {
@@ -676,6 +651,20 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
       const data: MonthlyReturn[] = await res.json();
       setRawReturns(data);
       await loadReturnRevisions(revisionYear, revisionInvestmentFilter);
+      setQuickEntryReload((value) => value + 1);
+      publishDataSyncUpdate("returns");
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Lançamento rápido já recarrega os próprios valores; aqui atualiza o restante da página.
+  const handleQuickEntrySaved = async () => {
+    try {
+      const res = await fetch("/api/returns");
+      if (res.ok) setRawReturns((await res.json()) as MonthlyReturn[]);
+      await loadReturnRevisions(revisionYear, revisionInvestmentFilter);
+      setQuickEntryReload((value) => value + 1);
       publishDataSyncUpdate("returns");
     } catch (e) {
       console.error(e);
@@ -789,6 +778,39 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
     }
   };
 
+  const closePastMonths = async () => {
+    if (openPastMonths.length === 0) return;
+    const list = openPastMonths.map((item) => `${monthNameFull(item.month)}/${item.year}`).join(", ");
+    if (
+      !window.confirm(
+        `Fechar ${openPastMonths.length} mês(es) anteriores?\n\n${list}\n\nMeses fechados não aceitam novos lançamentos até serem reabertos.`,
+      )
+    ) {
+      return;
+    }
+    setClosingPast(true);
+    const failures: string[] = [];
+    for (const item of openPastMonths) {
+      try {
+        const res = await fetch("/api/monthly-closures", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ year: item.year, month: item.month, is_closed: true }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => null);
+          throw new Error(err?.error ?? "falha");
+        }
+      } catch (e) {
+        failures.push(`${monthNameFull(item.month)}/${item.year}: ${e instanceof Error ? e.message : "falha"}`);
+      }
+    }
+    await refreshClosures();
+    setClosingPast(false);
+    setQuickEntryReload((value) => value + 1);
+    if (failures.length > 0) alert(`Não foi possível fechar: ${failures.join("; ")}`);
+  };
+
   const investmentFilterOptions = [
     { value: "all", label: "Todos os investimentos" },
     { value: "fii", label: "Todos os FIIs" },
@@ -822,224 +844,183 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
         </p>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <div className="rounded-xl border border-slate-800 bg-surface/80 p-4">
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-sm font-semibold text-slate-200">
-                Histórico de retornos
-              </h3>
-              <span
-                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                  yearFilter === "all"
-                    ? "bg-slate-700/80 text-slate-300"
-                    : "bg-accent/25 text-accent border border-accent/50"
-                }`}
-              >
-                {yearFilter === "all" ? "Todos os anos" : `Ano ${yearFilter}`}
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-2 text-xs">
-              <select
-                className={`rounded-lg px-2 py-1 text-xs text-slate-100 outline-none focus:ring-2 focus:ring-accent ${
-                  yearFilter === "all"
-                    ? "border border-slate-700 bg-slate-900 focus:border-accent"
-                    : "border border-accent/60 bg-accent/10 focus:border-accent"
-                }`}
-                value={yearFilter === "all" ? "all" : String(yearFilter)}
-                onChange={(e) =>
-                  setYearFilter(
-                    e.target.value === "all"
-                      ? "all"
-                      : Number(e.target.value),
-                  )
-                }
-              >
-                <option value="all">Todos os anos</option>
-                {years.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
-              <select
-                className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
-                value={investmentFilter}
-                onChange={(e) => setInvestmentFilter(e.target.value)}
-              >
-                {investmentFilterOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+      <QuickEntryPanel reloadToken={quickEntryReload} onSaved={handleQuickEntrySaved} />
 
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-xs md:text-sm">
-              <thead className="border-b border-slate-800 text-slate-400">
+      <div className="rounded-xl border border-slate-800 bg-surface/80 p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-200">
+              Resumo do mês a mês{yearFilter === "all" ? "" : ` (${yearFilter})`}
+            </h3>
+            <p className="text-xs text-slate-400">
+              Renda lançada por investimento. Mês fechado bloqueia novas gravações.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100"
+              value={yearFilter}
+              onChange={(e) => {
+                setPage(1);
+                setYearFilter(e.target.value === "all" ? "all" : Number(e.target.value));
+              }}
+            >
+              <option value="all">Todos os anos</option>
+              {years.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+            {closuresAvailable && openPastMonths.length > 0 ? (
+              <button
+                type="button"
+                disabled={closingPast}
+                onClick={() => void closePastMonths()}
+                className="rounded-md border border-amber-500/50 px-2 py-1 text-[11px] font-semibold text-amber-200 hover:bg-amber-500/10 disabled:opacity-50"
+              >
+                {closingPast ? "Fechando..." : `Fechar meses anteriores (${openPastMonths.length})`}
+              </button>
+            ) : null}
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left text-xs md:text-sm">
+            <thead className="border-b border-slate-800 text-[11px] uppercase tracking-wide text-slate-400">
+              <tr>
+                <th className="px-2 py-2">Mês</th>
+                {summaryCdbColumns.map((inv, idx) => (
+                  <th key={inv.id} className={`px-2 py-2 text-right ${investmentTextColor(idx)}`}>
+                    {inv.name || `CDB ${inv.institution}`}
+                  </th>
+                ))}
+                {summaryHasFii ? <th className="px-2 py-2 text-right text-emerald-400">FIIs</th> : null}
+                <th className="px-2 py-2 text-right">Total</th>
+                <th className="px-2 py-2 text-right">Var. M/M</th>
+                <th className="px-2 py-2">Status</th>
+                <th className="px-2 py-2 text-right">Fechamento</th>
+              </tr>
+            </thead>
+            <tbody>
+              {monthlySummary.length === 0 ? (
                 <tr>
-                  <th className="px-2 py-2">
-                    <button
-                      type="button"
-                      onClick={() => toggleSort("year")}
-                      className="inline-flex items-center gap-1 text-slate-300 hover:text-slate-100"
-                    >
-                      Ano
-                      <span className="text-[10px] text-slate-500">
-                        {sortIndicator("year")}
-                      </span>
-                    </button>
-                  </th>
-                  <th className="px-2 py-2">
-                    <button
-                      type="button"
-                      onClick={() => toggleSort("month")}
-                      className="inline-flex items-center gap-1 text-slate-300 hover:text-slate-100"
-                    >
-                      Mês
-                      <span className="text-[10px] text-slate-500">
-                        {sortIndicator("month")}
-                      </span>
-                    </button>
-                  </th>
-                  <th className="px-2 py-2">
-                    <button
-                      type="button"
-                      onClick={() => toggleSort("label")}
-                      className="inline-flex items-center gap-1 text-slate-300 hover:text-slate-100"
-                    >
-                      Investimento
-                      <span className="text-[10px] text-slate-500">
-                        {sortIndicator("label")}
-                      </span>
-                    </button>
-                  </th>
-                  <th className="px-2 py-2">
-                    <button
-                      type="button"
-                      onClick={() => toggleSort("income")}
-                      className="inline-flex items-center gap-1 text-slate-300 hover:text-slate-100"
-                    >
-                      Renda
-                      <span className="text-[10px] text-slate-500">
-                        {sortIndicator("income")}
-                      </span>
-                    </button>
-                  </th>
-                  <th className="px-2 py-2 text-right">Ações</th>
+                  <td
+                    colSpan={summaryCdbColumns.length + 6}
+                    className="px-2 py-4 text-center text-slate-400"
+                  >
+                    Nenhum dado para o ano selecionado.
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="px-2 py-4 text-center text-slate-400"
-                    >
-                      Carregando retornos...
-                    </td>
-                  </tr>
-                ) : pageRows.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="px-2 py-4 text-center text-slate-400"
-                    >
-                      Nenhum retorno encontrado para os filtros selecionados.
-                    </td>
-                  </tr>
-                ) : (
-                  pageRows.map((row) => (
-                    <tr
-                      key={`${row.year}-${row.month}-${row.label}`}
-                      className="border-b border-slate-800/60 last:border-0"
-                    >
-                      <td className="px-2 py-2 text-slate-300">{row.year}</td>
-                      <td className="px-2 py-2 text-slate-300">
+              ) : (
+                monthlySummary.map((row, index) => {
+                  const key = `${row.year}-${row.month}`;
+                  const closed = isPeriodClosed(row.year, row.month);
+                  const isUpdating = closureUpdatingKey === key;
+                  const inProgress = isInProgressMonth(row.year, row.month);
+                  const previous = index > 0 ? monthlySummary[index - 1] : null;
+                  const mom =
+                    !inProgress && previous && previous.total > 0
+                      ? ((row.total - previous.total) / previous.total) * 100
+                      : null;
+                  return (
+                    <tr key={key} className="border-b border-slate-800/60 last:border-0">
+                      <td className="whitespace-nowrap px-2 py-2 text-slate-300">
                         {monthNameFull(row.month)}
+                        {yearFilter === "all" ? `/${row.year}` : ""}
+                        {inProgress ? (
+                          <span className="ml-2 rounded-full bg-indigo-500/20 px-2 py-0.5 text-[10px] font-semibold text-indigo-200">
+                            em andamento
+                          </span>
+                        ) : null}
                       </td>
-                      <td className="px-2 py-2 text-slate-300">{row.label}</td>
+                      {summaryCdbColumns.map((inv, idx) => {
+                        const value = row.cdbValues.get(inv.id) ?? 0;
+                        return (
+                          <td
+                            key={inv.id}
+                            className={`whitespace-nowrap px-2 py-2 text-right tabular-nums ${
+                              value > 0 ? `font-medium ${investmentTextColor(idx)}` : "text-slate-600"
+                            }`}
+                          >
+                            {value > 0 ? formatCurrencyBRL(value) : "—"}
+                          </td>
+                        );
+                      })}
+                      {summaryHasFii ? (
+                        <td
+                          className={`whitespace-nowrap px-2 py-2 text-right tabular-nums ${
+                            row.fiis > 0 ? "font-medium text-emerald-400" : "text-slate-600"
+                          }`}
+                        >
+                          {row.fiis > 0 ? formatCurrencyBRL(row.fiis) : "—"}
+                        </td>
+                      ) : null}
+                      <td className="whitespace-nowrap px-2 py-2 text-right font-bold tabular-nums text-slate-100">
+                        {formatCurrencyBRL(row.total)}
+                      </td>
                       <td
-                        className={`px-2 py-2 font-medium ${
-                          row.isFii
-                            ? "text-emerald-400"
-                            : getCdbColor(investmentById.get(row.investmentId)?.institution ?? "")
+                        className={`whitespace-nowrap px-2 py-2 text-right text-xs font-semibold ${
+                          mom === null ? "text-slate-500" : mom > 0 ? "text-emerald-300" : mom < 0 ? "text-rose-300" : "text-slate-300"
                         }`}
                       >
-                        {formatCurrencyBRL(row.income)}
+                        {inProgress ? "parcial" : mom === null ? "—" : `${mom > 0 ? "▲ +" : mom < 0 ? "▼ " : ""}${mom.toFixed(1)}%`}
+                      </td>
+                      <td className="px-2 py-2">
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                            closed ? "bg-slate-700/60 text-slate-200" : "bg-emerald-900/40 text-emerald-300"
+                          }`}
+                        >
+                          {closed ? "🔒 Fechado" : "Aberto"}
+                        </span>
                       </td>
                       <td className="px-2 py-2 text-right">
                         <button
                           type="button"
-                          onClick={() => handleEdit(row)}
-                          disabled={
-                            isPeriodClosed(row.year, row.month) ||
-                            row.isAggregated
-                          }
-                          className="rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-800"
+                          disabled={isUpdating || !closuresAvailable}
+                          onClick={() => toggleMonthClosure(row.year, row.month, !closed)}
+                          className="rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-800 disabled:opacity-50"
                         >
-                          {isPeriodClosed(row.year, row.month)
-                            ? "Fechado"
-                            : row.isAggregated
-                              ? "Consolidado"
-                            : "Editar"}
+                          {!closuresAvailable
+                            ? "Indisponível"
+                            : isUpdating
+                              ? "Salvando..."
+                              : closed
+                                ? "Reabrir"
+                                : "Fechar"}
                         </button>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400">
-            <span>
-              Mostrando {pageRows.length === 0 ? 0 : startIndex + 1}-
-              {startIndex + pageRows.length} de {sortedRows.length} registros
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled={currentPage === 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="rounded-md border border-slate-700 px-2 py-1 disabled:opacity-40"
-              >
-                Anterior
-              </button>
-              <span>
-                Página {currentPage} / {totalPages}
-              </span>
-              <button
-                type="button"
-                disabled={currentPage === totalPages}
-                onClick={() =>
-                  setPage((p) => Math.min(totalPages, p + 1))
-                }
-                className="rounded-md border border-slate-700 px-2 py-1 disabled:opacity-40"
-              >
-                Próxima
-              </button>
-            </div>
-          </div>
+                  );
+                })
+              )}
+            </tbody>
+            {monthlySummary.length > 0 ? (
+              <tfoot>
+                <tr className="border-t border-slate-700 bg-slate-900/50 font-bold">
+                  <td className="px-2 py-2 text-xs uppercase tracking-wide text-slate-300">Total</td>
+                  {summaryCdbColumns.map((inv, idx) => (
+                    <td
+                      key={inv.id}
+                      className={`whitespace-nowrap px-2 py-2 text-right tabular-nums ${investmentTextColor(idx)}`}
+                    >
+                      {formatCurrencyBRL(monthlySummary.reduce((acc, row) => acc + (row.cdbValues.get(inv.id) ?? 0), 0))}
+                    </td>
+                  ))}
+                  {summaryHasFii ? (
+                    <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-emerald-400">
+                      {formatCurrencyBRL(monthlySummary.reduce((acc, row) => acc + row.fiis, 0))}
+                    </td>
+                  ) : null}
+                  <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-slate-50">
+                    {formatCurrencyBRL(monthlySummary.reduce((acc, row) => acc + row.total, 0))}
+                  </td>
+                  <td className="px-2 py-2" colSpan={3} />
+                </tr>
+              </tfoot>
+            ) : null}
+          </table>
         </div>
-
-        <ReturnForm
-          investments={uiInvestments}
-          onCreated={handleSaved}
-          isPeriodClosed={isPeriodClosed}
-          initial={
-            editing
-              ? {
-                  investment_id: editing.investmentId,
-                  month: editing.month,
-                  year: editing.year,
-                  income_value: editing.income,
-                }
-              : undefined
-          }
-        />
       </div>
 
       <div className="rounded-xl border border-slate-800 bg-surface/80 p-4">
@@ -1110,7 +1091,12 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={revisionChartData} margin={{ top: 8, right: 12, left: 4, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                    <XAxis dataKey="seq" stroke="#94a3b8" tickFormatter={(value) => `#${value}`} />
+                    <XAxis
+                      dataKey="seq"
+                      stroke="#94a3b8"
+                      minTickGap={16}
+                      tickFormatter={(value) => revisionChartData[Number(value) - 1]?.day ?? ""}
+                    />
                     <YAxis
                       yAxisId="delta"
                       stroke="#94a3b8"
@@ -1132,8 +1118,8 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                       }}
                       labelFormatter={(value) => {
                         const point = revisionChartData[Number(value) - 1];
-                        if (!point) return `Revisão #${value}`;
-                        return `Revisão #${value} • ${point.timestamp} • ${point.investmentLabel}`;
+                        if (!point) return "";
+                        return `${point.timestamp} • ${point.investmentLabel}`;
                       }}
                       contentStyle={{
                         backgroundColor: "#020617",
@@ -1147,7 +1133,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                         const seen = new Map<string, string>();
                         for (const p of revisionChartData) {
                           if (!seen.has(p.investmentLabel)) {
-                            seen.set(p.investmentLabel, getCdbHex(p.investmentInstitution));
+                            seen.set(p.investmentLabel, investmentHex(p.investmentId));
                           }
                         }
                         return (
@@ -1171,7 +1157,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                       {revisionChartData.map((point) => (
                         <Cell
                           key={`delta-${point.seq}`}
-                          fill={getCdbHex(point.investmentInstitution)}
+                          fill={investmentHex(point.investmentId)}
                           fillOpacity={point.delta >= 0 ? 1 : 0.5}
                         />
                       ))}
@@ -1187,7 +1173,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
                         const { cx, cy, index } = props as { cx: number; cy: number; index: number };
                         const point = revisionChartData[index];
                         if (!point) return <circle cx={cx} cy={cy} r={3} fill="#22d3ee" />;
-                        return <circle cx={cx} cy={cy} r={3} fill={getCdbHex(point.investmentInstitution)} />;
+                        return <circle cx={cx} cy={cy} r={3} fill={investmentHex(point.investmentId)} />;
                       }}
                     />
                   </ComposedChart>
@@ -1201,68 +1187,68 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
             {!monthlyForecast ? (
               <p className="mt-3 text-xs text-slate-400">Sem dados suficientes para projeção.</p>
             ) : (
-              <div className="mt-3 grid gap-2 text-xs">
-                <p className="text-slate-300">
-                  Base:{" "}
-                  <span className="font-semibold text-cyan-300">
-                    {monthNameFull(monthlyForecast.month)}/{monthlyForecast.year}
-                  </span>
-                </p>
-                <p className="text-slate-300">
-                  Valor atual:{" "}
-                  <span className="font-semibold text-slate-100">
-                    {formatCurrencyBRL(monthlyForecast.latestValue)}
-                  </span>
-                </p>
-                <p className="text-slate-300">
-                  Crescimento no mês (revisões):{" "}
-                  <span
-                    className={`font-semibold ${
-                      monthlyForecast.growthSoFar >= 0 ? "text-emerald-300" : "text-rose-300"
-                    }`}
-                  >
-                    {formatCurrencyBRL(monthlyForecast.growthSoFar)}
-                  </span>
-                </p>
-                <p className="text-slate-300">
-                  Ritmo por dia útil:{" "}
-                  <span
-                    className={`font-semibold ${
-                      monthlyForecast.dailyPace >= 0 ? "text-emerald-300" : "text-rose-300"
-                    }`}
-                  >
-                    {formatCurrencyBRL(monthlyForecast.dailyPace)}
-                  </span>
-                </p>
-                <p className="text-slate-300">
-                  Dias úteis restantes:{" "}
-                  <span className="font-semibold text-slate-100">
-                    {monthlyForecast.daysRemaining}
-                  </span>
-                </p>
-                <p className="text-slate-300">
-                  Fechamento projetado:{" "}
-                  <span className="font-semibold text-cyan-300">
-                    {formatCurrencyBRL(monthlyForecast.projectedClose)}
-                  </span>
-                </p>
-                <p className="text-slate-300">
-                  Confiança:{" "}
-                  <span
-                    className={`font-semibold ${
-                      monthlyForecast.confidence === "Alta"
-                        ? "text-emerald-300"
-                        : monthlyForecast.confidence === "Média"
-                          ? "text-cyan-300"
-                          : monthlyForecast.confidence === "Fechado"
-                            ? "text-slate-200"
-                            : "text-amber-300"
-                    }`}
-                  >
-                    {monthlyForecast.confidence}
-                  </span>{" "}
-                  <span className="text-slate-500">({monthlyForecast.updatesCount} revisão(ões))</span>
-                </p>
+              <div className="mt-3 space-y-3 text-xs">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-md bg-slate-900/60 p-2">
+                    <p className="text-[11px] text-slate-500">
+                      Realizado{monthlyForecast.isCurrent && monthlyForecast.asOfDate
+                        ? ` até ${monthlyForecast.asOfDate.split("-").reverse().slice(0, 2).join("/")}`
+                        : ""}
+                    </p>
+                    <p className="text-sm font-semibold text-slate-100">{formatCurrencyBRL(monthlyForecast.realized)}</p>
+                  </div>
+                  <div className="rounded-md bg-slate-900/60 p-2">
+                    <p className="text-[11px] text-slate-500">
+                      {monthlyForecast.isCurrent ? "Fechamento projetado" : "Fechamento"}
+                    </p>
+                    <p className="text-sm font-semibold text-cyan-300">{formatCurrencyBRL(monthlyForecast.projected)}</p>
+                    {monthlyForecast.projectedVsPrevious !== null ? (
+                      <p
+                        className={`text-[11px] ${
+                          monthlyForecast.projectedVsPrevious >= 0 ? "text-emerald-300" : "text-rose-300"
+                        }`}
+                      >
+                        {monthlyForecast.projectedVsPrevious >= 0 ? "▲ +" : "▼ "}
+                        {monthlyForecast.projectedVsPrevious.toFixed(1)}% vs mês anterior
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+                {monthlyForecast.isCurrent ? (
+                  <p className="text-slate-400">
+                    Ritmo recente {formatCurrencyBRL(monthlyForecast.dailyRate)}/dia útil · {monthlyForecast.elapsed} de{" "}
+                    {monthlyForecast.total} dias úteis com dados · {monthlyForecast.remaining} restantes
+                  </p>
+                ) : null}
+                <table className="min-w-full text-left">
+                  <thead className="text-[10px] uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="py-1">Investimento</th>
+                      <th className="py-1 text-right">Realizado</th>
+                      {monthlyForecast.isCurrent ? <th className="py-1 text-right">Ritmo/d.u.</th> : null}
+                      <th className="py-1 text-right">{monthlyForecast.isCurrent ? "Projeção" : "Fechamento"}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/70">
+                    {monthlyForecast.items.map((item) => (
+                      <tr key={item.investmentId}>
+                        <td className="py-1 text-slate-300">{item.label}</td>
+                        <td className="whitespace-nowrap py-1 text-right tabular-nums text-slate-200">
+                          {formatCurrencyBRL(item.realized)}
+                        </td>
+                        {monthlyForecast.isCurrent ? (
+                          <td className="whitespace-nowrap py-1 text-right tabular-nums text-slate-400">
+                            {item.dailyRate > 0 ? formatCurrencyBRL(item.dailyRate) : "—"}
+                          </td>
+                        ) : null}
+                        <td className="whitespace-nowrap py-1 text-right tabular-nums text-cyan-300">
+                          {formatCurrencyBRL(item.projected)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="text-[11px] text-slate-500">Mesmo cálculo do Dashboard e dos Insights.</p>
               </div>
             )}
           </div>
@@ -1624,102 +1610,235 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
         </div>
       )}
 
-      {/* Resumo mensal no formato Itau / Santander / FIIs / Total */}
-      <div className="rounded-xl border border-slate-800 bg-surface/80 p-4">
-        <h3 className="mb-3 text-sm font-semibold text-slate-200">
-          Resumo mensal consolidado
-        </h3>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-xs md:text-sm">
-            <thead className="border-b border-slate-800 text-slate-400">
-              <tr>
-                <th className="px-2 py-2">Meses</th>
-                {cdbInvestments.map((inv) => (
-                  <th key={inv.id} className={`px-2 py-2 ${getCdbColor(inv.institution)}`}>
-                    {`CDB ${inv.institution}`}
-                  </th>
+      <details className="group rounded-xl border border-slate-800 bg-surface/60 p-4">
+        <summary className="cursor-pointer select-none text-sm font-semibold text-slate-200">
+          Lançamentos detalhados
+          <span className="ml-2 text-xs font-normal text-slate-500">
+            lista completa, edição de um lançamento e meses anteriores
+          </span>
+        </summary>
+        <div className="mt-4">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <div className="rounded-xl border border-slate-800 bg-surface/80 p-4">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-semibold text-slate-200">
+                Histórico de retornos
+              </h3>
+              <span
+                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                  yearFilter === "all"
+                    ? "bg-slate-700/80 text-slate-300"
+                    : "bg-accent/25 text-accent border border-accent/50"
+                }`}
+              >
+                {yearFilter === "all" ? "Todos os anos" : `Ano ${yearFilter}`}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <select
+                className={`rounded-lg px-2 py-1 text-xs text-slate-100 outline-none focus:ring-2 focus:ring-accent ${
+                  yearFilter === "all"
+                    ? "border border-slate-700 bg-slate-900 focus:border-accent"
+                    : "border border-accent/60 bg-accent/10 focus:border-accent"
+                }`}
+                value={yearFilter === "all" ? "all" : String(yearFilter)}
+                onChange={(e) =>
+                  setYearFilter(
+                    e.target.value === "all"
+                      ? "all"
+                      : Number(e.target.value),
+                  )
+                }
+              >
+                <option value="all">Todos os anos</option>
+                {years.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
                 ))}
-                <th className="px-2 py-2 text-emerald-400">FIIs</th>
-                <th className="px-2 py-2">Total</th>
-                <th className="px-2 py-2">Status</th>
-                <th className="px-2 py-2 text-right">Fechamento</th>
-              </tr>
-            </thead>
-            <tbody>
-              {monthlySummary.length === 0 ? (
+              </select>
+              <select
+                className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+                value={investmentFilter}
+                onChange={(e) => setInvestmentFilter(e.target.value)}
+              >
+                {investmentFilterOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-xs md:text-sm">
+              <thead className="border-b border-slate-800 text-slate-400">
                 <tr>
-                  <td
-                    colSpan={cdbInvestments.length + 5}
-                    className="px-2 py-4 text-center text-slate-400"
-                  >
-                    Nenhum dado para o ano selecionado.
-                  </td>
+                  <th className="px-2 py-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort("year")}
+                      className="inline-flex items-center gap-1 text-slate-300 hover:text-slate-100"
+                    >
+                      Ano
+                      <span className="text-[10px] text-slate-500">
+                        {sortIndicator("year")}
+                      </span>
+                    </button>
+                  </th>
+                  <th className="px-2 py-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort("month")}
+                      className="inline-flex items-center gap-1 text-slate-300 hover:text-slate-100"
+                    >
+                      Mês
+                      <span className="text-[10px] text-slate-500">
+                        {sortIndicator("month")}
+                      </span>
+                    </button>
+                  </th>
+                  <th className="px-2 py-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort("label")}
+                      className="inline-flex items-center gap-1 text-slate-300 hover:text-slate-100"
+                    >
+                      Investimento
+                      <span className="text-[10px] text-slate-500">
+                        {sortIndicator("label")}
+                      </span>
+                    </button>
+                  </th>
+                  <th className="px-2 py-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort("income")}
+                      className="inline-flex items-center gap-1 text-slate-300 hover:text-slate-100"
+                    >
+                      Renda
+                      <span className="text-[10px] text-slate-500">
+                        {sortIndicator("income")}
+                      </span>
+                    </button>
+                  </th>
+                  <th className="px-2 py-2 text-right">Ações</th>
                 </tr>
-              ) : (
-                monthlySummary.map((row) => (
-                  <tr
-                    key={`${row.year}-${row.month}`}
-                    className="border-b border-slate-800/60 last:border-0"
-                  >
-                    {(() => {
-                      const key = `${row.year}-${row.month}`;
-                      const closed = isPeriodClosed(row.year, row.month);
-                      const isUpdating = closureUpdatingKey === key;
-                      return (
-                        <>
-                    <td className="px-2 py-2 text-slate-300">
-                      {monthNameFull(row.month)}
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-2 py-4 text-center text-slate-400"
+                    >
+                      Carregando retornos...
                     </td>
-                    {cdbInvestments.map((inv) => (
-                      <td key={inv.id} className={`px-2 py-2 font-medium ${getCdbColor(inv.institution)}`}>
-                        {formatCurrencyBRL(row.cdbValues.get(inv.id) ?? 0)}
+                  </tr>
+                ) : pageRows.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-2 py-4 text-center text-slate-400"
+                    >
+                      Nenhum retorno encontrado para os filtros selecionados.
+                    </td>
+                  </tr>
+                ) : (
+                  pageRows.map((row) => (
+                    <tr
+                      key={`${row.year}-${row.month}-${row.label}`}
+                      className="border-b border-slate-800/60 last:border-0"
+                    >
+                      <td className="px-2 py-2 text-slate-300">{row.year}</td>
+                      <td className="px-2 py-2 text-slate-300">
+                        {monthNameFull(row.month)}
                       </td>
-                    ))}
-                    <td className="px-2 py-2 font-medium text-emerald-400">
-                      {formatCurrencyBRL(row.fiis)}
-                    </td>
-                    <td className="px-2 py-2 font-bold text-slate-100">
-                      {formatCurrencyBRL(row.total)}
-                    </td>
-                    <td className="px-2 py-2">
-                      <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                          closed
-                            ? "bg-rose-900/50 text-rose-300"
-                            : "bg-emerald-900/40 text-emerald-300"
+                      <td className="px-2 py-2 text-slate-300">{row.label}</td>
+                      <td
+                        className={`px-2 py-2 font-medium ${
+                          row.isFii
+                            ? "text-emerald-400"
+                            : investmentTextColor(Math.max(0, cdbInvestments.findIndex((inv) => inv.id === row.investmentId)))
                         }`}
                       >
-                        {closed ? "Fechado" : "Aberto"}
-                      </span>
-                    </td>
-                    <td className="px-2 py-2 text-right">
-                      <button
-                        type="button"
-                        disabled={isUpdating || !closuresAvailable}
-                        onClick={() =>
-                          toggleMonthClosure(row.year, row.month, !closed)
-                        }
-                        className="rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-800 disabled:opacity-50"
-                      >
-                        {!closuresAvailable
-                          ? "Indisponível"
-                          : isUpdating
-                          ? "Salvando..."
-                          : closed
-                            ? "Reabrir"
-                            : "Fechar"}
-                      </button>
-                    </td>
-                        </>
-                      );
-                    })()}
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                        {formatCurrencyBRL(row.income)}
+                      </td>
+                      <td className="px-2 py-2 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleEdit(row)}
+                          disabled={
+                            isPeriodClosed(row.year, row.month) ||
+                            row.isAggregated
+                          }
+                          className="rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-800"
+                        >
+                          {isPeriodClosed(row.year, row.month)
+                            ? "Fechado"
+                            : row.isAggregated
+                              ? "Consolidado"
+                            : "Editar"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400">
+            <span>
+              Mostrando {pageRows.length === 0 ? 0 : startIndex + 1}-
+              {startIndex + pageRows.length} de {sortedRows.length} registros
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={currentPage === 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="rounded-md border border-slate-700 px-2 py-1 disabled:opacity-40"
+              >
+                Anterior
+              </button>
+              <span>
+                Página {currentPage} / {totalPages}
+              </span>
+              <button
+                type="button"
+                disabled={currentPage === totalPages}
+                onClick={() =>
+                  setPage((p) => Math.min(totalPages, p + 1))
+                }
+                className="rounded-md border border-slate-700 px-2 py-1 disabled:opacity-40"
+              >
+                Próxima
+              </button>
+            </div>
+          </div>
         </div>
+
+        <ReturnForm
+          investments={uiInvestments}
+          onCreated={handleSaved}
+          isPeriodClosed={isPeriodClosed}
+          initial={
+            editing
+              ? {
+                  investment_id: editing.investmentId,
+                  month: editing.month,
+                  year: editing.year,
+                  income_value: editing.income,
+                }
+              : undefined
+          }
+        />
       </div>
+        </div>
+      </details>
     </div>
   );
 }

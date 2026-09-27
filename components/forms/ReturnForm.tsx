@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Investment, MonthlyReturn } from "../../types";
 import { monthNameFull } from "../../lib/formatters";
+import { parseBrNumber } from "../../lib/import-parsers";
 
 interface Props {
   investments: Investment[];
@@ -63,10 +64,9 @@ export function ReturnForm({
           `O período ${month}/${year} está fechado para edição de retornos.`,
         );
       }
-      // Aceita vírgula ou ponto como decimal; ponto como milhar é removido (ex: 1.504,07 ou 86,95)
-      const normalized = String(incomeValue).replace(/\./g, "").replace(",", ".");
-      const parsed = Number(normalized);
-      if (!Number.isFinite(parsed) || parsed < 0) {
+      // Aceita "1.504,07", "86,95" e "86.95"; ponto só é milhar em grupos de 3 dígitos (ex.: 1.504).
+      const parsed = parseBrNumber(String(incomeValue));
+      if (parsed === null || parsed < 0) {
         throw new Error("Valor de renda inválido. Use apenas números; você pode usar vírgula ou ponto como decimal (ex: 86,95 ou 86.95).");
       }
 
