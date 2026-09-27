@@ -16,6 +16,7 @@ export const DEFAULT_NAV_ITEMS: NavItem[] = [
   { href: "/investments", label: "Investimentos", shortLabel: "Assets" },
   { href: "/liquidity", label: "Liquidez e Vencimentos", shortLabel: "Liq" },
   { href: "/returns", label: "Retornos Mensais", shortLabel: "Ret" },
+  { href: "/import", label: "Importar", shortLabel: "Imp" },
 ];
 
 export function resolveNavItems(savedOrder: string[] | null | undefined): NavItem[] {
