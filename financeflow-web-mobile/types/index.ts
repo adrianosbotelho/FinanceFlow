@@ -26,6 +26,8 @@ export interface CdbMonthlyEntry {
   investment_id: string;
   label: string;
   income: number;
+  /** Mês em andamento: projeção de fechamento do investimento. */
+  projected?: number;
 }
 
 export interface CdbKpiEntry {
@@ -46,6 +48,9 @@ export interface DashboardMonth {
   total: number;
   mom_pct: number | null;
   mom_value: number | null;
+  /** Mês em andamento: projeção de fechamento do total e dos FIIs (lib/finance/month-pace). */
+  projected_total?: number;
+  projected_fii?: number;
 }
 
 export interface DashboardPayload {
