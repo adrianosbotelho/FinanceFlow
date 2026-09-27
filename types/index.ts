@@ -879,3 +879,38 @@ export interface LiquidityPayload {
   investments: LiquidityInvestmentItem[];
   warnings: string[];
 }
+
+// Importação de arquivos (rendimentos em lote e aportes/resgates).
+export type ImportKind = "returns" | "cash_events";
+export type ImportFormat = "csv" | "ofx";
+
+export interface ImportPreviewRow {
+  line: number;
+  investmentId: string | null;
+  investmentLabel: string;
+  year: number | null;
+  month: number | null;
+  date: string | null;
+  type: "APORTE" | "RESGATE" | "IMPOSTO" | "TAXA" | null;
+  value: number | null;
+  previousValue: number | null;
+  description: string | null;
+  status: "novo" | "atualiza" | "igual" | "duplicado" | "fechado" | "erro" | "ignorado";
+  importable: boolean;
+  message: string | null;
+}
+
+export interface ImportPreviewPayload {
+  kind: ImportKind;
+  format: ImportFormat;
+  rows: ImportPreviewRow[];
+  counts: Record<ImportPreviewRow["status"], number>;
+  error: string | null;
+}
+
+export interface ImportCommitPayload {
+  created: number;
+  updated: number;
+  skipped: number;
+  balanceAdjusted: boolean;
+}
