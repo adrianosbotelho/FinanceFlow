@@ -18,7 +18,7 @@ Três superfícies no mesmo repositório:
 ## Regras críticas
 
 1. **Nunca modificar `financeflow-web-mobile/`** sem instrução explícita. É um subprojeto separado, com dependências e CI próprios.
-2. **Libs financeiras compartilhadas com o mobile**: `financeflow-web-mobile/lib/finance/` contém cópias fiéis de `lib/business-days.ts`, `lib/month-pace.ts`, `lib/balance-history.ts`, `lib/goals-math.ts`, `lib/redemption-tax.ts`, `lib/cdi-reference.ts` e `lib/daily-income.ts` (com os mesmos testes em `financeflow-web-mobile/tests/`). Ao mudar uma dessas libs no desktop, abrir em seguida um PR só do mobile replicando a mudança.
+2. **Libs financeiras compartilhadas com o mobile**: `financeflow-web-mobile/lib/finance/` contém cópias fiéis de `lib/business-days.ts`, `lib/month-pace.ts`, `lib/balance-history.ts`, `lib/goals-math.ts`, `lib/redemption-tax.ts`, `lib/cdi-reference.ts`, `lib/daily-income.ts`, `lib/quick-entry.ts` e `parseBrNumber()` de `lib/import-parsers.ts` (em `lib/finance/br-number.ts`) (com os mesmos testes em `financeflow-web-mobile/tests/`). Ao mudar uma dessas libs no desktop, abrir em seguida um PR só do mobile replicando a mudança.
 3. **Nunca misturar desktop e mobile no mesmo commit/PR** — o Boundary Guard (`npm run guard:boundary`) reprova no CI.
 4. **Buildar ao final de cada alteração** com `node macos-app/build-standalone.js` (não apenas `npm run build` — este não copia `.next/static/` para o standalone, e o Electron quebra).
 5. **Não quebrar o que funciona**: dashboard, gráficos, tabelas e análises precisam continuar operando. Na dúvida, perguntar.
