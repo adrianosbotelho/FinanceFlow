@@ -19,8 +19,16 @@ import {
   GoalsInvestmentRow,
   GoalsOverviewPayload,
 } from "../../types";
-import { formatCurrencyBRL, formatPercentage, monthLabel, monthNameFull } from "../../lib/formatters";
+import {
+  formatCurrencyBRL,
+  formatPercentage,
+  formatPercentageDigits,
+  monthLabel,
+  monthNameFull,
+} from "../../lib/formatters";
 import { Card } from "../ui/Card";
+import { parseBrNumber } from "../../lib/import-parsers";
+import { buildContributionPlan } from "../../lib/goals-plan";
 
 type GoalType = "monthly" | "annual";
 
@@ -35,6 +43,11 @@ const DANGER_BUTTON_CLASS =
 function formatAxisCurrencyTick(value: number): string {
   if (Math.abs(value) >= 1000) return `${(value / 1000).toFixed(0)}k`;
   return value.toFixed(0);
+}
+
+// Valor inteiro em reais sem símbolo (ex.: 1.094), para a grade de metas.
+function formatWholeReais(value: number): string {
+  return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 }).format(value);
 }
 
 function formatShortDate(isoDate: string | null): string {
@@ -78,6 +91,278 @@ function ProgressBar({ value, marker }: { value: number; marker?: number | null 
         />
       ) : null}
     </div>
+  );
+}
+
+function ContributionPlanCard({ data }: { data: GoalsOverviewPayload }) {
+  const withGoal = data.investments.filter((row) => row.annual.target !== null);
+  const recentTotal = data.investments.reduce((acc, row) => acc + Math.max(0, row.annual.recentMonthlyContribution), 0);
+  const [budgetRaw, setBudgetRaw] = useState(() => formatCurrencyBRL(recentTotal).replace("R$", "").trim());
+  const budget = parseBrNumber(budgetRaw) ?? 0;
+  const plan = buildContributionPlan(
+    withGoal.map((row) => ({
+      id: row.investmentId,
+      need: row.annual.requiredMonthlyContribution ?? 0,
+      current: Math.max(0, row.annual.recentMonthlyContribution),
+      fgcHeadroom: row.fgcHeadroom,
+    })),
+    budget,
+    data.contributionMonthsRemaining,
+  );
+  const byId = new Map(withGoal.map((row) => [row.investmentId, row]));
+  if (withGoal.length === 0) return null;
+  return (
+    <Card>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-200">Plano de aportes até dezembro</h3>
+          <p className="text-xs text-slate-400">
+            Distribui o aporte mensal pelo que cada meta anual ainda precisa ({data.contributionMonthsRemaining} meses,
+            incluindo o atual), sem passar do limite do FGC por instituição.
+          </p>
+        </div>
+        <label className="flex items-center gap-2 text-xs text-slate-300">
+          Aporte por mês (R$)
+          <input
+            inputMode="decimal"
+            value={budgetRaw}
+            onChange={(e) => setBudgetRaw(e.target.value)}
+            className={`${INPUT_CLASS} w-32 text-right`}
+          />
+        </label>
+      </div>
+      <p className="mt-1 text-[11px] text-slate-500">
+        Valor inicial: média dos seus aportes nos últimos 3 meses ({formatCurrencyBRL(recentTotal)}).
+      </p>
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full min-w-[640px] text-left text-xs">
+          <thead className="text-slate-400">
+            <tr>
+              <th className="py-2">Investimento</th>
+              <th className="py-2 text-right">Necessário/mês</th>
+              <th className="py-2 text-right">Aportes recentes/mês</th>
+              <th className="py-2 text-right">Sugerido/mês</th>
+              <th className="py-2 text-right">Mudança</th>
+              <th className="py-2 pl-3">Observação</th>
+            </tr>
+          </thead>
+          <tbody>
+            {plan.items.map((item) => {
+              const row = byId.get(item.id);
+              const change = item.suggested - item.current;
+              return (
+                <tr key={item.id} className="border-t border-slate-800 text-slate-200">
+                  <td className="py-2 font-semibold text-slate-100">{row?.label}</td>
+                  <td className="py-2 text-right text-amber-300">{formatCurrencyBRL(item.need)}</td>
+                  <td className="py-2 text-right text-slate-300">{formatCurrencyBRL(item.current)}</td>
+                  <td className="py-2 text-right font-bold text-cyan-300">{formatCurrencyBRL(item.suggested)}</td>
+                  <td
+                    className={`py-2 text-right ${
+                      Math.abs(change) < 1 ? "text-slate-500" : change > 0 ? "text-emerald-300" : "text-rose-300"
+                    }`}
+                  >
+                    {Math.abs(change) < 1 ? "—" : `${change > 0 ? "+" : "−"}${formatCurrencyBRL(Math.abs(change))}`}
+                  </td>
+                  <td className="py-2 pl-3 text-[11px] text-slate-400">
+                    {item.need <= 0
+                      ? "meta já coberta pelo saldo e rendimento"
+                      : item.cappedByFgc
+                        ? `limitado pela folga do FGC (${formatCurrencyBRL(Math.max(0, item.fgcHeadroom))})`
+                        : item.suggested < item.need - 1
+                          ? `cobre ${formatPercentage((item.suggested / item.need) * 100)} do necessário`
+                          : "cobre o necessário"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-slate-700 font-semibold">
+              <td className="py-2 text-slate-300">Total</td>
+              <td className="py-2 text-right text-amber-300">{formatCurrencyBRL(plan.totalNeed)}</td>
+              <td className="py-2 text-right text-slate-300">
+                {formatCurrencyBRL(plan.items.reduce((acc, item) => acc + item.current, 0))}
+              </td>
+              <td className="py-2 text-right text-cyan-300">{formatCurrencyBRL(plan.allocated)}</td>
+              <td colSpan={2} />
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <p className={`mt-2 text-xs ${plan.shortfall > 1 ? "text-amber-300" : "text-emerald-300"}`}>
+        {plan.shortfall > 1
+          ? `Faltam ${formatCurrencyBRL(plan.shortfall)}/mês para cobrir todas as metas anuais até dezembro.`
+          : plan.leftover > 1
+            ? `Metas cobertas; sobram ${formatCurrencyBRL(plan.leftover)}/mês para outros objetivos.`
+            : "O aporte cobre exatamente as metas anuais."}
+      </p>
+    </Card>
+  );
+}
+
+function MonthlyGoalsGrid({ data, onSaved }: { data: GoalsOverviewPayload; onSaved: () => Promise<void> }) {
+  const initial = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const row of data.investments) {
+      for (const cell of row.months) {
+        map[`${row.investmentId}|${cell.month}`] =
+          cell.target !== null ? formatCurrencyBRL(cell.target).replace("R$", "").trim() : "";
+      }
+    }
+    return map;
+  }, [data]);
+  const [values, setValues] = useState<Record<string, string>>(initial);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => setValues(initial), [initial]);
+
+  const changed = Object.keys(values).filter((key) => {
+    const month = Number(key.split("|")[1]);
+    return month >= data.month && (values[key] ?? "").trim() !== (initial[key] ?? "").trim();
+  });
+  const invalid = changed.filter((key) => values[key].trim() !== "" && parseBrNumber(values[key]) === null);
+
+  const copyForward = (investmentId: string) => {
+    const source = values[`${investmentId}|${data.month}`] ?? "";
+    setValues((prev) => {
+      const next = { ...prev };
+      for (let m = data.month + 1; m <= 12; m += 1) next[`${investmentId}|${m}`] = source;
+      return next;
+    });
+  };
+
+  const save = async () => {
+    if (changed.length === 0 || invalid.length > 0) return;
+    setSaving(true);
+    const failures: string[] = [];
+    for (const key of changed) {
+      const [investmentId, monthRaw] = key.split("|");
+      const month = Number(monthRaw);
+      const raw = values[key].trim();
+      try {
+        const res = await fetch("/api/investment-goals-monthly", {
+          method: raw === "" ? "DELETE" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            raw === ""
+              ? { investment_id: investmentId, year: data.year, month }
+              : { investment_id: investmentId, year: data.year, month, monthly_target: parseBrNumber(raw) },
+          ),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => null);
+          throw new Error(err?.error ?? "erro");
+        }
+      } catch (err) {
+        failures.push(`${monthNameFull(month)}: ${err instanceof Error ? err.message : "erro"}`);
+      }
+    }
+    setSaving(false);
+    if (failures.length > 0) alert(`Algumas metas não foram salvas: ${failures.join("; ")}`);
+    await onSaved();
+  };
+
+  return (
+    <Card>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-200">Metas mensais do ano ({data.year})</h3>
+          <p className="text-xs text-slate-400">
+            Meses fechados: realizado (verde se bateu a meta). Mês atual e seguintes: edite a meta; a borda âmbar indica
+            meta acima do que o saldo atual rende na taxa contratada (passe o mouse para ver o valor possível).
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={saving || changed.length === 0 || invalid.length > 0}
+          onClick={() => void save()}
+          className="rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+        >
+          {saving ? "Salvando..." : `Salvar metas${changed.length > 0 ? ` (${changed.length})` : ""}`}
+        </button>
+      </div>
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full min-w-[1100px] text-left text-[11px]">
+          <thead className="text-slate-400">
+            <tr>
+              <th className="py-2 pr-2">Investimento</th>
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                <th key={m} className={`px-1 py-2 text-center ${m === data.month ? "text-cyan-300" : ""}`}>
+                  {monthLabel(m)}
+                </th>
+              ))}
+              <th className="py-2" />
+            </tr>
+          </thead>
+          <tbody>
+            {data.investments.map((row) => (
+              <tr key={row.investmentId} className="border-t border-slate-800 align-top">
+                <td className="py-2 pr-2 font-semibold text-slate-100">{row.label}</td>
+                {row.months.map((cell) => {
+                  const key = `${row.investmentId}|${cell.month}`;
+                  if (cell.status === "closed") {
+                    const hit = cell.target !== null && (cell.realized ?? 0) >= cell.target;
+                    return (
+                      <td key={cell.month} className="px-1 py-2 text-center">
+                        <div
+                          className={`font-semibold ${
+                            cell.target === null ? "text-slate-300" : hit ? "text-emerald-300" : "text-rose-300"
+                          }`}
+                        >
+                          {cell.realized ? formatWholeReais(cell.realized) : "—"}
+                        </div>
+                        <div className="text-slate-500">
+                          {cell.target !== null ? `meta ${formatWholeReais(cell.target)}` : ""}
+                        </div>
+                      </td>
+                    );
+                  }
+                  const parsed = parseBrNumber(values[key] ?? "");
+                  const aboveReach = parsed !== null && cell.possible !== null && parsed > cell.possible * 1.005;
+                  return (
+                    <td key={cell.month} className="px-1 py-2 text-center">
+                      <input
+                        inputMode="decimal"
+                        value={values[key] ?? ""}
+                        onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
+                        title={cell.possible !== null ? `Possível sem novos aportes: ${formatCurrencyBRL(cell.possible)}` : undefined}
+                        placeholder={cell.possible !== null ? formatWholeReais(cell.possible) : ""}
+                        className={`w-20 rounded border bg-slate-900 px-1 py-1 text-right text-[11px] text-slate-100 outline-none ${
+                          values[key]?.trim() && parseBrNumber(values[key]) === null
+                            ? "border-rose-500"
+                            : aboveReach
+                              ? "border-amber-500"
+                              : "border-slate-700 focus:border-accent"
+                        }`}
+                      />
+                      {cell.status === "in_progress" ? (
+                        <div className="mt-0.5 text-slate-500">real {formatWholeReais(cell.realized ?? 0)}</div>
+                      ) : null}
+                    </td>
+                  );
+                })}
+                <td className="py-2 pl-1">
+                  {data.month < 12 ? (
+                    <button
+                      type="button"
+                      className={SMALL_BUTTON_CLASS}
+                      title={`Copiar a meta de ${monthNameFull(data.month)} para os meses seguintes`}
+                      onClick={() => copyForward(row.investmentId)}
+                    >
+                      Copiar →
+                    </button>
+                  ) : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-[11px] text-slate-500">
+        O valor possível usa o saldo atual, o CDI de referência ({formatPercentageDigits(data.cdiAnnualReference, 2)} a.a.), a taxa
+        contratada de cada investimento (100% do CDI sem cadastro) e os dias úteis de cada mês. Deixe vazio para
+        remover a meta do mês.
+      </p>
+    </Card>
   );
 }
 
@@ -136,11 +421,10 @@ export function GoalsPageClient() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    // "1.100,50" (pt-BR) ou "1100.50": ponto só é milhar quando há vírgula decimal.
-    const raw = formTarget.trim();
-    const target = Number(raw.includes(",") ? raw.replace(/\./g, "").replace(",", ".") : raw);
+    // "1.100,50", "1100,50" ou "1100.50".
+    const target = parseBrNumber(formTarget);
     if (!formInvestmentId) return;
-    if (!Number.isFinite(target) || target < 0) {
+    if (target === null || target < 0) {
       alert(`Meta ${goalType === "monthly" ? "mensal" : "anual"} inválida.`);
       return;
     }
@@ -264,7 +548,7 @@ export function GoalsPageClient() {
       ) : null}
 
       {monthly && annual && data ? (
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-4 xl:grid-cols-3">
           <Card>
             <div className="flex items-start justify-between gap-2">
               <div>
@@ -368,6 +652,54 @@ export function GoalsPageClient() {
               <p className="mt-3 text-sm text-slate-400">Nenhuma meta anual cadastrada para este ano.</p>
             )}
           </Card>
+
+          <Card>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-200">Meta do ano · renda ({year})</h3>
+                <p className="text-[11px] text-slate-500">
+                  {data.annualIncome?.source === "monthly_goals"
+                    ? `Soma das metas mensais (${data.annualIncome.monthsWithGoal} meses) · mesmo número do Dashboard`
+                    : "Meta anual configurada (sem metas mensais cadastradas)"}
+                </p>
+              </div>
+              {data.annualIncome ? (
+                <Badge
+                  label={data.annualIncome.onTrack ? "No ritmo" : "Abaixo do ritmo"}
+                  className={
+                    data.annualIncome.onTrack
+                      ? "bg-emerald-900/50 text-emerald-300"
+                      : "bg-rose-900/40 text-rose-300"
+                  }
+                />
+              ) : null}
+            </div>
+            {data.annualIncome && data.annualIncome.annualIncomeTarget > 0 ? (
+              <>
+                <p className="mt-3 text-2xl font-bold text-slate-50">
+                  {formatCurrencyBRL(data.annualIncome.annualProjection)}
+                  <span className="text-sm font-normal text-slate-400">
+                    {" "}
+                    de {formatCurrencyBRL(data.annualIncome.annualIncomeTarget)}
+                  </span>
+                </p>
+                <p className="mb-2 text-xs text-slate-400">
+                  projeção nos meses com meta · {formatPercentage(data.annualIncome.progressPercent)}
+                </p>
+                <ProgressBar value={data.annualIncome.progressPercent} />
+                <p className="mt-3 text-xs text-slate-300">
+                  {data.annualIncome.gapToTarget > 0
+                    ? `Faltam ${formatCurrencyBRL(data.annualIncome.gapToTarget)} na projeção.`
+                    : "A projeção cobre a meta do ano."}{" "}
+                  <span className="text-slate-500">
+                    Realizado nos meses fechados + projeção do mês + ritmo por dia útil nos meses seguintes.
+                  </span>
+                </p>
+              </>
+            ) : (
+              <p className="mt-3 text-sm text-slate-400">Sem meta de renda do ano.</p>
+            )}
+          </Card>
         </div>
       ) : null}
 
@@ -375,17 +707,18 @@ export function GoalsPageClient() {
         <Card>
           <h3 className="text-sm font-semibold text-slate-200">Meta mensal por investimento</h3>
           <p className="mb-2 text-xs text-slate-400">
-            Realizado em destaque; a projeção considera o ritmo do mês. Placar: meses fechados do ano em que a meta
-            foi atingida.
+            Realizado em destaque; a projeção considera o ritmo do mês. Renda possível: saldo × CDI do mês na taxa
+            contratada, sem novos aportes. Placar: meses fechados do ano em que a meta foi atingida.
           </p>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-xs">
+            <table className="w-full min-w-[880px] text-left text-xs">
               <thead className="text-slate-400">
                 <tr>
                   <th className="py-2">Investimento</th>
                   <th className="py-2">Meta</th>
                   <th className="py-2">Realizado</th>
                   <th className="py-2">Projeção</th>
+                  <th className="py-2">Renda possível</th>
                   <th className="py-2">Necessário/dia útil</th>
                   <th className="py-2">Status</th>
                   <th className="py-2">Placar no ano</th>
@@ -409,6 +742,20 @@ export function GoalsPageClient() {
                       ) : null}
                     </td>
                     <td className="py-2 text-slate-300">{formatCurrencyBRL(row.monthly.projected)}</td>
+                    <td className="py-2">
+                      <span className="text-slate-300">{formatCurrencyBRL(row.possibleMonthlyIncome)}</span>
+                      <span className="block text-[10px] text-slate-500">
+                        {row.contractedCdiPercent !== null
+                          ? `${Math.round(row.contractedCdiPercent)}% do CDI`
+                          : "100% do CDI (sem cadastro)"}
+                      </span>
+                      {row.monthlyTargetReachable === false && row.balanceForMonthlyTarget !== null ? (
+                        <span className="block text-[10px] text-amber-300">
+                          Meta acima do que o saldo rende: precisa de {formatCurrencyBRL(row.balanceForMonthlyTarget)} de
+                          saldo
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="py-2 text-amber-300">
                       {row.monthly.neededPerBusinessDay ? formatCurrencyBRL(row.monthly.neededPerBusinessDay) : "—"}
                     </td>
@@ -520,6 +867,10 @@ export function GoalsPageClient() {
           </div>
         </Card>
       ) : null}
+
+      {data ? <ContributionPlanCard key={`${data.year}-${data.month}`} data={data} /> : null}
+
+      {data ? <MonthlyGoalsGrid data={data} onSaved={load} /> : null}
 
       {data ? (
         <div className="grid gap-4 xl:grid-cols-2">
