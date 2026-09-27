@@ -34,12 +34,13 @@ Três superfícies no mesmo repositório:
 | `npm run build:desktop` | build + cópia de static/public para o Electron |
 | `npm run desktop` | build + abre o app Electron |
 | `npm run lint` | ESLint (`next/core-web-vitals`) |
+| `npm test` | testes dos cálculos financeiros (Vitest, `tests/`) |
 | `npm run guard:boundary` | verifica isolamento desktop/mobile |
 | `npm run smoke:api` | smoke test das rotas de API (servidor rodando) |
 | `npm run smoke:macos` | smoke test do build macOS |
 | `npm run release:check` | checklist de release (web + macOS) |
 
-Não há suíte de testes automatizados — a verificação é `npm run lint` + build + smoke tests.
+Verificação: `npm test` (Vitest) + `npm run lint` + build + smoke tests. Os testes cobrem as libs de cálculo (`business-days`, `redemption-tax`, `balance-history`, `goals-math`, `month-pace`) com **dados fictícios**; o CI roda `npm test` em todo PR do desktop (`.github/workflows/desktop-tests.yml`). Lógica de cálculo nova vai para `lib/` (função pura) com teste, não para dentro da rota.
 
 O `.app` empacotado em `macos-app/dist/mac-arm64/` é um artefato **separado**: só incorpora código novo após `cd macos-app && npx electron-builder --mac`. Para o dia a dia, `npm run desktop` é mais rápido.
 

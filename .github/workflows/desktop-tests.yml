@@ -1,0 +1,48 @@
+name: Desktop Tests
+
+on:
+  pull_request:
+    paths:
+      - "app/**"
+      - "components/**"
+      - "lib/**"
+      - "types/**"
+      - "tests/**"
+      - "package.json"
+      - "package-lock.json"
+      - "vitest.config.ts"
+      - ".github/workflows/desktop-tests.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "app/**"
+      - "components/**"
+      - "lib/**"
+      - "types/**"
+      - "tests/**"
+      - "package.json"
+      - "package-lock.json"
+      - "vitest.config.ts"
+      - ".github/workflows/desktop-tests.yml"
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    name: Testes dos cálculos financeiros (desktop)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Dependências
+        run: npm ci
+
+      - name: Testes
+        run: npm test

@@ -7,7 +7,8 @@ import {
   BalanceContext,
   buildBalanceContexts,
   closingBalance,
-  previousYm,
+  compoundPercents,
+  monthReturnPercent,
   ym,
 } from "../../../lib/balance-history";
 import {
@@ -114,25 +115,6 @@ async function fetchBcbMonthlyInflation(
   }
 }
 
-// Rentabilidade do mês sobre o saldo de abertura + metade do fluxo do mês (aproximação de Dietz).
-// O mês de estreia fica fora por ser parcial.
-function monthReturn(contexts: BalanceContext[], atYm: number): number | null {
-  let income = 0;
-  let base = 0;
-  for (const ctx of contexts) {
-    if (ctx.firstIncomeYm === null || atYm <= ctx.firstIncomeYm) continue;
-    income += ctx.incomeByYm.get(atYm) ?? 0;
-    base += closingBalance(ctx, previousYm(atYm)) + (ctx.flowByYm.get(atYm) ?? 0) / 2;
-  }
-  return base > 0 ? (income / base) * 100 : null;
-}
-
-function compound(percents: Array<number | null>): number | null {
-  const valid = percents.filter((value): value is number => value !== null);
-  if (valid.length === 0) return null;
-  return (valid.reduce((acc, value) => acc * (1 + value / 100), 1) - 1) * 100;
-}
-
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const now = getSaoPauloYearMonth();
@@ -227,7 +209,7 @@ export async function GET(req: NextRequest) {
       continue;
     }
 
-    const returnPercent = monthReturn(activeContexts, key);
+    const returnPercent = monthReturnPercent(activeContexts, key);
     const cdiPercent = cdiHistory.get(month) ?? null;
     const ipcaPercent = inflationByMonth.get(month) ?? null;
     if (status === "closed" && returnPercent !== null) {
@@ -252,20 +234,20 @@ export async function GET(req: NextRequest) {
       percentOfCdi:
         returnPercent !== null && cdiPercent !== null && cdiPercent > 0 ? (returnPercent / cdiPercent) * 100 : null,
       ipcaPercent,
-      accumulatedReturnPercent: status === "closed" ? compound(closedReturns) : null,
-      accumulatedCdiPercent: status === "closed" ? compound(closedCdi) : null,
-      accumulatedIpcaPercent: status === "closed" ? compound(closedIpca) : null,
+      accumulatedReturnPercent: status === "closed" ? compoundPercents(closedReturns) : null,
+      accumulatedCdiPercent: status === "closed" ? compoundPercents(closedCdi) : null,
+      accumulatedIpcaPercent: status === "closed" ? compoundPercents(closedIpca) : null,
     });
   }
 
   // Resumo do ano (rentabilidade só com meses fechados).
-  const returnPercent = compound(closedReturns);
-  const cdiPercent = compound(closedCdi);
-  const ipcaPercent = compound(closedIpca);
+  const returnPercent = compoundPercents(closedReturns);
+  const cdiPercent = compoundPercents(closedCdi);
+  const ipcaPercent = compoundPercents(closedIpca);
   // Ganho real no mesmo período em que o IPCA já foi divulgado.
   const returnThroughIpca =
     ipcaThroughMonth !== null
-      ? compound(
+      ? compoundPercents(
           monthlySeries
             .filter((point) => point.status === "closed" && point.month <= ipcaThroughMonth!)
             .map((point) => point.returnPercent),
@@ -350,12 +332,12 @@ export async function GET(req: NextRequest) {
       const monthly = monthlySeries
         .filter((point) => point.status === "closed")
         .map((point) => ({
-          ret: monthReturn([ctx], ym(year, point.month)),
+          ret: monthReturnPercent([ctx], ym(year, point.month)),
           cdi: point.cdiPercent,
         }))
         .filter((point) => point.ret !== null);
-      const itemReturn = compound(monthly.map((point) => point.ret));
-      const itemCdi = compound(monthly.map((point) => point.cdi));
+      const itemReturn = compoundPercents(monthly.map((point) => point.ret));
+      const itemCdi = compoundPercents(monthly.map((point) => point.cdi));
       const income = Array.from(ctx.incomeByYm.entries()).reduce(
         (sum, [key, value]) => sum + (inYear(key) ? value : 0),
         0,

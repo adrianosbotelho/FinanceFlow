@@ -12,9 +12,8 @@ import {
   previousYm,
   ym,
 } from "../../../../lib/balance-history";
+import { buildAnnualGoalSummary, monthlyGoalStatus } from "../../../../lib/goals-math";
 import {
-  GoalAnnualStatus,
-  GoalMonthlyStatus,
   GoalsAnnualSummary,
   GoalsBalancePoint,
   GoalsInvestmentRow,
@@ -26,8 +25,6 @@ import {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// Meta mensal "perto": projeção de fechamento a partir de 95% da meta.
-const NEAR_TARGET_RATIO = 0.95;
 // Janela (meses fechados) para o ritmo recente de aportes.
 const RECENT_CONTRIBUTION_MONTHS = 3;
 
@@ -46,72 +43,6 @@ function getSaoPauloDateISO(reference = new Date()): string {
     month: "2-digit",
     day: "2-digit",
   }).format(reference);
-}
-
-function addMonths(year: number, month: number, count: number): { year: number; month: number } {
-  const date = new Date(year, month - 1 + count, 1);
-  return { year: date.getFullYear(), month: date.getMonth() + 1 };
-}
-
-function monthlyStatus(target: number | null, realized: number, projected: number): GoalMonthlyStatus {
-  if (target === null || target <= 0) return "sem_meta";
-  if (realized >= target) return "atingida";
-  if (projected >= target) return "no_ritmo";
-  if (projected >= target * NEAR_TARGET_RATIO) return "perto";
-  return "abaixo";
-}
-
-function buildAnnualSummary(input: {
-  target: number | null;
-  balance: number;
-  expectedIncomeUntilYearEnd: number;
-  recentMonthlyContribution: number;
-  monthlyIncome: number;
-  contributionMonths: number;
-  year: number;
-  month: number;
-}): GoalsAnnualSummary {
-  const { target, balance, expectedIncomeUntilYearEnd, recentMonthlyContribution, monthlyIncome } = input;
-  if (target === null || target <= 0) {
-    return {
-      target: null,
-      balance,
-      gap: 0,
-      progressPercent: null,
-      expectedIncomeUntilYearEnd,
-      requiredMonthlyContribution: null,
-      recentMonthlyContribution,
-      eta: null,
-      status: "sem_meta",
-    };
-  }
-  const gap = Math.max(0, target - balance);
-  const requiredMonthlyContribution = Math.max(0, gap - expectedIncomeUntilYearEnd) / Math.max(1, input.contributionMonths);
-  // Prazo no ritmo atual: aportes médios recentes + renda mensal atual.
-  const monthlyGrowth = recentMonthlyContribution + monthlyIncome;
-  const eta =
-    gap <= 0
-      ? { year: input.year, month: input.month }
-      : monthlyGrowth > 0
-        ? addMonths(input.year, input.month, Math.ceil(gap / monthlyGrowth) - 1)
-        : null;
-  const status: GoalAnnualStatus =
-    gap <= 0
-      ? "atingida"
-      : requiredMonthlyContribution <= recentMonthlyContribution + 0.01 || (eta !== null && eta.year <= input.year)
-        ? "no_ritmo"
-        : "abaixo";
-  return {
-    target,
-    balance,
-    gap,
-    progressPercent: (balance / target) * 100,
-    expectedIncomeUntilYearEnd,
-    requiredMonthlyContribution,
-    recentMonthlyContribution,
-    eta,
-    status,
-  };
 }
 
 export async function GET() {
@@ -191,7 +122,7 @@ export async function GET() {
       target: monthlyTarget,
       realized,
       projected,
-      status: monthlyStatus(monthlyTarget, realized, projected),
+      status: monthlyGoalStatus(monthlyTarget, realized, projected),
       neededPerBusinessDay:
         monthlyTarget !== null && remainingBusinessDays > 0
           ? Math.max(0, monthlyTarget - realized) / remainingBusinessDays
@@ -200,7 +131,7 @@ export async function GET() {
 
     const recentMonthlyContribution =
       recentYms.reduce((acc, key) => acc + (ctx.flowByYm.get(key) ?? 0), 0) / RECENT_CONTRIBUTION_MONTHS;
-    const annual = buildAnnualSummary({
+    const annual = buildAnnualGoalSummary({
       target: annualGoals.get(ctx.id) ?? null,
       balance: ctx.balanceNow,
       expectedIncomeUntilYearEnd: dailyRate * (remainingBusinessDays + businessDaysAfterMonth),
@@ -242,7 +173,7 @@ export async function GET() {
     target: monthlyTarget,
     realized: monthlyRealized,
     projected: monthlyProjected,
-    status: monthlyStatus(monthlyTarget, monthlyRealized, monthlyProjected),
+    status: monthlyGoalStatus(monthlyTarget, monthlyRealized, monthlyProjected),
     neededPerBusinessDay:
       monthlyTarget !== null && businessDaysRemaining > 0
         ? Math.max(0, monthlyTarget - monthlyRealized) / businessDaysRemaining
@@ -254,7 +185,7 @@ export async function GET() {
     ? (() => {
         const target = withAnnualGoal.reduce((acc, row) => acc + (row.annual.target ?? 0), 0);
         const balance = withAnnualGoal.reduce((acc, row) => acc + row.annual.balance, 0);
-        const summary = buildAnnualSummary({
+        const summary = buildAnnualGoalSummary({
           target,
           balance,
           expectedIncomeUntilYearEnd: withAnnualGoal.reduce((acc, row) => acc + row.annual.expectedIncomeUntilYearEnd, 0),
@@ -273,7 +204,7 @@ export async function GET() {
           ),
         };
       })()
-    : buildAnnualSummary({
+    : buildAnnualGoalSummary({
         target: null,
         balance: rows.reduce((acc, row) => acc + row.annual.balance, 0),
         expectedIncomeUntilYearEnd: 0,

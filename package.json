@@ -14,7 +14,8 @@
     "guard:boundary": "node scripts/boundary-guard.mjs",
     "smoke:api": "bash scripts/smoke-api.sh",
     "smoke:macos": "bash scripts/smoke-macos.sh",
-    "release:check": "bash scripts/release-check.sh"
+    "release:check": "bash scripts/release-check.sh",
+    "test": "vitest run"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.48.0",
@@ -32,6 +33,7 @@
     "eslint-config-next": "14.2.3",
     "postcss": "^8.4.40",
     "tailwindcss": "^3.4.4",
-    "typescript": "^5.5.3"
+    "typescript": "^5.5.3",
+    "vitest": "^2.1.9"
   }
 }

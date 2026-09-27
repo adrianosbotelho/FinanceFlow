@@ -114,3 +114,22 @@ export function closingBalance(ctx: BalanceContext, atYm: number): number {
   if (ctx.firstIncomeYm === null || atYm < ctx.firstIncomeYm) return 0;
   return Math.max(0, ctx.balanceNow - sumAfter(ctx.flowByYm, atYm) - sumAfter(ctx.incomeByYm, atYm));
 }
+
+// Rentabilidade do mês sobre o saldo de abertura + metade do fluxo do mês (aproximação de Dietz).
+// O mês de estreia fica fora por ser parcial.
+export function monthReturnPercent(contexts: BalanceContext[], atYm: number): number | null {
+  let income = 0;
+  let base = 0;
+  for (const ctx of contexts) {
+    if (ctx.firstIncomeYm === null || atYm <= ctx.firstIncomeYm) continue;
+    income += ctx.incomeByYm.get(atYm) ?? 0;
+    base += closingBalance(ctx, previousYm(atYm)) + (ctx.flowByYm.get(atYm) ?? 0) / 2;
+  }
+  return base > 0 ? (income / base) * 100 : null;
+}
+
+export function compoundPercents(percents: Array<number | null>): number | null {
+  const valid = percents.filter((value): value is number => value !== null);
+  if (valid.length === 0) return null;
+  return (valid.reduce((acc, value) => acc * (1 + value / 100), 1) - 1) * 100;
+}
