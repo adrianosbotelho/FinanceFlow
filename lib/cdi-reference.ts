@@ -128,3 +128,41 @@ export async function resolveMonthlyCdiHistory(year: number): Promise<Map<number
   }
   return result;
 }
+
+// Último valor de uma série do BCB (% a.a.), com cache e fallback. Séries: 432 = meta Selic,
+// 13522 = IPCA acumulado em 12 meses.
+const latestSeriesCache = new Map<number, { value: number; source: CdiReferenceSource; expiresAt: number }>();
+
+export async function resolveLatestBcbSeriesValue(
+  seriesCode: number,
+  fallback: number,
+): Promise<{ value: number; source: CdiReferenceSource }> {
+  const now = Date.now();
+  const cached = latestSeriesCache.get(seriesCode);
+  if (cached && cached.expiresAt > now) return { value: cached.value, source: cached.source };
+
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  try {
+    const controller = new AbortController();
+    timeout = setTimeout(() => controller.abort(), CDI_MONTHLY_FETCH_TIMEOUT_MS);
+    const response = await fetch(
+      `https://api.bcb.gov.br/dados/serie/bcdata.sgs.${seriesCode}/dados/ultimos/3?formato=json`,
+      { headers: { Accept: "application/json" }, cache: "no-store", signal: controller.signal },
+    );
+    if (!response.ok) throw new Error(`BCB status ${response.status}`);
+    const payload = (await response.json()) as BcbSeriesPoint[];
+    const values = (Array.isArray(payload) ? payload : [])
+      .map((point) => Number(String(point.valor ?? "").replace(",", ".")))
+      .filter((value) => Number.isFinite(value));
+    if (values.length === 0) throw new Error("BCB sem valor válido");
+    const value = values[values.length - 1];
+    latestSeriesCache.set(seriesCode, { value, source: "bcb", expiresAt: now + CDI_CACHE_SUCCESS_TTL_MS });
+    return { value, source: "bcb" };
+  } catch (error) {
+    console.warn(`Falha ao obter a série ${seriesCode} no BCB; usando fallback.`, error);
+    latestSeriesCache.set(seriesCode, { value: fallback, source: "fallback", expiresAt: now + CDI_MONTHLY_FALLBACK_TTL_MS });
+    return { value: fallback, source: "fallback" };
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}

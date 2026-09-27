@@ -914,3 +914,10 @@ export interface ImportCommitPayload {
   skipped: number;
   balanceAdjusted: boolean;
 }
+
+export interface MarketReferencePayload {
+  cdiAnnual: number;
+  selicAnnual: number;
+  ipca12m: number;
+  sources: { cdi: string; selic: string; ipca: string };
+}
