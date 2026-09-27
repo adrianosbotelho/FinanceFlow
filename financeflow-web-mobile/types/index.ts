@@ -161,3 +161,40 @@ export interface PerformancePayload {
   inflationSource: "bcb" | "manual" | "none";
   warnings: string[];
 }
+
+// ─── Ganho por dia útil (Dashboard) ─── ver lib/finance/daily-income.ts
+
+export type DailyIncomePoint = {
+  month: number;
+  status: "closed" | "in_progress";
+  income: number;
+  businessDays: number;
+  dailyIncome: number;
+  /** Capital médio que rendeu no mês (saldo de abertura + ½ fluxo; na estreia, o valor aplicado). */
+  balanceBase: number;
+  dailyPer10k: number | null;
+  /** Mês de estreia sem start_date no mês: valor por dia subestimado. */
+  partialDebut: boolean;
+  /** Variação do R$/dia útil contra o mês anterior (só entre meses comparáveis). */
+  changePercent: number | null;
+  changePer10kPercent: number | null;
+};
+
+export type DailyIncomeSeries = {
+  investmentId: string;
+  label: string;
+  points: Array<DailyIncomePoint | null>;
+  /** Primeiro e último mês fechado comparáveis do ano (para a variação no ano). */
+  fromMonth: number | null;
+  toMonth: number | null;
+  yearChangePercent: number | null;
+  yearChangePer10kPercent: number | null;
+};
+
+export type DailyIncomePayload = {
+  year: number;
+  months: number[];
+  dataThroughISO: string | null;
+  series: DailyIncomeSeries[];
+  total: Array<{ month: number; dailyIncome: number; dailyPer10k: number | null; status: "closed" | "in_progress" } | null>;
+};
