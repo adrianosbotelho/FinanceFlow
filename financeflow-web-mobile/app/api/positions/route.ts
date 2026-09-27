@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase";
+import { rejectUntrustedOrigin } from "@/lib/origin-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const originError = rejectUntrustedOrigin(req);
+  if (originError) return originError;
+
   const supabase = getSupabaseServerClient();
   const body = await req.json();
   const { investment_id, year, month, market_value, taxes_paid, fees_paid } = body;

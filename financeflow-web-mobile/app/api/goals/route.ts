@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase";
+import { rejectUntrustedOrigin } from "@/lib/origin-guard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -89,6 +90,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const originError = rejectUntrustedOrigin(req);
+  if (originError) return originError;
+
   const supabase = getSupabaseServerClient();
   const body = await req.json();
   const { investment_id, type, year, month, target } = body;
@@ -124,6 +128,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const originError = rejectUntrustedOrigin(req);
+  if (originError) return originError;
+
   const supabase = getSupabaseServerClient();
   const url = new URL(req.url);
   const investment_id = url.searchParams.get("investment_id");
