@@ -130,6 +130,8 @@ export async function GET(req: NextRequest) {
       projected: projectedById.get(item.investment_id) ?? item.income,
     }));
     current.projected_total = pace.projected;
+    current.projected_mom_pct = pctVs(pace.projected, prev?.total);
+    current.projected_mom_value = prev ? pace.projected - prev.total : null;
     const fiiProjected = pace.investments
       .filter((item) => item.type === "FII")
       .reduce((acc, item) => acc + item.projected, 0);

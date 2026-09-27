@@ -159,10 +159,12 @@ export default async function DashboardPage({
     ? data.monthlySeries[0].cdb_items.map((c) => c.label)
     : data.kpis.cdbItems.map((c) => c.label);
 
-  const varValues = data.monthlySeries
+  // Mês em andamento fica fora do resumo: o parcial não é comparado com mês cheio.
+  const closedSeries = data.monthlySeries.filter((m) => m.projected_total === undefined);
+  const varValues = closedSeries
     .map((m) => m.mom_value)
     .filter((v): v is number => v !== null && v !== undefined && !Number.isNaN(v));
-  const varPcts = data.monthlySeries
+  const varPcts = closedSeries
     .map((m) => m.mom_pct)
     .filter((v): v is number => v !== null && v !== undefined && !Number.isNaN(v));
   const totalFiis = data.monthlySeries.reduce((acc, m) => acc + m.fiis, 0);
@@ -298,12 +300,31 @@ export default async function DashboardPage({
                   {formatCurrency(m.total)}
                   <ProjectionCell value={m.projected_total} />
                 </td>
-                <td className={`min-w-[124px] px-2 py-2 font-semibold whitespace-nowrap ${trendPctClass(m.mom_pct)}`}>
-                  {formatPct(m.mom_pct)}
-                </td>
-                <td className={`min-w-[136px] px-2 py-2 font-semibold whitespace-nowrap ${trendPctClass(m.mom_value)}`}>
-                  {formatSignedCurrency(m.mom_value)}
-                </td>
+                {m.projected_total !== undefined ? (
+                  <>
+                    <td className="min-w-[124px] px-2 py-2 whitespace-nowrap">
+                      <span className="block text-[10px] text-slate-500">parcial</span>
+                      <span className={`font-semibold ${trendPctClass(m.projected_mom_pct)}`}>
+                        Projeção {formatPct(m.projected_mom_pct)}
+                      </span>
+                    </td>
+                    <td className="min-w-[136px] px-2 py-2 whitespace-nowrap">
+                      <span className="block text-[10px] text-slate-500">parcial</span>
+                      <span className={`font-semibold ${trendPctClass(m.projected_mom_value)}`}>
+                        Projeção {formatSignedCurrency(m.projected_mom_value)}
+                      </span>
+                    </td>
+                  </>
+                ) : (
+                  <>
+                    <td className={`min-w-[124px] px-2 py-2 font-semibold whitespace-nowrap ${trendPctClass(m.mom_pct)}`}>
+                      {formatPct(m.mom_pct)}
+                    </td>
+                    <td className={`min-w-[136px] px-2 py-2 font-semibold whitespace-nowrap ${trendPctClass(m.mom_value)}`}>
+                      {formatSignedCurrency(m.mom_value)}
+                    </td>
+                  </>
+                )}
               </tr>
             ))}
             <tr className="bg-slate-900/70 font-semibold">

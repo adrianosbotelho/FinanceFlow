@@ -51,6 +51,9 @@ export interface DashboardMonth {
   /** Mês em andamento: projeção de fechamento do total e dos FIIs (lib/finance/month-pace). */
   projected_total?: number;
   projected_fii?: number;
+  /** Mês em andamento: variação da projeção de fechamento vs o mês anterior (o parcial não é comparado). */
+  projected_mom_pct?: number | null;
+  projected_mom_value?: number | null;
 }
 
 export interface DashboardPayload {
