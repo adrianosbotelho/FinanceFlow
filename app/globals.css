@@ -17,3 +17,14 @@ body {
 }
 
 /* additional global helpers can go here */
+
+/* Itens de grade podem encolher abaixo da largura do conteúdo: tabelas e gráficos largos rolam
+   no próprio contêiner (overflow-x-auto) em vez de alargar a página em telas menores. */
+.grid > * {
+  min-width: 0;
+}
+
+/* Tooltip do Recharts fica posicionado (invisível) fora do gráfico e alargava a página no celular. */
+.recharts-responsive-container {
+  overflow: hidden;
+}

@@ -5,7 +5,7 @@ import { DashboardBusinessDaysBadge } from "./DashboardBusinessDaysBadge";
 
 export function Header() {
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-800 bg-slate-900/80 px-4 py-3 backdrop-blur-md md:px-8">
+    <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/80 px-4 py-3 backdrop-blur-md md:px-8">
       <div className="flex items-center gap-3">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-white">
           <span className="text-sm font-semibold">FF</span>
@@ -17,7 +17,8 @@ export function Header() {
           <p className="text-xs text-slate-500 md:text-sm">Wealth Performance</p>
         </div>
       </div>
-      <div className="flex items-center gap-3">
+      {/* Quebra de linha quando falta largura (janelas menores), em vez de alargar a página. */}
+      <div className="flex min-w-0 flex-wrap items-center justify-end gap-3">
         <Suspense fallback={<div className="hidden h-8 w-[350px] rounded bg-slate-800 lg:block" />}>
           <DashboardBusinessDaysBadge />
         </Suspense>
