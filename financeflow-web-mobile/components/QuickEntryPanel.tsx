@@ -2,7 +2,7 @@
 
 // Mesmo "Lançamento rápido" da página de Retornos do desktop, em cartões para telas pequenas.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ReturnsPacePayload } from "@/types";
+import { ReturnSaveResponse, ReturnsPacePayload } from "@/types";
 import { formatCurrency, monthName } from "@/lib/format";
 import { previousBusinessDay } from "@/lib/finance/business-days";
 import { parseBrNumber } from "@/lib/finance/br-number";
@@ -114,6 +114,8 @@ export function QuickEntryPanel({ onSaved }: { onSaved: () => Promise<void> | vo
     const failures: string[] = [];
     const failedIds = new Set<string>();
     let saved = 0;
+    let balanceDelta = 0;
+    const balanceWarnings = new Set<string>();
     // Um POST por investimento: a rota valida o mês fechado e grava a revisão de auditoria.
     for (const row of pending) {
       try {
@@ -131,6 +133,9 @@ export function QuickEntryPanel({ onSaved }: { onSaved: () => Promise<void> | vo
           const err = await res.json().catch(() => null);
           throw new Error(err?.error ?? "erro ao salvar");
         }
+        const payload = (await res.json().catch(() => null)) as ReturnSaveResponse | null;
+        for (const item of payload?.balance_adjustments ?? []) balanceDelta += item.delta;
+        for (const warning of payload?.warnings ?? []) balanceWarnings.add(warning);
         saved += 1;
       } catch (err) {
         failedIds.add(row.item.investmentId);
@@ -147,7 +152,12 @@ export function QuickEntryPanel({ onSaved }: { onSaved: () => Promise<void> | vo
     });
     setFeedback(
       failures.length === 0
-        ? { tone: "ok", text: `${saved} lançamento(s) salvo(s).` }
+        ? {
+            tone: balanceWarnings.size > 0 ? "error" : "ok",
+            text: `${saved} lançamento(s) salvo(s).${
+              Math.abs(balanceDelta) > 0.004 ? ` Saldo dos CDBs atualizado em ${signedCurrency(balanceDelta)}.` : ""
+            }${balanceWarnings.size > 0 ? ` ${Array.from(balanceWarnings).join(" ")}` : ""}`,
+          }
         : { tone: "error", text: `${saved} salvo(s); falharam: ${failures.join("; ")}` },
     );
     await onSaved();

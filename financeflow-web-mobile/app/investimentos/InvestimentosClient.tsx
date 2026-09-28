@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Investment } from "@/types";
 import { formatCurrency, formatPct } from "@/lib/format";
+import { parseBrNumber } from "@/lib/finance/br-number";
 
 const KNOWN_INSTITUTIONS: Record<string, string[]> = {
   CDB: ["Itaú", "Santander", "Banco do Brasil", "XP", "Nubank", "Inter", "BTG Pactual"],
@@ -71,6 +72,12 @@ export function InvestmentosClient({ envReady }: { envReady: boolean }) {
       setFormError("Preencha tipo, instituição, nome e valor.");
       return;
     }
+    // "1.234,56", "1234,56" ou "1234.56" (antes, "1.234,56" virava NaN).
+    const amount = parseBrNumber(formAmount);
+    if (amount === null || amount < 0) {
+      setFormError("Valor inválido (ex.: 1.234,56).");
+      return;
+    }
     setFormError(null);
     setSaving(true);
     try {
@@ -78,7 +85,7 @@ export function InvestmentosClient({ envReady }: { envReady: boolean }) {
         type: formType,
         institution: formInstitution.trim(),
         name: formName.trim(),
-        amount_invested: Number(formAmount.replace(",", ".")),
+        amount_invested: amount,
       };
       if (formCdiRate) payload.cdi_rate = Number(formCdiRate);
       if (formBenchmark) payload.benchmark = formBenchmark.trim();
@@ -177,8 +184,15 @@ export function InvestmentosClient({ envReady }: { envReady: boolean }) {
             <input value={formName} onChange={(e) => setFormName(e.target.value)} className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm" />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-400">Valor investido (R$)</label>
-            <input value={formAmount} onChange={(e) => setFormAmount(e.target.value)} className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm" />
+            <label className="mb-1 block text-xs text-slate-400">
+              {formType === "CDB" ? "Saldo atual (R$)" : "Valor investido (R$)"}
+            </label>
+            <input inputMode="decimal" value={formAmount} onChange={(e) => setFormAmount(e.target.value)} className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm" />
+            {formType === "CDB" ? (
+              <p className="mt-1 text-[10px] text-slate-500">
+                Atualizado automaticamente pela renda lançada em Retornos e pelos aportes/resgates.
+              </p>
+            ) : null}
           </div>
           {formType === "CDB" && (
             <>
