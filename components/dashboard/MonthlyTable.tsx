@@ -279,8 +279,9 @@ export function MonthlyTable({ data }: Props) {
                 >
                   <td className="whitespace-nowrap px-3 py-3 font-medium text-slate-100">
                     {monthLabel(m.month)}/{m.year}
+                    {/* Selo abaixo do mês (e não ao lado) para a coluna não alargar a tabela. */}
                     {inProgress ? (
-                      <span className="ml-2 rounded-full bg-indigo-500/20 px-2 py-0.5 text-[10px] font-semibold text-indigo-200">
+                      <span className="mt-1 block w-fit rounded-full bg-indigo-500/20 px-2 py-0.5 text-[10px] font-semibold text-indigo-200">
                         em andamento
                       </span>
                     ) : null}
