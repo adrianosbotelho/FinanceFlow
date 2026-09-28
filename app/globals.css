@@ -24,6 +24,22 @@ body {
   min-width: 0;
 }
 
+/* Barra de rolagem horizontal discreta (tema escuro) nas tabelas que precisam rolar em janelas estreitas. */
+.overflow-x-auto {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+.overflow-x-auto::-webkit-scrollbar {
+  height: 6px;
+}
+.overflow-x-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+.overflow-x-auto::-webkit-scrollbar-thumb {
+  background-color: #334155;
+  border-radius: 9999px;
+}
+
 /* Tooltip do Recharts fica posicionado (invisível) fora do gráfico e alargava a página no celular. */
 .recharts-responsive-container {
   overflow: hidden;
