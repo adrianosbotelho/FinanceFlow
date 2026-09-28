@@ -984,6 +984,12 @@ export type DailyIncomePayload = {
 
 // ─── Retornos: ritmo do mês e lançamento rápido ─── ver app/api/returns/pace
 
+/** Resposta de POST/PUT/DELETE em /api/returns: ajustes no saldo dos CDBs (renda reinvestida). */
+export interface ReturnSaveResponse {
+  balance_adjustments?: Array<{ investmentId: string; delta: number; balance: number }>;
+  warnings?: string[];
+}
+
 export interface ReturnsPacePayload {
   pace: MonthPace;
   warnings: string[];

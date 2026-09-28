@@ -3,6 +3,8 @@ import { revalidatePath } from "next/cache";
 import { supabase } from "../../../lib/supabase";
 import { isMonthClosed } from "../../../lib/monthly-closures";
 import { logMonthlyReturnRevision } from "../../../lib/monthly-return-revisions";
+import { incomeBalanceAdjustments } from "../../../lib/income-balance";
+import { applyIncomeBalanceAdjustments } from "../../../lib/income-balance-sync";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -119,8 +121,19 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // Renda de CDB é reinvestida: o saldo do investimento acompanha a diferença do acumulado.
+  const balance = await applyIncomeBalanceAdjustments(
+    incomeBalanceAdjustments(
+      previousValue === null ? null : { investmentId, value: previousValue },
+      { investmentId: String(data.investment_id), value: nextValue },
+    ),
+  );
+
   revalidatePath("/");
   revalidatePath("/returns");
   revalidatePath("/investments");
-  return NextResponse.json(data, { status: 201 });
+  return NextResponse.json(
+    { ...data, balance_adjustments: balance.applied, warnings: balance.warnings },
+    { status: 201 },
+  );
 }
