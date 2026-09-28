@@ -64,6 +64,13 @@ function countBusinessDaysElapsed(year: number, month: number): number {
   return 0;
 }
 
+// Data-base (D−1) do mês em andamento, em dd/mm; null se ainda não há dia útil com dado no mês.
+function dataDateLabel(year: number, month: number): string | null {
+  const dataDay = previousBusinessDay(new Date());
+  if (dataDay.getFullYear() !== year || dataDay.getMonth() + 1 !== month) return null;
+  return `${String(dataDay.getDate()).padStart(2, "0")}/${String(month).padStart(2, "0")}`;
+}
+
 function buildDailyTooltip(value: number, year: number, month: number, inProgress: boolean): string {
   const days = inProgress ? countBusinessDaysElapsed(year, month) : countBusinessDaysInMonth(year, month);
   if (days <= 0) return formatCurrencyBRL(value);
@@ -280,6 +287,9 @@ export function MonthlyTable({ data }: Props) {
                   </td>
                   <td className="whitespace-nowrap px-3 py-3 text-center text-cyan-300 tabular-nums">
                     {inProgress ? `${countBusinessDaysElapsed(m.year, m.month)}/${totalDays}` : totalDays}
+                    {inProgress && dataDateLabel(m.year, m.month) ? (
+                      <div className="text-[10px] text-slate-500">até {dataDateLabel(m.year, m.month)}</div>
+                    ) : null}
                   </td>
                   {m.cdb_items.map((cdb, idx) => (
                     <ValueCell
@@ -362,7 +372,7 @@ export function MonthlyTable({ data }: Props) {
         </table>
       </div>
       <p className="text-[11px] text-slate-500">
-        Mês em andamento: valores acumulados até o dia útil anterior (D.U. com dados / total); a variação usa a projeção de
+        Mês em andamento: valores acumulados até o dia útil anterior (D.U. com dados / total, até a data-base); a variação usa a projeção de
         fechamento. Médias, melhor/pior mês e evolução consideram só meses fechados. O valor líquido de IR está na página
         Performance.
       </p>
