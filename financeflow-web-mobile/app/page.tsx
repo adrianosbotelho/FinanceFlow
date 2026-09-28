@@ -1,30 +1,14 @@
 import { headers } from "next/headers";
 import { DailyIncomePayload, DashboardPayload } from "@/types";
-import { formatCurrency, formatPct, monthName } from "@/lib/format";
+import { formatCurrency, formatPct } from "@/lib/format";
 import { hasSupabaseServerEnv } from "@/lib/env";
+import { HistoryTable } from "@/components/HistoryTable";
 import { DailyIncomeCard } from "@/components/DailyIncomeCard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 type TrendTone = "positive" | "negative" | "neutral";
-
-const CDB_INSTITUTION_COLORS: Record<string, string> = {
-  "Itaú": "text-amber-300",
-  "Santander": "text-rose-300",
-  "Nubank": "text-violet-300",
-  "XP": "text-sky-300",
-  "Banco do Brasil": "text-blue-300",
-  "Inter": "text-orange-300",
-  "BTG Pactual": "text-cyan-300",
-};
-
-function getCdbColor(label: string): string {
-  for (const [institution, color] of Object.entries(CDB_INSTITUTION_COLORS)) {
-    if (label.includes(institution)) return color;
-  }
-  return "text-amber-300";
-}
 
 async function loadDashboard(year: number, base: string, cookieHeader: string | null): Promise<DashboardPayload | null> {
   const res = await fetch(`${base}/api/dashboard?year=${year}`, {
@@ -113,16 +97,6 @@ function ProjectionLine({ value, pct }: { value: number | null | undefined; pct:
   );
 }
 
-// Mês em andamento: projeção de fechamento abaixo do realizado (tabela do histórico).
-function ProjectionCell({ value }: { value: number | undefined }) {
-  if (value === undefined || value <= 0) return null;
-  return (
-    <span className="mt-0.5 block whitespace-nowrap text-[10px] font-normal text-slate-400">
-      Projeção {formatCurrency(value)}
-    </span>
-  );
-}
-
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -159,20 +133,6 @@ export default async function DashboardPage({
     ? data.monthlySeries[0].cdb_items.map((c) => c.label)
     : data.kpis.cdbItems.map((c) => c.label);
 
-  // Mês em andamento fica fora do resumo: o parcial não é comparado com mês cheio.
-  const closedSeries = data.monthlySeries.filter((m) => m.projected_total === undefined);
-  const varValues = closedSeries
-    .map((m) => m.mom_value)
-    .filter((v): v is number => v !== null && v !== undefined && !Number.isNaN(v));
-  const varPcts = closedSeries
-    .map((m) => m.mom_pct)
-    .filter((v): v is number => v !== null && v !== undefined && !Number.isNaN(v));
-  const totalFiis = data.monthlySeries.reduce((acc, m) => acc + m.fiis, 0);
-  const cdbTotals = cdbLabels.map((_, idx) =>
-    data.monthlySeries.reduce((acc, m) => acc + (m.cdb_items[idx]?.income ?? 0), 0)
-  );
-  const varValueSum = varValues.reduce((acc, v) => acc + v, 0);
-  const varPctAvg = varPcts.length ? varPcts.reduce((acc, v) => acc + v, 0) / varPcts.length : null;
 
   return (
     <div className="space-y-5">
@@ -262,90 +222,7 @@ export default async function DashboardPage({
 
       <DailyIncomeCard data={dailyIncome} />
 
-      <section className="card overflow-x-auto">
-        <h2 className="mb-3 text-sm font-semibold text-slate-100">Histórico mensal</h2>
-        <table className="min-w-[860px] text-left text-xs md:text-sm">
-          <thead className="border-b border-slate-700 text-slate-400">
-            <tr>
-              <th className="px-2 py-2">Mês</th>
-              {cdbLabels.map((label) => (
-                <th key={label} className={`px-2 py-2 ${getCdbColor(label)}`}>{label}</th>
-              ))}
-              <th className="px-2 py-2 text-emerald-300">FIIs</th>
-              <th className="px-2 py-2">Total</th>
-              <th className="min-w-[124px] px-2 py-2 whitespace-nowrap">VAR (M/M %)</th>
-              <th className="min-w-[136px] px-2 py-2 whitespace-nowrap">VAR (M/M R$)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.monthlySeries.map((m) => (
-              <tr key={`${m.year}-${m.month}`} className="border-b border-slate-800/70 last:border-0">
-                <td className="px-2 py-2 text-slate-200">
-                  {monthName(m.month)}
-                  {m.projected_total !== undefined ? (
-                    <span className="block text-[10px] text-indigo-300">em andamento</span>
-                  ) : null}
-                </td>
-                {m.cdb_items.map((cdb) => (
-                  <td key={cdb.investment_id} className={`px-2 py-2 ${getCdbColor(cdb.label)}`}>
-                    {formatCurrency(cdb.income)}
-                    <ProjectionCell value={cdb.projected} />
-                  </td>
-                ))}
-                <td className="px-2 py-2 text-emerald-300">
-                  {formatCurrency(m.fiis)}
-                  <ProjectionCell value={m.projected_fii} />
-                </td>
-                <td className="px-2 py-2 font-semibold text-slate-100">
-                  {formatCurrency(m.total)}
-                  <ProjectionCell value={m.projected_total} />
-                </td>
-                {m.projected_total !== undefined ? (
-                  <>
-                    <td className="min-w-[124px] px-2 py-2 whitespace-nowrap">
-                      <span className="block text-[10px] text-slate-500">parcial</span>
-                      <span className={`font-semibold ${trendPctClass(m.projected_mom_pct)}`}>
-                        Projeção {formatPct(m.projected_mom_pct)}
-                      </span>
-                    </td>
-                    <td className="min-w-[136px] px-2 py-2 whitespace-nowrap">
-                      <span className="block text-[10px] text-slate-500">parcial</span>
-                      <span className={`font-semibold ${trendPctClass(m.projected_mom_value)}`}>
-                        Projeção {formatSignedCurrency(m.projected_mom_value)}
-                      </span>
-                    </td>
-                  </>
-                ) : (
-                  <>
-                    <td className={`min-w-[124px] px-2 py-2 font-semibold whitespace-nowrap ${trendPctClass(m.mom_pct)}`}>
-                      {formatPct(m.mom_pct)}
-                    </td>
-                    <td className={`min-w-[136px] px-2 py-2 font-semibold whitespace-nowrap ${trendPctClass(m.mom_value)}`}>
-                      {formatSignedCurrency(m.mom_value)}
-                    </td>
-                  </>
-                )}
-              </tr>
-            ))}
-            <tr className="bg-slate-900/70 font-semibold">
-              <td className="px-2 py-2 uppercase tracking-wide text-slate-300">Resumo</td>
-              {cdbTotals.map((total, idx) => (
-                <td key={idx} className={`px-2 py-2 ${getCdbColor(cdbLabels[idx])}`}>
-                  {formatCurrency(total)}
-                </td>
-              ))}
-              <td className="px-2 py-2 text-emerald-300">{formatCurrency(totalFiis)}</td>
-              <td className="px-2 py-2 text-slate-100">{formatCurrency(data.kpis.ytd)}</td>
-              <td className={`min-w-[124px] px-2 py-2 whitespace-nowrap ${trendPctClass(varPctAvg)}`}>
-                {varPctAvg === null ? "-" : `Média ${formatPct(varPctAvg)}`}
-              </td>
-              <td className={`min-w-[136px] px-2 py-2 whitespace-nowrap ${trendPctClass(varValueSum)}`}>
-                {formatSignedCurrency(varValueSum)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
+      <HistoryTable months={data.monthlySeries} cdbLabels={cdbLabels} asOfDate={data.kpis.asOfDate} />
     </div>
   );
 }

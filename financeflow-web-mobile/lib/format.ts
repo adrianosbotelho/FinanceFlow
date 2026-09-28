@@ -9,7 +9,8 @@ export function formatCurrency(value: number | null | undefined): string {
 
 export function formatPct(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return "-";
-  return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
+  // pt-BR: vírgula decimal (igual ao desktop).
+  return `${value >= 0 ? "+" : ""}${value.toFixed(1).replace(".", ",")}%`;
 }
 
 export function monthLabel(month: number): string {

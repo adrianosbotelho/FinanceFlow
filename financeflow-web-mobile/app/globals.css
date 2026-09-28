@@ -22,3 +22,19 @@ body {
 .card-value {
   @apply text-2xl font-extrabold tracking-tight text-slate-100;
 }
+
+/* Barra de rolagem horizontal discreta (tema escuro) nas tabelas que rolam, igual ao desktop. */
+.overflow-x-auto {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+.overflow-x-auto::-webkit-scrollbar {
+  height: 6px;
+}
+.overflow-x-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+.overflow-x-auto::-webkit-scrollbar-thumb {
+  background-color: #334155;
+  border-radius: 9999px;
+}
