@@ -13,7 +13,7 @@ Três superfícies no mesmo repositório:
 |---|---|---|
 | Web desktop | raiz (`app/`, `components/`, `lib/`) | superfície principal |
 | App macOS | `macos-app/` (Electron) | serve `.next/standalone/` |
-| PWA mobile | `financeflow-web-mobile/` | subprojeto independente (Next 14.2.35, Recharts 3) |
+| PWA mobile | `financeflow-web-mobile/` | subprojeto independente (Next 14.2.35, Recharts 3); deploy na Vercel só quando algo nessa pasta muda (`ignoreCommand` em `financeflow-web-mobile/vercel.json`) |
 
 ## Regras críticas
 
