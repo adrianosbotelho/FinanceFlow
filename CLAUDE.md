@@ -24,7 +24,7 @@ Três superfícies no mesmo repositório:
 5. **Não quebrar o que funciona**: dashboard, gráficos, tabelas e análises precisam continuar operando. Na dúvida, perguntar.
 6. **Tailwind sem classes dinâmicas** — jamais construir nomes de classe por interpolação (`grid-cols-${n}`). Usar strings literais ou adicionar ao `safelist` em `tailwind.config.ts`.
 7. `main` exige PR + status checks; o merge é feito pelo dono do repositório via UI do GitHub.
-8. **Fluxo de entrega de toda alteração desktop**: branch → commit → `npm run lint` + `npm run guard:boundary` + `node macos-app/build-standalone.js` → push + PR → merge (dono) → **compilar o app macOS** (`cd macos-app && npx electron-builder --mac`). Após o merge, voltar para `main` (`git pull --ff-only`) e apagar a branch local. O dono usa sempre o `.app` empacotado.
+8. **Fluxo de entrega de toda alteração desktop**: branch → commit → `npm run lint` + `npm run guard:boundary` + `node macos-app/build-standalone.js` → push + PR → merge (dono) → **compilar o app macOS com `npm run app:rebuild`** (fecha o `FinanceFlow.app` aberto, gera o standalone, empacota com o electron-builder e reabre o app; `-- --no-open` para não reabrir). Nunca empacotar com o app aberto. Após o merge, voltar para `main` (`git pull --ff-only`) e apagar a branch local. O dono usa sempre o `.app` empacotado.
 
 ## Comandos
 
@@ -34,6 +34,7 @@ Três superfícies no mesmo repositório:
 | `npm run build` | build de produção (standalone) |
 | `npm run build:desktop` | build + cópia de static/public para o Electron |
 | `npm run desktop` | build + abre o app Electron |
+| `npm run app:rebuild` | fecha o `.app` aberto, recompila (standalone + electron-builder) e reabre |
 | `npm run lint` | ESLint (`next/core-web-vitals`) |
 | `npm test` | testes dos cálculos financeiros (Vitest, `tests/`) |
 | `npm run guard:boundary` | verifica isolamento desktop/mobile |

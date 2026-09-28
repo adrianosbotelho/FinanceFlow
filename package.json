@@ -8,6 +8,7 @@
     "build": "next build",
     "build:desktop": "node macos-app/build-standalone.js",
     "build:app": "node macos-app/build-standalone.js && cd macos-app && npx electron-builder --mac",
+    "app:rebuild": "bash scripts/rebuild-macos-app.sh",
     "desktop": "node macos-app/build-standalone.js && cd macos-app && npx electron .",
     "start": "next start",
     "lint": "next lint",
