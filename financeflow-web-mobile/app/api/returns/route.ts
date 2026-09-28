@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { rejectUntrustedOrigin } from "@/lib/origin-guard";
 import { isMonthClosed, logMonthlyReturnRevision } from "@/lib/month-rules";
+import { incomeBalanceAdjustments } from "@/lib/finance/income-balance";
+import { applyIncomeBalanceAdjustments } from "@/lib/finance/income-balance-sync";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -115,5 +117,17 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  return NextResponse.json(data, { status: 201 });
+  // Renda de CDB é reinvestida: o saldo acompanha a diferença do acumulado (mesma regra do desktop).
+  const balance = await applyIncomeBalanceAdjustments(
+    supabase,
+    incomeBalanceAdjustments(
+      previousValue === null ? null : { investmentId, value: previousValue },
+      { investmentId, value: nextValue },
+    ),
+  );
+
+  return NextResponse.json(
+    { ...data, balance_adjustments: balance.applied, warnings: balance.warnings },
+    { status: 201 },
+  );
 }
