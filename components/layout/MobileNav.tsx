@@ -26,14 +26,14 @@ export function MobileNav() {
   }, []);
 
   return (
-    <nav className="sticky bottom-0 z-30 flex items-center border-t border-slate-800 bg-slate-900 px-4 py-2 md:hidden">
+    <nav className="sticky bottom-0 z-30 flex items-center overflow-x-auto border-t border-slate-800 bg-slate-900 px-2 py-2 md:hidden">
       {items.map((item) => {
         const active = pathname === item.href;
         return (
           <Link
             key={item.href}
             href={item.href}
-            className={`flex flex-1 flex-col items-center justify-center gap-1 text-[10px] font-bold uppercase tracking-widest ${
+            className={`flex min-w-[56px] flex-1 shrink-0 flex-col items-center justify-center gap-1 text-[10px] font-bold uppercase tracking-wider ${
               active ? "text-accent" : "text-slate-400 hover:text-accent"
             }`}
           >

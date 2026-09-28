@@ -1577,7 +1577,7 @@ export function ReturnsPageClient(_props: ReturnsPageClientProps) {
           </div>
 
           {cashEventsInvestmentTotals.length > 0 && (
-            <div className="mt-4 border-t border-slate-700 pt-4">
+            <div className="mt-4 overflow-x-auto border-t border-slate-700 pt-4">
               <h4 className="mb-2 text-xs font-semibold text-slate-300 uppercase tracking-wider">Total por investimento ({eventYear})</h4>
               <table className="min-w-full text-left text-xs md:text-sm">
                 <thead className="border-b border-slate-800 text-slate-400">
