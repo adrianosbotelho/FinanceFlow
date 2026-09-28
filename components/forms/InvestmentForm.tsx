@@ -170,7 +170,9 @@ export function InvestmentForm({ onSaved, initial, onCancelEdit }: Props) {
         />
       </div>
       <div className="flex flex-col gap-1">
-        <label className="text-xs text-slate-300">Valor Investido (R$)</label>
+        <label className="text-xs text-slate-300">
+          {type === "CDB" ? "Saldo atual (R$)" : "Valor Investido (R$)"}
+        </label>
         <input
           type="number"
           step="0.01"
@@ -179,6 +181,11 @@ export function InvestmentForm({ onSaved, initial, onCancelEdit }: Props) {
           onChange={(e) => setAmountInvested(e.target.value)}
           required
         />
+        {type === "CDB" ? (
+          <p className="text-[10px] text-slate-500">
+            Atualizado automaticamente pela renda lançada em Retornos e pelos aportes/resgates.
+          </p>
+        ) : null}
       </div>
 
       {type === "CDB" && (

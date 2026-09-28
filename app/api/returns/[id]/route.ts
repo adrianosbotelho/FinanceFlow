@@ -3,6 +3,8 @@ import { revalidatePath } from "next/cache";
 import { supabase } from "../../../../lib/supabase";
 import { isMonthClosed } from "../../../../lib/monthly-closures";
 import { logMonthlyReturnRevision } from "../../../../lib/monthly-return-revisions";
+import { incomeBalanceAdjustments } from "../../../../lib/income-balance";
+import { applyIncomeBalanceAdjustments } from "../../../../lib/income-balance-sync";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -111,16 +113,23 @@ export async function PUT(req: NextRequest, { params }: Params) {
     });
   }
 
+  const balance = await applyIncomeBalanceAdjustments(
+    incomeBalanceAdjustments(
+      { investmentId: String(current.investment_id), value: previousValue },
+      { investmentId: String(data.investment_id), value: nextValue },
+    ),
+  );
+
   revalidatePath("/");
   revalidatePath("/returns");
   revalidatePath("/investments");
-  return NextResponse.json(data);
+  return NextResponse.json({ ...data, balance_adjustments: balance.applied, warnings: balance.warnings });
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const { data: current, error: fetchError } = await supabase
     .from("monthly_returns")
-    .select("year,month")
+    .select("investment_id,year,month,income_value")
     .eq("id", params.id)
     .single();
 
@@ -151,8 +160,15 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  const balance = await applyIncomeBalanceAdjustments(
+    incomeBalanceAdjustments(
+      { investmentId: String(current.investment_id), value: Number(current.income_value ?? 0) },
+      null,
+    ),
+  );
+
   revalidatePath("/");
   revalidatePath("/returns");
   revalidatePath("/investments");
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, balance_adjustments: balance.applied, warnings: balance.warnings });
 }
