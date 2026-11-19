@@ -7,6 +7,10 @@ import { useState } from "react";
 import { ContributionFlowMonth } from "../../types";
 import { formatCurrencyBRL, monthLabel } from "../../lib/formatters";
 
+// Altura do gráfico em px (h-28). As barras usam px, não %: no Chromium do app (Electron 28),
+// altura percentual dentro de <button> resolvia para zero e as colunas sumiam.
+const CHART_HEIGHT = 112;
+
 export function ContributionFlowBars({ months }: { months: ContributionFlowMonth[] }) {
   const [active, setActive] = useState<number | null>(null);
   const max = Math.max(1, ...months.map((item) => item.income + Math.max(0, item.netContributions)));
@@ -16,14 +20,15 @@ export function ContributionFlowBars({ months }: { months: ContributionFlowMonth
 
   return (
     <div className="relative mt-4" onMouseLeave={() => setActive(null)}>
-      <div className="flex h-28 items-end gap-1">
+      <div className="flex items-end gap-1" style={{ height: `${CHART_HEIGHT}px` }}>
         {months.map((item, index) => {
-          const incomeHeight = (item.income / max) * 100;
-          const contributionHeight = (Math.max(0, item.netContributions) / max) * 100;
+          const incomeHeight = Math.round((item.income / max) * CHART_HEIGHT);
+          const contributionHeight = Math.round((Math.max(0, item.netContributions) / max) * CHART_HEIGHT);
           const dimmed = active !== null && active !== index;
           return (
-            <button
-              type="button"
+            <div
+              role="button"
+              tabIndex={0}
               key={`${item.year}-${item.month}`}
               aria-label={`${monthLabel(item.month)}/${item.year}: proventos ${formatCurrencyBRL(item.income)}, aportes líquidos ${formatCurrencyBRL(
                 item.netContributions,
@@ -31,13 +36,19 @@ export function ContributionFlowBars({ months }: { months: ContributionFlowMonth
               onMouseEnter={() => setActive(index)}
               onFocus={() => setActive(index)}
               onClick={() => setActive(active === index ? null : index)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setActive(active === index ? null : index);
+                }
+              }}
               className={`relative flex h-full flex-1 cursor-pointer flex-col justify-end rounded-t-sm outline-none transition-opacity ${
                 item.inProgress ? "opacity-60" : ""
               } ${dimmed ? "opacity-40" : ""} ${active === index ? "ring-1 ring-slate-400/60" : ""}`}
             >
-              <span className="block rounded-t-sm bg-indigo-400" style={{ height: `${contributionHeight}%` }} />
-              <span className="block bg-emerald-400" style={{ height: `${incomeHeight}%` }} />
-            </button>
+              <div className="w-full shrink-0 rounded-t-sm bg-indigo-400" style={{ height: `${contributionHeight}px` }} />
+              <div className="w-full shrink-0 bg-emerald-400" style={{ height: `${incomeHeight}px` }} />
+            </div>
           );
         })}
       </div>
