@@ -4,6 +4,7 @@ import { formatCurrency, formatPct } from "@/lib/format";
 import { hasSupabaseServerEnv } from "@/lib/env";
 import { HistoryTable } from "@/components/HistoryTable";
 import { DailyIncomeCard } from "@/components/DailyIncomeCard";
+import { ContributionFlowCard } from "@/components/ContributionFlowCard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -201,6 +202,8 @@ export default async function DashboardPage({
           </p>
         </article>
       </section>
+
+      <ContributionFlowCard flow={data.contributionFlow} />
 
       <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
         {data.kpis.cdbItems.map((cdb) => (
