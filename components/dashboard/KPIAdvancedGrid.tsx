@@ -1,5 +1,6 @@
 import { ContributionFlowPayload, DashboardKPIs } from "../../types";
 import { formatCurrencyBRL, formatPercentage, monthLabel } from "../../lib/formatters";
+import { ContributionFlowBars } from "./ContributionFlowBars";
 
 interface KPIAdvancedGridProps {
   kpis: DashboardKPIs;
@@ -43,7 +44,6 @@ const CDB_COLORS = ["text-orange-300", "text-rose-300", "text-sky-300", "text-vi
 
 // Proventos recebidos + aportes líquidos: quanto entrou na carteira por mês.
 function ContributionFlowCard({ flow }: { flow: ContributionFlowPayload }) {
-  const max = Math.max(1, ...flow.months.map((item) => item.income + Math.max(0, item.netContributions)));
   const current = flow.months[flow.months.length - 1];
   const rows = [
     { label: "No ano (YTD)", totals: flow.ytd },
@@ -83,32 +83,7 @@ function ContributionFlowCard({ flow }: { flow: ContributionFlowPayload }) {
         </div>
       </div>
 
-      <div className="mt-4 flex h-28 items-end gap-1">
-        {flow.months.map((item) => {
-          const incomeHeight = (item.income / max) * 100;
-          const contributionHeight = (Math.max(0, item.netContributions) / max) * 100;
-          return (
-            <div
-              key={`${item.year}-${item.month}`}
-              className={`flex h-full flex-1 flex-col justify-end ${item.inProgress ? "opacity-60" : ""}`}
-              title={`${monthLabel(item.month)}/${item.year}${item.inProgress ? " (parcial)" : ""}: proventos ${formatCurrencyBRL(
-                item.income,
-              )} + aportes líquidos ${formatCurrencyBRL(item.netContributions)} = ${formatCurrencyBRL(item.total)}`}
-            >
-              <div className="rounded-t-sm bg-indigo-400" style={{ height: `${contributionHeight}%` }} />
-              <div className="bg-emerald-400" style={{ height: `${incomeHeight}%` }} />
-            </div>
-          );
-        })}
-      </div>
-      <div className="mt-1 flex gap-1">
-        {flow.months.map((item) => (
-          <span key={`${item.year}-${item.month}`} className="flex-1 text-center text-[9px] text-slate-500">
-            {monthLabel(item.month).slice(0, 3)}
-            {item.inProgress ? "*" : ""}
-          </span>
-        ))}
-      </div>
+      <ContributionFlowBars months={flow.months} />
 
       <div className="mt-3 space-y-1 text-xs">
         {rows.map((row) => (
@@ -140,7 +115,7 @@ function ContributionFlowCard({ flow }: { flow: ContributionFlowPayload }) {
         ) : null}
       </div>
       <p className="mt-2 text-[10px] text-slate-500">
-        Barras: proventos (verde) e aportes líquidos (azul) de cada mês; passe o mouse para ver os valores.
+        Barras: proventos (verde) e aportes líquidos (azul) de cada mês; passe o mouse ou toque numa coluna para ver os valores.
         {current?.inProgress ? " * mês em andamento." : ""}
       </p>
     </article>
