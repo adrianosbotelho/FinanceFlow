@@ -90,7 +90,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   return (
     <div className="space-y-6">
       <KPIGrid kpis={data.kpis} />
-      <KPIAdvancedGrid kpis={data.kpis} />
+      <KPIAdvancedGrid kpis={data.kpis} flow={data.contributionFlow} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <PassiveIncomeLineChart data={data.monthlySeries} />
