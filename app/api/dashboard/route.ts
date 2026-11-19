@@ -22,6 +22,7 @@ import {
 import { MonthPace } from "../../../types";
 import { resolveCdiAnnualReference } from "../../../lib/cdi-reference";
 import { buildGoalProgress } from "../../../lib/goal-progress";
+import { ContributionCashEvent, buildContributionFlow } from "../../../lib/contribution-flow";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -104,6 +105,7 @@ export async function GET(req: NextRequest) {
     { data: positions, error: posError },
     { data: revisions, error: revError },
     { data: monthlyGoals, error: goalsError },
+    { data: cashEvents, error: cashEventsError },
   ] = await Promise.all([
     supabase.from("investments").select("*"),
     supabase
@@ -120,7 +122,10 @@ export async function GET(req: NextRequest) {
       .eq("year", year)
       .eq("month", analysisMonth),
     supabase.from("investment_goals_monthly").select("month,monthly_target").eq("year", year),
+    // Aportes/resgates dos últimos 12 meses, para o card de proventos + aportes.
+    supabase.from("investment_cash_events").select("year,month,type,amount").gte("year", year - 1).lte("year", year),
   ]);
+  if (cashEventsError) console.warn("[FinanceFlow] Eventos de caixa indisponíveis:", cashEventsError.message);
   if (revError) console.warn("[FinanceFlow] Revisões indisponíveis para o ritmo do mês:", revError.message);
   if (goalsError) console.warn("[FinanceFlow] Metas mensais indisponíveis:", goalsError.message);
 
@@ -463,6 +468,14 @@ export async function GET(req: NextRequest) {
     monthPace,
   });
 
+  const contributionFlow = buildContributionFlow({
+    incomeByMonth: referenceSeries.map((entry) => ({ year: entry.year, month: entry.month, total: entry.total })),
+    cashEvents: (cashEvents ?? []) as ContributionCashEvent[],
+    year,
+    month: analysisMonth,
+    inProgress: monthPace.isCurrentMonth,
+  });
+
   const payload: DashboardPayload = {
     kpis,
     monthPace,
@@ -474,6 +487,7 @@ export async function GET(req: NextRequest) {
     insights,
     goalProgress,
     alerts,
+    contributionFlow,
   };
 
   return NextResponse.json(payload, {

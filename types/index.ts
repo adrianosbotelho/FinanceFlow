@@ -259,6 +259,39 @@ export interface MonthComparisonPoint {
   totalCurr: number;
 }
 
+// Proventos + aportes por mês (card do Dashboard), ver lib/contribution-flow.ts.
+export interface ContributionFlowMonth {
+  year: number;
+  month: number;
+  /** Proventos: renda dos CDBs + dividendos de FIIs. */
+  income: number;
+  contributions: number;
+  withdrawals: number;
+  /** Aportes − resgates. */
+  netContributions: number;
+  /** Proventos + aportes líquidos. */
+  total: number;
+  inProgress: boolean;
+}
+
+export interface ContributionFlowTotals {
+  income: number;
+  contributions: number;
+  withdrawals: number;
+  netContributions: number;
+  total: number;
+}
+
+export interface ContributionFlowPayload {
+  /** 12 meses de calendário terminando no mês de análise. */
+  months: ContributionFlowMonth[];
+  last12: ContributionFlowTotals;
+  ytd: ContributionFlowTotals;
+  /** Média dos meses fechados da janela. */
+  monthlyAverage: { income: number; netContributions: number; total: number };
+  averageMonths: number;
+}
+
 export interface DashboardPayload {
   kpis: DashboardKPIs;
   monthPace?: MonthPace;
@@ -286,6 +319,7 @@ export interface DashboardPayload {
   insights: FinancialInsights;
   goalProgress: GoalProgress;
   alerts: ConsistencyAlert[];
+  contributionFlow?: ContributionFlowPayload;
 }
 
 export type DailyInsightRadarStatus = "VERDE" | "AMARELO" | "VERMELHO";

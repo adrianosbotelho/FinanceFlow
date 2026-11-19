@@ -1,8 +1,10 @@
-import { DashboardKPIs } from "../../types";
-import { formatCurrencyBRL, formatPercentage } from "../../lib/formatters";
+import { ContributionFlowPayload, DashboardKPIs } from "../../types";
+import { formatCurrencyBRL, formatPercentage, monthLabel } from "../../lib/formatters";
 
 interface KPIAdvancedGridProps {
   kpis: DashboardKPIs;
+  /** Proventos + aportes por mês (sem ele, o card mostra só os proventos). */
+  flow?: ContributionFlowPayload;
 }
 
 function toneClass(value: number | null | undefined): string {
@@ -39,7 +41,113 @@ function deriveMomDelta(
 
 const CDB_COLORS = ["text-orange-300", "text-rose-300", "text-sky-300", "text-violet-300", "text-amber-300"];
 
-export function KPIAdvancedGrid({ kpis }: KPIAdvancedGridProps) {
+// Proventos recebidos + aportes líquidos: quanto entrou na carteira por mês.
+function ContributionFlowCard({ flow }: { flow: ContributionFlowPayload }) {
+  const max = Math.max(1, ...flow.months.map((item) => item.income + Math.max(0, item.netContributions)));
+  const current = flow.months[flow.months.length - 1];
+  const rows = [
+    { label: "No ano (YTD)", totals: flow.ytd },
+    {
+      label: `Média mensal (${flow.averageMonths} meses fechados)`,
+      totals: {
+        income: flow.monthlyAverage.income,
+        netContributions: flow.monthlyAverage.netContributions,
+        total: flow.monthlyAverage.total,
+      },
+    },
+  ];
+  return (
+    <article className="rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm xl:col-span-3">
+      <p className="text-sm font-semibold text-slate-200">Proventos e aportes (12M)</p>
+      <p className="text-[11px] text-slate-500">Quanto entrou na carteira: proventos recebidos + aportes líquidos</p>
+      <p className="mt-2 text-3xl font-extrabold text-slate-50">{formatCurrencyBRL(flow.last12.total)}</p>
+      <div className="mt-2 grid grid-cols-2 gap-3 text-xs">
+        <div>
+          <p className="flex items-center gap-1.5 text-slate-400">
+            <span className="inline-block h-2 w-2 rounded-sm bg-emerald-400" />
+            Proventos
+          </p>
+          <p className="text-base font-semibold text-emerald-300">{formatCurrencyBRL(flow.last12.income)}</p>
+        </div>
+        <div>
+          <p className="flex items-center gap-1.5 text-slate-400">
+            <span className="inline-block h-2 w-2 rounded-sm bg-indigo-400" />
+            Aportes líquidos
+          </p>
+          <p className="text-base font-semibold text-indigo-300">{formatCurrencyBRL(flow.last12.netContributions)}</p>
+          {flow.last12.withdrawals > 0 ? (
+            <p className="text-[10px] text-slate-500">
+              aportes {formatCurrencyBRL(flow.last12.contributions)} − resgates {formatCurrencyBRL(flow.last12.withdrawals)}
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="mt-4 flex h-28 items-end gap-1">
+        {flow.months.map((item) => {
+          const incomeHeight = (item.income / max) * 100;
+          const contributionHeight = (Math.max(0, item.netContributions) / max) * 100;
+          return (
+            <div
+              key={`${item.year}-${item.month}`}
+              className={`flex h-full flex-1 flex-col justify-end ${item.inProgress ? "opacity-60" : ""}`}
+              title={`${monthLabel(item.month)}/${item.year}${item.inProgress ? " (parcial)" : ""}: proventos ${formatCurrencyBRL(
+                item.income,
+              )} + aportes líquidos ${formatCurrencyBRL(item.netContributions)} = ${formatCurrencyBRL(item.total)}`}
+            >
+              <div className="rounded-t-sm bg-indigo-400" style={{ height: `${contributionHeight}%` }} />
+              <div className="bg-emerald-400" style={{ height: `${incomeHeight}%` }} />
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-1 flex gap-1">
+        {flow.months.map((item) => (
+          <span key={`${item.year}-${item.month}`} className="flex-1 text-center text-[9px] text-slate-500">
+            {monthLabel(item.month).slice(0, 3)}
+            {item.inProgress ? "*" : ""}
+          </span>
+        ))}
+      </div>
+
+      <div className="mt-3 space-y-1 text-xs">
+        {rows.map((row) => (
+          <div key={row.label} className="flex flex-wrap items-baseline justify-between gap-x-3">
+            <span className="text-slate-400">{row.label}</span>
+            <span className="text-slate-300">
+              <span className="text-emerald-300">{formatCurrencyBRL(row.totals.income)}</span>
+              {" + "}
+              <span className="text-indigo-300">{formatCurrencyBRL(row.totals.netContributions)}</span>
+              {" = "}
+              <span className="font-semibold text-slate-100">{formatCurrencyBRL(row.totals.total)}</span>
+            </span>
+          </div>
+        ))}
+        {current ? (
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+            <span className="text-slate-400">
+              {monthLabel(current.month)}/{current.year}
+              {current.inProgress ? " (parcial)" : ""}
+            </span>
+            <span className="text-slate-300">
+              <span className="text-emerald-300">{formatCurrencyBRL(current.income)}</span>
+              {" + "}
+              <span className="text-indigo-300">{formatCurrencyBRL(current.netContributions)}</span>
+              {" = "}
+              <span className="font-semibold text-slate-100">{formatCurrencyBRL(current.total)}</span>
+            </span>
+          </div>
+        ) : null}
+      </div>
+      <p className="mt-2 text-[10px] text-slate-500">
+        Barras: proventos (verde) e aportes líquidos (azul) de cada mês; passe o mouse para ver os valores.
+        {current?.inProgress ? " * mês em andamento." : ""}
+      </p>
+    </article>
+  );
+}
+
+export function KPIAdvancedGrid({ kpis, flow }: KPIAdvancedGridProps) {
   const marketTone = toneClass(kpis.capitalGainPct);
   const profitTone = toneClass(kpis.totalProfit);
   const incomeVariationTone = toneClass(kpis.momGrowth);
@@ -136,7 +244,10 @@ export function KPIAdvancedGrid({ kpis }: KPIAdvancedGridProps) {
         })}
       </div>
 
-      {/* Row 3: Proventos + Variação/Rentabilidade */}
+      {/* Row 3: Proventos (+ aportes) + Variação/Rentabilidade */}
+      {flow ? (
+        <ContributionFlowCard flow={flow} />
+      ) : (
       <article className="rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm xl:col-span-3">
         <p className="text-sm font-semibold text-slate-200">Proventos Recebidos (12M)</p>
         <p className="mt-2 text-3xl font-extrabold text-slate-50">
@@ -151,6 +262,7 @@ export function KPIAdvancedGrid({ kpis }: KPIAdvancedGridProps) {
           {formatCurrencyBRL(rolling12MonthlyAverage)}
         </p>
       </article>
+      )}
 
       <article className="rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm xl:col-span-3">
         <div className="grid grid-cols-2 gap-4">
