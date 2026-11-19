@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { CdbKpiEntry, DashboardMonth, DashboardPayload } from "@/types";
 import { MonthPace, loadMonthPace } from "@/lib/finance/month-pace";
+import { ContributionCashEvent, buildContributionFlow } from "@/lib/finance/contribution-flow";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -28,15 +29,20 @@ export async function GET(req: NextRequest) {
   const supabase = getSupabaseServerClient();
   const year = Number(new URL(req.url).searchParams.get("year") ?? new Date().getFullYear());
 
-  const [{ data: investments, error: invError }, { data: returns, error: retError }] =
-    await Promise.all([
+  const [
+    { data: investments, error: invError },
+    { data: returns, error: retError },
+    { data: cashEvents, error: cashEventsError },
+  ] = await Promise.all([
       supabase.from("investments").select("id,type,institution,name,amount_invested"),
       supabase
         .from("monthly_returns")
         .select("investment_id,month,year,income_value")
         .gte("year", year - 1)
         .lte("year", year),
+      supabase.from("investment_cash_events").select("year,month,type,amount").gte("year", year - 1).lte("year", year),
     ]);
+  if (cashEventsError) console.warn("[FinanceFlow mobile] Eventos de caixa indisponíveis:", cashEventsError.message);
 
   if (invError || retError || !investments || !returns) {
     return NextResponse.json(
@@ -158,6 +164,17 @@ export async function GET(req: NextRequest) {
   const rolling12 = seriesAll.slice(-12).reduce((acc, m) => acc + m.total, 0);
   const portfolioYield = totalInvested > 0 ? (rolling12 / totalInvested) * 100 : 0;
 
+  // Proventos + aportes líquidos dos 12 meses até o mês exibido (mesma função do desktop).
+  const contributionFlow = current
+    ? buildContributionFlow({
+        incomeByMonth: seriesAll.map((entry) => ({ year: entry.year, month: entry.month, total: entry.total })),
+        cashEvents: (cashEvents ?? []) as ContributionCashEvent[],
+        year: current.year,
+        month: current.month,
+        inProgress: isCurrentMonth,
+      })
+    : undefined;
+
   const payload: DashboardPayload = {
     year,
     kpis: {
@@ -181,6 +198,7 @@ export async function GET(req: NextRequest) {
       hasActiveFii: pace ? pace.hasActiveFii : (current?.fiis ?? 0) > 0,
     },
     monthlySeries,
+    contributionFlow,
   };
 
   return NextResponse.json(payload, {
