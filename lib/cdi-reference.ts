@@ -89,21 +89,31 @@ export async function resolveCdiAnnualReference(): Promise<number> {
 }
 
 const CDI_MONTHLY_SERIES_URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.4391/dados";
-const CDI_MONTHLY_FETCH_TIMEOUT_MS = 5000;
+const CDI_MONTHLY_FETCH_TIMEOUT_MS = 8000;
+const CDI_MONTHLY_FETCH_ATTEMPTS = 2;
 const CDI_MONTHLY_FALLBACK_TTL_MS = 2 * 60 * 1000;
 const cdiMonthlyCache = new Map<number, { value: Map<number, number>; expiresAt: number }>();
+// Último resultado do BCB que deu certo, por ano: usado quando uma nova consulta falha, para as
+// colunas de CDI não ficarem vazias por uma instabilidade momentânea.
+const cdiMonthlyLastGood = new Map<number, Map<number, number>>();
 
-// CDI acumulado de cada mês do ano (% no mês), série 4391 do BCB. Mapa vazio se o BCB falhar.
-export async function resolveMonthlyCdiHistory(year: number): Promise<Map<number, number>> {
-  const now = Date.now();
-  const cached = cdiMonthlyCache.get(year);
-  if (cached && cached.expiresAt > now) return cached.value;
-
+/** Converte a resposta da série 4391 do BCB em mês → CDI do mês (%), só do ano pedido. */
+export function parseMonthlyCdiSeries(payload: unknown, year: number): Map<number, number> {
   const result = new Map<number, number>();
-  let timeout: ReturnType<typeof setTimeout> | null = null;
+  for (const point of Array.isArray(payload) ? (payload as BcbSeriesPoint[]) : []) {
+    const [, month, pointYear] = String(point?.data ?? "").split("/").map(Number);
+    const value = Number(String(point?.valor ?? "").replace(",", "."));
+    if (pointYear === year && month >= 1 && month <= 12 && Number.isFinite(value)) {
+      result.set(month, value);
+    }
+  }
+  return result;
+}
+
+async function fetchMonthlyCdiSeries(year: number): Promise<Map<number, number>> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CDI_MONTHLY_FETCH_TIMEOUT_MS);
   try {
-    const controller = new AbortController();
-    timeout = setTimeout(() => controller.abort(), CDI_MONTHLY_FETCH_TIMEOUT_MS);
     const url = `${CDI_MONTHLY_SERIES_URL}?formato=json&dataInicial=01/01/${year}&dataFinal=31/12/${year}`;
     const response = await fetch(url, {
       headers: { Accept: "application/json" },
@@ -111,22 +121,40 @@ export async function resolveMonthlyCdiHistory(year: number): Promise<Map<number
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`BCB status ${response.status}`);
-    const payload = (await response.json()) as BcbSeriesPoint[];
-    for (const point of Array.isArray(payload) ? payload : []) {
-      const [, month, pointYear] = String(point.data ?? "").split("/").map(Number);
-      const value = Number(String(point.valor ?? "").replace(",", "."));
-      if (pointYear === year && month >= 1 && month <= 12 && Number.isFinite(value)) {
-        result.set(month, value);
-      }
-    }
-    cdiMonthlyCache.set(year, { value: result, expiresAt: now + CDI_CACHE_SUCCESS_TTL_MS });
-  } catch (error) {
-    console.warn("Falha ao obter CDI mensal no BCB; meses passados usam o CDI atual.", error);
-    cdiMonthlyCache.set(year, { value: result, expiresAt: now + CDI_MONTHLY_FALLBACK_TTL_MS });
+    return parseMonthlyCdiSeries(await response.json(), year);
   } finally {
-    if (timeout) clearTimeout(timeout);
+    clearTimeout(timeout);
   }
-  return result;
+}
+
+// CDI acumulado de cada mês do ano (% no mês), série 4391 do BCB. Tenta de novo uma vez; se o BCB
+// falhar, usa o último resultado bom do ano e, sem ele, devolve um mapa vazio.
+export async function resolveMonthlyCdiHistory(year: number): Promise<Map<number, number>> {
+  const now = Date.now();
+  const cached = cdiMonthlyCache.get(year);
+  if (cached && cached.expiresAt > now) return cached.value;
+
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= CDI_MONTHLY_FETCH_ATTEMPTS; attempt += 1) {
+    try {
+      const result = await fetchMonthlyCdiSeries(year);
+      cdiMonthlyLastGood.set(year, result);
+      cdiMonthlyCache.set(year, { value: result, expiresAt: now + CDI_CACHE_SUCCESS_TTL_MS });
+      return result;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  const fallback = cdiMonthlyLastGood.get(year) ?? new Map<number, number>();
+  console.warn(
+    fallback.size > 0
+      ? "Falha ao obter CDI mensal no BCB; usando o último valor obtido."
+      : "Falha ao obter CDI mensal no BCB; sem valor anterior disponível.",
+    lastError,
+  );
+  cdiMonthlyCache.set(year, { value: fallback, expiresAt: now + CDI_MONTHLY_FALLBACK_TTL_MS });
+  return fallback;
 }
 
 // Último valor de uma série do BCB (% a.a.), com cache e fallback. Séries: 432 = meta Selic,
