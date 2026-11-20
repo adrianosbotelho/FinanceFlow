@@ -14,7 +14,8 @@
     "ops:report": "node scripts/ops-check.mjs --write",
     "release:gate": "node scripts/release-gate.mjs",
     "qa:preflight": "npm run lint && npm run build && npm run smoke",
-    "test": "vitest run"
+    "test": "vitest run",
+    "totp:setup": "node scripts/totp-setup.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.3",
