@@ -130,6 +130,10 @@ export default async function DashboardPage({
     return <p className="text-sm text-rose-300">Falha ao carregar dashboard.</p>;
   }
 
+  // Sem FIIs ativos, o primeiro card mostra a renda da instituição em destaque (como no desktop).
+  const showFii = data.kpis.hasActiveFii || data.kpis.fiisMonth > 0;
+  const highlight = showFii ? null : data.kpis.institutionHighlight ?? null;
+
   const cdbLabels = data.monthlySeries.length > 0
     ? data.monthlySeries[0].cdb_items.map((c) => c.label)
     : data.kpis.cdbItems.map((c) => c.label);
@@ -148,17 +152,33 @@ export default async function DashboardPage({
       </header>
 
       <section className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
-        <article className={`min-h-[168px] rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.momTotalPct)}`}>
-          <p className={`card-title ${trendTitleClass(data.kpis.momTotalPct)}`}>Renda passiva mensal</p>
-          <p className={`card-value ${trendValueClass(data.kpis.momTotalPct)}`}>{formatCurrency(data.kpis.totalMonth)}</p>
-          <p className={`text-xs ${trendMetaClass(data.kpis.momTotalPct)}`}>
-            <span className={`mr-1 font-semibold ${trendPctClass(data.kpis.momTotalPct)}`}>
-              {trendSymbol(data.kpis.momTotalPct)} {formatPct(data.kpis.momTotalPct)}
-            </span>
-            vs mês anterior
-            <ProjectionLine value={data.kpis.projectedTotal} pct={data.kpis.projectedMomTotalPct} />
-          </p>
-        </article>
+        {highlight ? (
+          <article className={`min-h-[168px] rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(highlight.momGrowth)}`}>
+            <p className={`card-title ${trendTitleClass(highlight.momGrowth)}`}>
+              Renda {highlight.institution} ({highlight.investmentCount} {highlight.investmentCount === 1 ? "aplicação" : "aplicações"})
+            </p>
+            <p className={`card-value ${trendValueClass(highlight.momGrowth)}`}>{formatCurrency(highlight.currentMonth)}</p>
+            <p className={`text-xs ${trendMetaClass(highlight.momGrowth)}`}>
+              <span className={`mr-1 font-semibold ${trendPctClass(highlight.momGrowth)}`}>
+                {trendSymbol(highlight.momGrowth)} {formatPct(highlight.momGrowth)}
+              </span>
+              vs mês anterior
+              <ProjectionLine value={highlight.projectedMonth} pct={highlight.projectedMomGrowth} />
+            </p>
+          </article>
+        ) : (
+          <article className={`min-h-[168px] rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.momTotalPct)}`}>
+            <p className={`card-title ${trendTitleClass(data.kpis.momTotalPct)}`}>Renda passiva mensal</p>
+            <p className={`card-value ${trendValueClass(data.kpis.momTotalPct)}`}>{formatCurrency(data.kpis.totalMonth)}</p>
+            <p className={`text-xs ${trendMetaClass(data.kpis.momTotalPct)}`}>
+              <span className={`mr-1 font-semibold ${trendPctClass(data.kpis.momTotalPct)}`}>
+                {trendSymbol(data.kpis.momTotalPct)} {formatPct(data.kpis.momTotalPct)}
+              </span>
+              vs mês anterior
+              <ProjectionLine value={data.kpis.projectedTotal} pct={data.kpis.projectedMomTotalPct} />
+            </p>
+          </article>
+        )}
         <article className={`min-h-[168px] rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.momCdbPct)}`}>
           <p className={`card-title ${trendTitleClass(data.kpis.momCdbPct)}`}>Rendimento CDBs</p>
           <p className={`card-value ${trendValueClass(data.kpis.momCdbPct)}`}>{formatCurrency(data.kpis.cdbMonth)}</p>
@@ -170,7 +190,7 @@ export default async function DashboardPage({
             <ProjectionLine value={data.kpis.projectedCdb} pct={data.kpis.projectedMomCdbPct} />
           </p>
         </article>
-        {data.kpis.hasActiveFii || data.kpis.fiisMonth > 0 ? (
+        {showFii ? (
         <article className={`min-h-[168px] rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.momFiisPct)}`}>
           <p className={`card-title ${trendTitleClass(data.kpis.momFiisPct)}`}>Dividendos FIIs</p>
           <p className={`card-value ${trendValueClass(data.kpis.momFiisPct)}`}>{formatCurrency(data.kpis.fiisMonth)}</p>
