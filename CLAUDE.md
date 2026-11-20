@@ -42,7 +42,7 @@ Três superfícies no mesmo repositório:
 | `npm run smoke:macos` | smoke test do build macOS |
 | `npm run release:check` | checklist de release (web + macOS) |
 
-Verificação: `npm test` (Vitest) + `npm run lint` + build + smoke tests. Os testes cobrem as libs de cálculo (`business-days`, `redemption-tax`, `balance-history`, `goals-math`, `month-pace`, `daily-income`, `quick-entry`, `insights-actions`, `goals-plan`, `goal-progress`, `income-balance`, `contribution-flow`, `compare-offers`, `institution-kpi`, importação) com **dados fictícios**; o CI roda `npm test` em todo PR do desktop (`.github/workflows/desktop-tests.yml`). Lógica de cálculo nova vai para `lib/` (função pura) com teste, não para dentro da rota.
+Verificação: `npm test` (Vitest) + `npm run lint` + build + smoke tests. Os testes cobrem as libs de cálculo (`business-days`, `redemption-tax`, `balance-history`, `goals-math`, `month-pace`, `daily-income`, `quick-entry`, `insights-actions`, `goals-plan`, `goal-progress`, `income-balance`, `contribution-flow`, `compare-offers`, `institution-kpi`, `app-settings`, importação) com **dados fictícios**; o CI roda `npm test` em todo PR do desktop (`.github/workflows/desktop-tests.yml`). Lógica de cálculo nova vai para `lib/` (função pura) com teste, não para dentro da rota.
 
 O `.app` empacotado em `macos-app/dist/mac-arm64/` é um artefato **separado**: só incorpora código novo após `cd macos-app && npx electron-builder --mac`. Para o dia a dia, `npm run desktop` é mais rápido.
 
@@ -60,7 +60,7 @@ Mutations chamam `revalidatePath()` nas rotas afetadas e o cliente publica um ev
 
 ### Diretórios
 
-- `app/` — páginas (`/`, `/insights`, `/history-performance`, `/health`, `/performance`, `/goals`, `/investments`, `/returns`) e rotas de API.
+- `app/` — páginas (`/`, `/insights`, `/history-performance`, `/health`, `/performance`, `/goals`, `/investments`, `/returns`, `/settings`) e rotas de API.
 - `components/` — organizados por feature (`dashboard/`, `returns/`, `goals/`, `insights/`, `forms/`, `layout/`, `ui/`).
 - `lib/` — lógica compartilhada:
   - `supabase.ts` (server-only), `calculations.ts` (KPIs, MoM/YoY, CAGR), `formatters.ts` (BRL e meses em pt-BR);
@@ -92,6 +92,7 @@ Mutations chamam `revalidatePath()` nas rotas afetadas e o cliente publica um ev
 - **Card da instituição** (Dashboard, `lib/institution-kpi.ts`) — sem FIIs ativos, o primeiro card mostra a renda do mês somada das aplicações de uma instituição, com a variação realizada mês contra mês e a projeção como linha secundária. Instituição: `FINANCEFLOW_DASHBOARD_INSTITUTION` ou, sem ela, a com mais aplicações ativas (empate: maior renda no mês). Com FIIs ativos, volta a renda total (CDBs + FIIs).
 - **Proventos e aportes** (Dashboard, `lib/contribution-flow.ts`) — card com o que entrou na carteira em 12 meses de calendário até o mês de análise: proventos (renda total) + aportes líquidos (`APORTE` − `RESGATE` de `investment_cash_events`; taxas e impostos fora), barras por mês, acumulado do ano e média dos meses fechados.
 - **Ganho por dia útil** (Dashboard, `app/api/dashboard/daily-income`, `lib/daily-income.ts`) — renda de cada CDB no mês ÷ dias úteis em que rendeu (estreia a partir de `start_date`; sem ela, mês marcado como parcial e fora das variações; mês em andamento até a data-base do último lançamento do investimento) e o mesmo valor por R$ 10 mil sobre o capital que rendeu (saldo de abertura + ½ fluxo, via `lib/balance-history.ts`). FIIs ficam de fora.
+- **Configurações** (`/settings`, `app/api/settings`, `lib/app-settings.ts` + `lib/app-settings-store.ts`) — parâmetros editáveis dos cálculos, na tabela `app_settings` (chave → valor; sem linha ou sem tabela, vale o padrão). Cada parâmetro é definido em `APP_SETTING_DEFINITIONS` (rótulo, onde é usado, padrão, limites); a rota grava só chaves conhecidas e validadas. **Todo valor de cálculo que o usuário precise ajustar vai para lá**, não para constantes. Hoje: desconto do rendimento líquido (padrão 15%), usado na coluna "Rendimento líquido" do Detalhe mensal da Performance (`netIncomeFromGross()`).
 - **Taxas contratadas** — ficam em `investments.cdi_rate` (% do CDI); têm prioridade sobre o % efetivo estimado pelo histórico.
 - **Meta anual de renda (Dashboard/Insights)** — é a **soma das metas mensais** do ano (`investment_goals_monthly`), comparada com a projeção dos mesmos meses; `FINANCEFLOW_ANNUAL_INCOME_TARGET` só vale sem metas cadastradas. A tabela `investment_goals` (metas fixas) é legado.
 - **Investimentos sem posição** — investimento com valor aplicado 0 e sem renda no mês (ex.: FIIs encerrados) fica fora do motor de insights e das telas (cards, stress test, reinvestimento); o histórico de renda continua valendo nos totais passados.

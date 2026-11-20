@@ -729,6 +729,8 @@ export interface PerformanceMonthPoint {
   closingBalance: number | null;
   netContributions: number;
   grossIncome: number;
+  /** Rendimento bruto menos o desconto da página Configurações. */
+  netIncome: number;
   returnPercent: number | null;
   cdiPercent: number | null;
   percentOfCdi: number | null;
@@ -765,6 +767,8 @@ export interface PerformancePayload {
   year: number;
   kpis: PerformanceKPIs;
   monthlySeries: PerformanceMonthPoint[];
+  /** Desconto (%) usado em netIncome; vem da página Configurações. */
+  netIncomeDiscountPercent: number;
   investments: PerformanceInvestmentItem[];
   institutions: PerformanceInstitutionItem[];
   inflationSource: "bcb" | "manual" | "none";
