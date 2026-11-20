@@ -23,6 +23,14 @@ body {
   @apply text-2xl font-extrabold tracking-tight text-slate-100;
 }
 
+/* Valores dos cards do Dashboard: encolhem em telas estreitas para "R$ 336.088,98" caber no card
+   sem quebrar a linha (máx. = text-2xl). */
+.card-amount {
+  font-size: clamp(1.125rem, 5vw, 1.5rem);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
 /* Barra de rolagem horizontal discreta (tema escuro) nas tabelas que rolam, igual ao desktop. */
 .overflow-x-auto {
   scrollbar-width: thin;

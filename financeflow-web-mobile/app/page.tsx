@@ -153,11 +153,11 @@ export default async function DashboardPage({
 
       <section className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
         {highlight ? (
-          <article className={`min-h-[168px] rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(highlight.momGrowth)}`}>
+          <article className={`min-h-[168px] min-w-0 rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(highlight.momGrowth)}`}>
             <p className={`card-title ${trendTitleClass(highlight.momGrowth)}`}>
               Renda {highlight.institution} ({highlight.investmentCount} {highlight.investmentCount === 1 ? "aplicação" : "aplicações"})
             </p>
-            <p className={`card-value ${trendValueClass(highlight.momGrowth)}`}>{formatCurrency(highlight.currentMonth)}</p>
+            <p className={`card-value card-amount ${trendValueClass(highlight.momGrowth)}`}>{formatCurrency(highlight.currentMonth)}</p>
             <p className={`text-xs ${trendMetaClass(highlight.momGrowth)}`}>
               <span className={`mr-1 font-semibold ${trendPctClass(highlight.momGrowth)}`}>
                 {trendSymbol(highlight.momGrowth)} {formatPct(highlight.momGrowth)}
@@ -167,9 +167,9 @@ export default async function DashboardPage({
             </p>
           </article>
         ) : (
-          <article className={`min-h-[168px] rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.momTotalPct)}`}>
+          <article className={`min-h-[168px] min-w-0 rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.momTotalPct)}`}>
             <p className={`card-title ${trendTitleClass(data.kpis.momTotalPct)}`}>Renda passiva mensal</p>
-            <p className={`card-value ${trendValueClass(data.kpis.momTotalPct)}`}>{formatCurrency(data.kpis.totalMonth)}</p>
+            <p className={`card-value card-amount ${trendValueClass(data.kpis.momTotalPct)}`}>{formatCurrency(data.kpis.totalMonth)}</p>
             <p className={`text-xs ${trendMetaClass(data.kpis.momTotalPct)}`}>
               <span className={`mr-1 font-semibold ${trendPctClass(data.kpis.momTotalPct)}`}>
                 {trendSymbol(data.kpis.momTotalPct)} {formatPct(data.kpis.momTotalPct)}
@@ -179,9 +179,9 @@ export default async function DashboardPage({
             </p>
           </article>
         )}
-        <article className={`min-h-[168px] rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.momCdbPct)}`}>
+        <article className={`min-h-[168px] min-w-0 rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.momCdbPct)}`}>
           <p className={`card-title ${trendTitleClass(data.kpis.momCdbPct)}`}>Rendimento CDBs</p>
-          <p className={`card-value ${trendValueClass(data.kpis.momCdbPct)}`}>{formatCurrency(data.kpis.cdbMonth)}</p>
+          <p className={`card-value card-amount ${trendValueClass(data.kpis.momCdbPct)}`}>{formatCurrency(data.kpis.cdbMonth)}</p>
           <p className={`text-xs ${trendMetaClass(data.kpis.momCdbPct)}`}>
             <span className={`mr-1 font-semibold ${trendPctClass(data.kpis.momCdbPct)}`}>
               {trendSymbol(data.kpis.momCdbPct)} {formatPct(data.kpis.momCdbPct)}
@@ -191,9 +191,9 @@ export default async function DashboardPage({
           </p>
         </article>
         {showFii ? (
-        <article className={`min-h-[168px] rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.momFiisPct)}`}>
+        <article className={`min-h-[168px] min-w-0 rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.momFiisPct)}`}>
           <p className={`card-title ${trendTitleClass(data.kpis.momFiisPct)}`}>Dividendos FIIs</p>
-          <p className={`card-value ${trendValueClass(data.kpis.momFiisPct)}`}>{formatCurrency(data.kpis.fiisMonth)}</p>
+          <p className={`card-value card-amount ${trendValueClass(data.kpis.momFiisPct)}`}>{formatCurrency(data.kpis.fiisMonth)}</p>
           <p className={`text-xs ${trendMetaClass(data.kpis.momFiisPct)}`}>
             <span className={`mr-1 font-semibold ${trendPctClass(data.kpis.momFiisPct)}`}>
               {trendSymbol(data.kpis.momFiisPct)} {formatPct(data.kpis.momFiisPct)}
@@ -202,21 +202,34 @@ export default async function DashboardPage({
           </p>
         </article>
         ) : null}
-        <article className="min-h-[168px] rounded-[1.5rem] border-2 border-slate-700 bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 p-3.5 shadow-lg">
+        {/* Com FIIs, o acumulado fecha a grade de 4 cards; sem eles, vai para a grade de baixo (sem buraco). */}
+        {showFii ? (
+          <article className="min-w-0 rounded-[1.5rem] border-2 border-slate-700 bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 p-3.5 shadow-lg">
           <p className="card-title">Renda acumulada no ano</p>
-          <p className="card-value">{formatCurrency(data.kpis.ytd)}</p>
+          <p className="card-value card-amount">{formatCurrency(data.kpis.ytd)}</p>
           <p className="text-xs text-slate-500">YTD</p>
         </article>
+        ) : null}
       </section>
 
       <section className="grid grid-cols-2 gap-3">
-        <article className="rounded-[1.5rem] border-2 border-slate-700 bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 p-3.5 shadow-lg">
+        {/* Patrimônio em largura total: o valor não cabe em meio card em telas estreitas. */}
+        <article className="col-span-2 min-w-0 rounded-[1.5rem] border-2 border-slate-700 bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 p-3.5 shadow-lg">
           <p className="card-title">Patrimônio investido</p>
-          <p className="card-value">{formatCurrency(data.kpis.totalInvested)}</p>
+          <p className="card-value card-amount">{formatCurrency(data.kpis.totalInvested)}</p>
         </article>
-        <article className={`rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(data.kpis.portfolioYieldPct)}`}>
+        {!showFii ? (
+          <article className="min-w-0 rounded-[1.5rem] border-2 border-slate-700 bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 p-3.5 shadow-lg">
+          <p className="card-title">Renda acumulada no ano</p>
+          <p className="card-value card-amount">{formatCurrency(data.kpis.ytd)}</p>
+          <p className="text-xs text-slate-500">YTD</p>
+        </article>
+        ) : null}
+        <article
+          className={`min-w-0 rounded-[1.5rem] p-3.5 shadow-lg ${showFii ? "col-span-2" : ""} ${trendCardClass(data.kpis.portfolioYieldPct)}`}
+        >
           <p className={`card-title ${trendTitleClass(data.kpis.portfolioYieldPct)}`}>Rentabilidade (12M)</p>
-          <p className={`card-value ${trendValueClass(data.kpis.portfolioYieldPct)}`}>{formatPct(data.kpis.portfolioYieldPct)}</p>
+          <p className={`card-value card-amount ${trendValueClass(data.kpis.portfolioYieldPct)}`}>{formatPct(data.kpis.portfolioYieldPct)}</p>
           <p className={`text-xs ${trendMetaClass(data.kpis.portfolioYieldPct)}`}>
             Proventos 12M: {formatCurrency(data.kpis.rolling12)}
           </p>
@@ -227,9 +240,9 @@ export default async function DashboardPage({
 
       <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
         {data.kpis.cdbItems.map((cdb) => (
-          <article key={cdb.investment_id} className={`min-h-[176px] rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(cdb.momGrowth)}`}>
+          <article key={cdb.investment_id} className={`min-h-[176px] min-w-0 rounded-[1.5rem] p-3.5 shadow-lg ${trendCardClass(cdb.momGrowth)}`}>
             <p className={`card-title ${trendTitleClass(cdb.momGrowth)}`}>{cdb.label} (M/M)</p>
-            <p className={`card-value ${trendValueClass(cdb.momGrowth)}`}>
+            <p className={`card-value card-amount ${trendValueClass(cdb.momGrowth)}`}>
               {formatPct(cdb.momGrowth)}
             </p>
             <p className={`text-xs leading-snug ${trendMetaClass(cdb.momGrowth)}`}>
