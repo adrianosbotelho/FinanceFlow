@@ -1,24 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { DEVICE_TRUST_MAX_AGE_SECONDS, createDeviceToken, describeDevice, readDeviceToken } from "@/lib/device-token";
 
-const SECRET = "segredo-de-teste";
+// Chave fictícia, só para assinar tokens dentro do teste (não é credencial).
+const KEY = "a".repeat(32);
 const ID = "123e4567-e89b-12d3-a456-426614174000";
 const NOW = Date.UTC(2030, 0, 1);
 
 describe("device-token", () => {
   it("token válido devolve o id do aparelho", () => {
-    expect(readDeviceToken(createDeviceToken(ID, SECRET, NOW), SECRET, NOW)).toBe(ID);
+    expect(readDeviceToken(createDeviceToken(ID, KEY, NOW), KEY, NOW)).toBe(ID);
   });
 
   it("recusa token vencido, adulterado ou de outro segredo", () => {
-    const token = createDeviceToken(ID, SECRET, NOW);
-    expect(readDeviceToken(token, SECRET, NOW + (DEVICE_TRUST_MAX_AGE_SECONDS + 1) * 1000)).toBeNull();
-    expect(readDeviceToken(token, "outro-segredo", NOW)).toBeNull();
+    const token = createDeviceToken(ID, KEY, NOW);
+    expect(readDeviceToken(token, KEY, NOW + (DEVICE_TRUST_MAX_AGE_SECONDS + 1) * 1000)).toBeNull();
+    expect(readDeviceToken(token, "b".repeat(32), NOW)).toBeNull();
     const [, exp, sig] = token.split(".");
-    expect(readDeviceToken(`123e4567-e89b-12d3-a456-426614174999.${exp}.${sig}`, SECRET, NOW)).toBeNull();
-    expect(readDeviceToken(`${ID}.${Number(exp) + 999}.${sig}`, SECRET, NOW)).toBeNull();
-    expect(readDeviceToken("lixo", SECRET, NOW)).toBeNull();
-    expect(readDeviceToken(undefined, SECRET, NOW)).toBeNull();
+    expect(readDeviceToken(`123e4567-e89b-12d3-a456-426614174999.${exp}.${sig}`, KEY, NOW)).toBeNull();
+    expect(readDeviceToken(`${ID}.${Number(exp) + 999}.${sig}`, KEY, NOW)).toBeNull();
+    expect(readDeviceToken("lixo", KEY, NOW)).toBeNull();
+    expect(readDeviceToken(undefined, KEY, NOW)).toBeNull();
   });
 
   it("descreve o aparelho pelo User-Agent", () => {
