@@ -191,7 +191,16 @@ create table if not exists app_settings (
   updated_at timestamptz not null default now()
 );
 
--- Segurança (migrations 20260318113000, 20260404113000, 20260425110500 e 20261120120000):
+-- Aparelhos confiáveis do login do mobile (migration 20261120150000).
+create table if not exists trusted_devices (
+  id uuid primary key,
+  label text not null,
+  created_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  revoked_at timestamptz
+);
+
+-- Segurança (migrations 20260318113000, 20260404113000, 20260425110500, 20261120120000 e 20261120150000):
 -- RLS em todas as tabelas e sem acesso direto pelas roles da Data API.
 -- O app acessa o banco só pelo servidor, com SUPABASE_SERVICE_ROLE_KEY.
 do $$
@@ -204,7 +213,7 @@ begin
       'monthly_positions', 'monthly_macro', 'investment_goals',
       'investment_goals_monthly', 'investment_goals_annual',
       'investment_cash_events', 'insight_daily_runs', 'insight_professional_runs',
-      'app_settings'
+      'app_settings', 'trusted_devices'
     ])
   loop
     execute format('alter table public.%I enable row level security', tbl);
