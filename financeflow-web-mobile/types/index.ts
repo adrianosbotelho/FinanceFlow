@@ -89,6 +89,20 @@ export interface ContributionFlowPayload {
   averageMonths: number;
 }
 
+/** Card de destaque: renda do mês somada por instituição, comparada mês a mês (mesmo formato do desktop). */
+export interface InstitutionKpi {
+  institution: string;
+  investmentCount: number;
+  labels: string[];
+  currentMonth: number;
+  previousMonth: number | null;
+  momGrowth: number | null;
+  momDelta: number | null;
+  /** Mês em andamento: soma das projeções de fechamento das aplicações. */
+  projectedMonth: number | null;
+  projectedMomGrowth: number | null;
+}
+
 export interface DashboardPayload {
   year: number;
   kpis: {
@@ -111,6 +125,7 @@ export interface DashboardPayload {
     projectedCdb: number | null;
     projectedMomCdbPct: number | null;
     hasActiveFii: boolean;
+    institutionHighlight?: InstitutionKpi | null;
   };
   monthlySeries: DashboardMonth[];
   contributionFlow?: ContributionFlowPayload;

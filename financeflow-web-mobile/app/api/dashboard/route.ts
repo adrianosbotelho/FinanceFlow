@@ -3,6 +3,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { CdbKpiEntry, DashboardMonth, DashboardPayload } from "@/types";
 import { MonthPace, loadMonthPace } from "@/lib/finance/month-pace";
 import { ContributionCashEvent, buildContributionFlow } from "@/lib/finance/contribution-flow";
+import { InstitutionKpiInvestment, buildInstitutionKpi } from "@/lib/finance/institution-kpi";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -175,6 +176,14 @@ export async function GET(req: NextRequest) {
       })
     : undefined;
 
+  // Primeiro card: renda do mês da instituição em destaque (mesma função do desktop).
+  const institutionHighlight = buildInstitutionKpi({
+    cdbItems,
+    investments: investments as InstitutionKpiInvestment[],
+    preferred: process.env.FINANCEFLOW_DASHBOARD_INSTITUTION ?? null,
+    withProjection: isCurrentMonth,
+  });
+
   const payload: DashboardPayload = {
     year,
     kpis: {
@@ -196,6 +205,7 @@ export async function GET(req: NextRequest) {
       projectedCdb,
       projectedMomCdbPct: projectedCdb !== null ? pctVs(projectedCdb, cdbPrev) : null,
       hasActiveFii: pace ? pace.hasActiveFii : (current?.fiis ?? 0) > 0,
+      institutionHighlight,
     },
     monthlySeries,
     contributionFlow,
