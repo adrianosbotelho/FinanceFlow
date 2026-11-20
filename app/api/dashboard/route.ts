@@ -23,6 +23,7 @@ import { MonthPace } from "../../../types";
 import { resolveCdiAnnualReference } from "../../../lib/cdi-reference";
 import { buildGoalProgress } from "../../../lib/goal-progress";
 import { ContributionCashEvent, buildContributionFlow } from "../../../lib/contribution-flow";
+import { InstitutionKpiInvestment, buildInstitutionKpi } from "../../../lib/institution-kpi";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -345,6 +346,14 @@ export async function GET(req: NextRequest) {
     }));
     if (fiiProjected > 0 || paceEntry.fii_dividends > 0) paceEntry.projected_fii = fiiProjected;
   }
+
+  // Primeiro card do Dashboard: renda do mês da instituição em destaque (soma das aplicações dela).
+  kpis.institutionHighlight = buildInstitutionKpi({
+    cdbItems: kpis.cdbItems,
+    investments: investments as InstitutionKpiInvestment[],
+    preferred: process.env.FINANCEFLOW_DASHBOARD_INSTITUTION ?? null,
+    withProjection: kpis.comparisonBasis === "projection",
+  });
 
   const distribution: IncomeDistribution = (() => {
     const yearData = referenceSeries.filter((m) => m.year === year && m.month <= analysisMonth);

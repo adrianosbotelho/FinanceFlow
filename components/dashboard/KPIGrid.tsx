@@ -13,19 +13,35 @@ export function KPIGrid({ kpis }: KPIGridProps) {
   const projectionMomLabel = isProjection ? "Projeção do mês vs mês anterior:" : null;
   const projectionYoyLabel = isProjection ? "Projeção vs mesmo mês do ano anterior:" : null;
   const showFii = kpis.hasActiveFii !== false || kpis.fiiDividendsCurrentMonth > 0;
+  // Sem FIIs ativos, o primeiro card passa a ser a renda da instituição em destaque (soma das aplicações dela);
+  // com FIIs, segue a renda total (CDBs + FIIs).
+  const highlight = showFii ? null : kpis.institutionHighlight ?? null;
 
   return (
     <section
       className={`grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 ${showFii ? "xl:grid-cols-6" : "xl:grid-cols-5"}`}
     >
-      <KPICard
-        label="Renda passiva mensal (CDBs + FIIs)"
-        value={kpis.totalPassiveIncomeCurrentMonth}
-        delta={kpis.momGrowth}
-        comparisonLabel={momLabel}
-        secondaryLabel={projectionMomLabel}
-        secondaryDelta={kpis.projectedMomGrowth}
-      />
+      {highlight ? (
+        <KPICard
+          label={`Renda ${highlight.institution} (mês, ${highlight.investmentCount} ${
+            highlight.investmentCount === 1 ? "aplicação" : "aplicações"
+          })`}
+          value={highlight.currentMonth}
+          delta={highlight.momGrowth}
+          comparisonLabel={momLabel}
+          secondaryLabel={projectionMomLabel}
+          secondaryDelta={highlight.projectedMomGrowth}
+        />
+      ) : (
+        <KPICard
+          label="Renda passiva mensal (CDBs + FIIs)"
+          value={kpis.totalPassiveIncomeCurrentMonth}
+          delta={kpis.momGrowth}
+          comparisonLabel={momLabel}
+          secondaryLabel={projectionMomLabel}
+          secondaryDelta={kpis.projectedMomGrowth}
+        />
+      )}
       <KPICard
         label="Rendimento CDBs (mês, total)"
         value={kpis.cdbTotalYieldCurrentMonth}
