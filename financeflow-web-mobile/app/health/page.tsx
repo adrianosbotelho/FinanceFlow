@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type HealthPayload = {
@@ -139,6 +140,12 @@ export default function HealthPage() {
           Revalidar
         </button>
       </header>
+
+      <Link href="/dispositivos" className="card block hover:bg-slate-800/80">
+        <p className="card-title">Segurança</p>
+        <p className="text-sm font-semibold text-slate-100">Aparelhos confiáveis →</p>
+        <p className="text-xs text-slate-400">Verificação em duas etapas e aparelhos que podem entrar sem o código.</p>
+      </Link>
 
       <section className="grid gap-4 md:grid-cols-2">
         <article className="card">

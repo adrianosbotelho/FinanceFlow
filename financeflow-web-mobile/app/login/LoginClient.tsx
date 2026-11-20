@@ -8,6 +8,8 @@ export function LoginClient({ nextPath }: { nextPath: string }) {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [needsCode, setNeedsCode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,10 +21,15 @@ export function LoginClient({ nextPath }: { nextPath: string }) {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(needsCode ? { email, password, code } : { email, password }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
+        if (body?.requiresCode) {
+          // Aparelho novo: pede o código do app autenticador sem perder e-mail e senha.
+          setNeedsCode(true);
+          setCode("");
+        }
         throw new Error(body?.error ?? `HTTP ${res.status}`);
       }
       router.replace(nextPath);
@@ -65,13 +72,33 @@ export function LoginClient({ nextPath }: { nextPath: string }) {
               autoComplete="current-password"
             />
           </div>
+          {needsCode ? (
+            <div>
+              <label className="mb-1 block text-xs text-slate-400">Código de verificação</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]{6}"
+                maxLength={6}
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                required
+                autoFocus
+                className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-center text-lg tracking-[0.4em]"
+                autoComplete="one-time-code"
+              />
+              <p className="mt-1 text-[11px] text-slate-500">
+                6 dígitos do app autenticador. Depois disso, este aparelho fica confiável por 180 dias.
+              </p>
+            </div>
+          ) : null}
           {error ? <p className="text-xs text-rose-300">{error}</p> : null}
           <button
             type="submit"
             disabled={loading}
             className="w-full rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-700"
           >
-            {loading ? "Entrando..." : "Entrar"}
+            {loading ? "Entrando..." : needsCode ? "Verificar e entrar" : "Entrar"}
           </button>
         </form>
       </section>
