@@ -184,7 +184,14 @@ create table if not exists insight_professional_runs (
 create index if not exists idx_insight_prof_runs_year_month_date
   on insight_professional_runs (year, month, run_date desc);
 
--- Segurança (migrations 20260318113000, 20260404113000 e 20260425110500):
+-- Parâmetros da página Configurações (migration 20261120120000); chaves em lib/app-settings.ts.
+create table if not exists app_settings (
+  key text primary key,
+  value numeric not null,
+  updated_at timestamptz not null default now()
+);
+
+-- Segurança (migrations 20260318113000, 20260404113000, 20260425110500 e 20261120120000):
 -- RLS em todas as tabelas e sem acesso direto pelas roles da Data API.
 -- O app acessa o banco só pelo servidor, com SUPABASE_SERVICE_ROLE_KEY.
 do $$
@@ -196,7 +203,8 @@ begin
       'investments', 'monthly_returns', 'monthly_return_revisions', 'monthly_closures',
       'monthly_positions', 'monthly_macro', 'investment_goals',
       'investment_goals_monthly', 'investment_goals_annual',
-      'investment_cash_events', 'insight_daily_runs', 'insight_professional_runs'
+      'investment_cash_events', 'insight_daily_runs', 'insight_professional_runs',
+      'app_settings'
     ])
   loop
     execute format('alter table public.%I enable row level security', tbl);

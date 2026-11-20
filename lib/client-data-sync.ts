@@ -3,7 +3,7 @@
 const DATA_SYNC_STORAGE_KEY = "financeflow:data-sync-version";
 const DATA_SYNC_EVENT_NAME = "financeflow:data-sync-updated";
 
-type DataSyncSource = "returns" | "investments";
+type DataSyncSource = "returns" | "investments" | "settings";
 
 export function getDataSyncVersion(): number {
   if (typeof window === "undefined") return 0;

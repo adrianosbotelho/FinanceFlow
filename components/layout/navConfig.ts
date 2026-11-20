@@ -18,6 +18,7 @@ export const DEFAULT_NAV_ITEMS: NavItem[] = [
   { href: "/compare", label: "Onde Aportar", shortLabel: "Aporte" },
   { href: "/returns", label: "Retornos Mensais", shortLabel: "Ret" },
   { href: "/import", label: "Importar", shortLabel: "Imp" },
+  { href: "/settings", label: "Configurações", shortLabel: "Config" },
 ];
 
 export function resolveNavItems(savedOrder: string[] | null | undefined): NavItem[] {

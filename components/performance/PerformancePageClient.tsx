@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bar,
@@ -14,7 +15,7 @@ import {
   YAxis,
 } from "recharts";
 import { PerformancePayload } from "../../types";
-import { formatCurrencyBRL, formatPercentage, monthLabel } from "../../lib/formatters";
+import { formatCurrencyBRL, formatPercentage, formatPercentageDigits, monthLabel } from "../../lib/formatters";
 import { Card } from "../ui/Card";
 
 interface Props {
@@ -306,13 +307,21 @@ export function PerformancePageClient({ initialYear }: Props) {
         <Card>
           <h3 className="text-sm font-semibold text-slate-200">Detalhe mensal</h3>
           <div className="mt-2 overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-xs">
+            <table className="w-full min-w-[880px] text-left text-xs">
               <thead className="text-slate-400">
                 <tr>
                   <th className="py-2">Mês</th>
                   <th className="py-2">Patrimônio (fim)</th>
                   <th className="py-2">Aportes líquidos</th>
                   <th className="py-2">Rendimento bruto</th>
+                  <th className="py-2">
+                    <Link href="/settings" className="hover:text-slate-200" title="Alterar o desconto em Configurações">
+                      Rendimento líquido
+                      <span className="ml-1 font-normal text-slate-500">
+                        (−{formatPercentageDigits(data.netIncomeDiscountPercent, Number.isInteger(data.netIncomeDiscountPercent) ? 0 : 2)})
+                      </span>
+                    </Link>
+                  </th>
                   <th className="py-2">Carteira</th>
                   <th className="py-2">CDI</th>
                   <th className="py-2">% do CDI</th>
@@ -337,6 +346,7 @@ export function PerformancePageClient({ initialYear }: Props) {
                         {point.netContributions === 0 ? "—" : signedCurrency(point.netContributions)}
                       </td>
                       <td className="py-2 text-emerald-300">{formatCurrencyBRL(point.grossIncome)}</td>
+                      <td className="py-2 text-teal-200">{formatCurrencyBRL(point.netIncome)}</td>
                       <td className="py-2 font-semibold">{percentTwoDecimals(point.returnPercent)}</td>
                       <td className="py-2 text-slate-400">{percentTwoDecimals(point.cdiPercent)}</td>
                       <td className={`py-2 font-semibold ${cdiTone(point.percentOfCdi)}`}>

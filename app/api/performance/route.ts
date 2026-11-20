@@ -3,6 +3,8 @@ import { supabase } from "../../../lib/supabase";
 import { resolveMonthlyCdiHistory } from "../../../lib/cdi-reference";
 import { formatCurrencyBRL } from "../../../lib/formatters";
 import { CashFlow, estimateInvestmentRedemption } from "../../../lib/redemption-tax";
+import { netIncomeFromGross } from "../../../lib/app-settings";
+import { loadAppSettings } from "../../../lib/app-settings-store";
 import {
   BalanceContext,
   buildBalanceContexts,
@@ -131,14 +133,17 @@ export async function GET(req: NextRequest) {
   const currentYm = ym(now.year, now.month);
   const warnings: string[] = [];
 
-  const [investmentsRes, returnsRes, cashEventsRes, macroRes, cdiHistory, ipcaRes] = await Promise.all([
+  const [investmentsRes, returnsRes, cashEventsRes, macroRes, cdiHistory, ipcaRes, appSettings] = await Promise.all([
     supabase.from("investments").select("id,type,institution,name,amount_invested,cdi_rate,start_date"),
     supabase.from("monthly_returns").select("investment_id,year,month,income_value"),
     supabase.from("investment_cash_events").select("investment_id,year,month,type,amount,event_date"),
     supabase.from("monthly_macro").select("month,inflation_rate").eq("year", year),
     resolveMonthlyCdiHistory(year),
     fetchBcbMonthlyInflation(year),
+    loadAppSettings(),
   ]);
+  // Desconto da página Configurações para o rendimento líquido do Detalhe mensal.
+  const netIncomeDiscountPercent = appSettings.net_income_discount_percent;
 
   if (investmentsRes.error || returnsRes.error) {
     return NextResponse.json(
@@ -198,6 +203,7 @@ export async function GET(req: NextRequest) {
         closingBalance: null,
         netContributions: 0,
         grossIncome: 0,
+        netIncome: 0,
         returnPercent: null,
         cdiPercent: null,
         percentOfCdi: null,
@@ -222,13 +228,15 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    const monthGrossIncome = activeContexts.reduce((acc, ctx) => acc + (ctx.incomeByYm.get(key) ?? 0), 0);
     monthlySeries.push({
       month,
       year,
       status,
       closingBalance: activeContexts.reduce((acc, ctx) => acc + closingBalance(ctx, key), 0),
       netContributions: activeContexts.reduce((acc, ctx) => acc + (ctx.flowByYm.get(key) ?? 0), 0),
-      grossIncome: activeContexts.reduce((acc, ctx) => acc + (ctx.incomeByYm.get(key) ?? 0), 0),
+      grossIncome: monthGrossIncome,
+      netIncome: netIncomeFromGross(monthGrossIncome, netIncomeDiscountPercent),
       returnPercent,
       cdiPercent,
       percentOfCdi:
@@ -414,6 +422,7 @@ export async function GET(req: NextRequest) {
       fiiDividends,
     },
     monthlySeries,
+    netIncomeDiscountPercent,
     investments: investmentItems,
     institutions,
     inflationSource,
